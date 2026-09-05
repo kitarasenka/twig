@@ -3,6 +3,7 @@ import { GitBranch, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Se
 import Button from '../../ui/Button.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
 import CommitGraph from './CommitGraph.jsx';
+import WorktreeScreen from '../worktree/WorktreeScreen.jsx';
 import { createLaneLayout } from './layout.js';
 
 function BranchTree({ refs, onSelect }) {
@@ -30,7 +31,7 @@ function Diff({ diff, onClose }) {
   </section>;
 }
 
-export default function HistoryWorkspace({ repository, active, mod, filterRef, onConsole }) {
+export default function HistoryWorkspace({ repository, active, mod, filterRef, onConsole, onRepositoryChanged }) {
   const [data, setData] = useState({ commits: [], lanes: [], refs: [], nextSkip: 0, width: 1 });
   const dataRef = useRef(data);
   const layout = useRef(createLaneLayout());
@@ -79,7 +80,11 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
 
   const reload = useCallback(async () => {
     const epoch = ++generation.current;
-    busy.current = true; setLoading(true); setError(''); setSelected(null); setRange(null); setDiff(null); diffRequest.current++;
+    // Reloading history must not throw the user out of the working tree
+    // screen: staging refreshes history, and the screen lives in `selected`.
+    busy.current = true; setLoading(true); setError('');
+    setSelected(current => (current === 'worktree' ? 'worktree' : null));
+    setRange(null); setDiff(null); diffRequest.current++;
     try {
       const refs = await window.twig.getRefs(repository.id);
       if (generation.current !== epoch) return;
@@ -157,7 +162,8 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} head={repository.status?.branch?.oid}
             onSelect={choose} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} changes={changes.length} onWorktree={() => choose('worktree')} active={active} />}
       </div>
-      {selected === 'worktree' && <div className="worktree-summary"><header className="panel-heading"><strong>Uncommitted changes · {changes.length} files</strong><button onClick={() => choose(data.commits[0]?.oid || null)}>Back to history</button></header><p className="muted">Working tree changes. Staging and committing will be available in the next release.</p>{changes.map(file => <div className="worktree-file" key={file.path}><code>{file.kind === 'untracked' ? '?' : file.indexStatus + file.worktreeStatus}</code><span>{file.path}</span></div>)}</div>}
+      {selected === 'worktree' && <WorktreeScreen repository={repository} onConsole={onConsole} onChanged={() => { void reload(); onRepositoryChanged?.(); }}
+        onBack={() => choose(data.commits[0]?.oid || null)} />}
       {diff && <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} />}
     </main>
     {detail && selected !== 'worktree' && <CommitPanel repositoryId={repository.id} {...commitState} width={width} onWidth={setWidth} onClose={() => setDetail(false)} onParent={jump} onFile={openFile} onConsole={onConsole} range={range} />}

@@ -8,5 +8,6 @@ import App from './app/App.jsx';
 import './ui/tokens.css';
 import './ui/layout.css';
 import './ui/history.css';
+import './ui/worktree.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><App /></React.StrictMode>);

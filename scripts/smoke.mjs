@@ -30,8 +30,13 @@ try {
   assert.equal(info.name, '🌱Twig');
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
   assert.equal(await page.evaluate(() => typeof window.process), 'undefined');
-  assert.deepEqual(await page.evaluate(() => Object.keys(window.twig).sort()), ['compareCommits', 'getAppInfo', 'getCommit', 'getCommitFiles',
-    'getConsoleEntries', 'getFileDiff', 'getHistoryPage', 'getRefs', 'getWorkspace', 'onConsoleUpdate', 'openRepository', 'selectRepository']);
+  // The exact bridge surface is asserted on purpose: anything accidentally
+  // exposed to the renderer has to fail this check rather than ship.
+  assert.deepEqual(await page.evaluate(() => Object.keys(window.twig).sort()), [
+    'applySelection', 'cancelSync', 'compareCommits', 'createCommit', 'getAppInfo', 'getCommit', 'getCommitFiles',
+    'getConsoleEntries', 'getDivergence', 'getFileDiff', 'getHistoryPage', 'getRefs', 'getWorkspace', 'getWorktreeDiff',
+    'onConsoleUpdate', 'openRepository', 'readWorktree', 'runSync', 'selectRepository', 'stageFile', 'stashList',
+    'stashPop', 'stashPush', 'trackFile', 'unstageFile']);
   const security = await app.evaluate(({ BrowserWindow }) => {
     const prefs = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
     return { sandbox: prefs.sandbox, contextIsolation: prefs.contextIsolation, nodeIntegration: prefs.nodeIntegration };

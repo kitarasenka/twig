@@ -35,9 +35,14 @@ export default function App() {
   const [workspace, setWorkspace] = useState(null);
   const [entries, setEntries] = useState([]);
   const [startupError, setStartupError] = useState('');
+  const [divergence, setDivergence] = useState({ ahead: 0, behind: 0, upstream: null });
+  const [syncing, setSyncing] = useState(null);
+  const [syncNote, setSyncNote] = useState('');
+  const [worktreeVersion, setWorktreeVersion] = useState(0);
   const filterRef = useRef(null);
   const repositoryFilters = useRef(new Map());
   const selectionRequest = useRef(0);
+  const divergenceRequest = useRef(0);
   const mod = info?.platform === 'darwin' || (!info && /Mac/.test(navigator.platform)) ? 'Cmd' : 'Ctrl';
   const ready = (info !== null && workspace !== null) || Boolean(startupError);
   const repository = workspace?.repositories.find(item => item.id === workspace.activeId) || null;
@@ -64,6 +69,57 @@ export default function App() {
     system.addEventListener('change', apply);
     return () => system.removeEventListener('change', apply);
   }, [theme]);
+  const branchName = repository?.status?.branch?.name || null;
+  useEffect(() => {
+    const request = ++divergenceRequest.current;
+    if (!repositoryActive || !repository?.available) { setDivergence({ ahead: 0, behind: 0, upstream: null }); return; }
+    window.twig.getDivergence(repository.id, branchName)
+      .then(next => { if (request === divergenceRequest.current) setDivergence(next); })
+      .catch(() => { if (request === divergenceRequest.current) setDivergence({ ahead: 0, behind: 0, upstream: null }); });
+  }, [repositoryActive, repository?.id, repository?.available, branchName, worktreeVersion]);
+
+  async function runSync(mode) {
+    if (!repository) return;
+    setSyncing(mode); setSyncNote('');
+    try {
+      const result = await window.twig.runSync(repository.id, mode, branchName);
+      setSyncNote(result.ok ? `${mode} finished.` : result.message);
+      if (!result.ok) setConsoleOpen(true);
+      const next = await window.twig.selectRepository(repository.id);
+      setWorkspace(next);
+      setWorktreeVersion(value => value + 1);
+    } catch (error) {
+      setSyncNote(error.message || 'The operation failed.');
+      setConsoleOpen(true);
+    } finally { setSyncing(null); }
+  }
+  async function runStash(action) {
+    if (!repository) return;
+    setSyncing(action); setSyncNote('');
+    try {
+      if (action === 'stash') await window.twig.stashPush(repository.id, true, '');
+      else await window.twig.stashPop(repository.id);
+      setSyncNote(action === 'stash' ? 'Changes stashed.' : 'Stash popped.');
+      const next = await window.twig.selectRepository(repository.id);
+      setWorkspace(next);
+      setWorktreeVersion(value => value + 1);
+    } catch (error) {
+      setSyncNote(error.message || 'The operation failed.');
+      setConsoleOpen(true);
+    } finally { setSyncing(null); }
+  }
+
+  const syncReason = !repositoryActive || !repository?.available ? unavailable
+    : syncing ? `${syncing} is running` : undefined;
+
+  /** A commit or a staging change moves the divergence badges, so the toolbar has to hear about it. */
+  const repositoryId = repository?.id;
+  const refreshRepository = useCallback(async () => {
+    if (!repositoryId) return;
+    try { setWorkspace(await window.twig.selectRepository(repositoryId)); } catch { /* the previous status stays on screen */ }
+    setWorktreeVersion(value => value + 1);
+  }, [repositoryId]);
+
   function openEmpty() { setEmptyOpen(true); setActive('new'); }
   function openDemo() { setDemoOpen(true); setActive('demo'); }
   async function openRepository() {
@@ -120,18 +176,30 @@ export default function App() {
       <div className="repo-select"><label htmlFor="repository-select">REPOSITORY</label><select id="repository-select" value={active} onChange={(e) => { const { value } = e.target; if (value === 'demo') openDemo(); else if (value === 'new') openEmpty(); else void selectRepository(value.slice(11)); }}><option value="demo">workspace-demo</option>{workspace?.repositories.map(item => <option key={item.id} value={`repository:${item.id}`}>{item.name}</option>)}<option value="new">Open repository…</option></select></div>
       <div className="branch-select"><span>CURRENT BRANCH</span><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : unavailable} onClick={focusSearch}>{repositoryActive ? repository?.status?.branch?.name || (repository?.status?.branch?.detached ? 'Detached HEAD' : 'Unavailable') : 'main'}<ChevronDown /></Button></div>
       <div className="tool-group"><Button className="tool" icon={Undo2} reason="Undo: no actions to undo">Undo</Button><Button className="tool" icon={Redo2} reason="Redo: no next action">Redo</Button></div>
-      <div className="tool-group"><Button className="tool" icon={ArrowDown} reason={unavailable}>Pull<ChevronDown className="dropdown-icon" /></Button><Button className="tool" icon={ArrowUp} reason={unavailable}>Push<ChevronDown className="dropdown-icon" /></Button></div>
-      <div className="tool-group"><Button className="tool" icon={GitBranch} reason={unavailable}>Branch</Button><Button className="tool" icon={Layers} reason={unavailable}>Stash</Button><Button className="tool" icon={Upload} reason="Pop: stash is empty">Pop</Button></div>
+      <div className="tool-group">
+        <Button className="tool" icon={ArrowDown} onClick={() => runSync('pull')}
+          reason={syncReason || (divergence.upstream ? undefined : 'Pull: this branch has no upstream')}>
+          Pull{divergence.behind > 0 && <span className="badge">{divergence.behind}</span>}</Button>
+        <Button className="tool" icon={ArrowUp} onClick={() => runSync(divergence.upstream ? 'push' : 'push-upstream')}
+          reason={syncReason || (!divergence.upstream && !branchName ? 'Push: no branch to publish' : undefined)}>
+          {divergence.upstream ? 'Push' : 'Publish'}{divergence.ahead > 0 && <span className="badge">{divergence.ahead}</span>}</Button>
+        {syncing && <Button className="tool" onClick={() => window.twig.cancelSync(repository.id)}>Cancel</Button>}
+      </div>
+      <div className="tool-group"><Button className="tool" icon={GitBranch} reason={unavailable}>Branch</Button>
+        <Button className="tool" icon={Layers} onClick={() => runStash('stash')} reason={syncReason}>Stash</Button>
+        <Button className="tool" icon={Upload} onClick={() => runStash('pop')} reason={syncReason}>Pop</Button></div>
       <div className="tool-group"><Button className={`tool ${consoleOpen ? 'pressed' : ''}`} icon={SquareTerminal} title={`${mod}+J`} aria-pressed={consoleOpen} onClick={() => setConsoleOpen(!consoleOpen)}>Terminal</Button></div>
       <div className="toolbar-end"><Button reason={unavailable}>Actions<ChevronDown /></Button><Button icon={Search} title={`${mod}+F`} reason={active === 'demo' || repositoryActive ? undefined : 'Open a repository to search'} onClick={focusSearch}>Search</Button></div>
     </section>
     {startupError && <div className="startup-error" role="status">{startupError}</div>}
+    {syncNote && <div className="sync-note" role="status"><span>{syncNote}</span><button onClick={() => setSyncNote('')} aria-label="Dismiss">×</button></div>}
     {!ready && <div className="loading-shell" aria-label="Loading workspace" aria-busy="true">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>}
     {ready && <div className="workspace-container">
       {demoOpen && <div className="workspace-tab" hidden={active !== 'demo'}><Workspace filterRef={filterRef} mod={mod} sidebar={sidebar} onSidebar={() => setSidebar(!sidebar)} searchSignal={focusSearch} /></div>}
       {workspace?.repositories.map(item => <div className="workspace-tab" key={item.id} hidden={active !== `repository:${item.id}`}>
         {item.available ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} mod={mod}
-          filterRef={node => { if (node) repositoryFilters.current.set(item.id, node); else repositoryFilters.current.delete(item.id); }} onConsole={() => setConsoleOpen(true)} />
+          filterRef={node => { if (node) repositoryFilters.current.set(item.id, node); else repositoryFilters.current.delete(item.id); }}
+          onConsole={() => setConsoleOpen(true)} onRepositoryChanged={refreshRepository} />
           : <RepositoryReady repository={item} onOpen={openRepository} />}
       </div>)}
       {active === 'new' && <main className="welcome"><div className="welcome-mark"><img src="./twig-logo.png" alt="" width="96" height="96" /></div><span className="eyebrow">YOUR NEXT WORKSPACE</span><h1>A clear view of your code.</h1><p>Open a local repository to start exploring its history.</p><div className="welcome-actions"><Button icon={FolderOpen} className="primary" onClick={openRepository}>Open repository</Button><Button icon={ArrowDown} reason="Cloning repositories arrives after the Git executor">Clone repository</Button></div><div className="welcome-demo"><span className="demo-pill">M1</span><p>Git availability, repository selection and command history are ready. The visual commit graph arrives in M2.</p><Button icon={GitBranch} className="primary" onClick={openDemo}>Explore demo workspace</Button></div></main>}

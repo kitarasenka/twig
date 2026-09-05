@@ -1,0 +1,58 @@
+.worktree-screen { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.worktree-heading { gap: var(--space-2); }
+.worktree-notice { margin: 0; padding: var(--space-1) var(--space-4); color: var(--muted); font-size: var(--text-xs); }
+/* This row must stay shrinkable: giving it a min-height pushes the commit
+   form out of the clipped panel when the console is expanded, and an
+   unreachable Commit button is worse than a cramped file list. */
+.worktree-body { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); flex: 1; min-height: 0; }
+.worktree-lists { overflow: auto; border-right: 1px solid var(--border); padding-bottom: var(--space-3); }
+.worktree-lists h3 { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.worktree-lists h3 svg { width: 14px; height: 14px; }
+.worktree-lists .count { margin-left: auto; }
+.worktree-lists .muted { padding: 0 var(--space-3) var(--space-2); font-size: var(--text-xs); }
+.worktree-file { display: flex; align-items: center; gap: var(--space-1); padding-right: var(--space-2); }
+.worktree-file.selected { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); }
+.worktree-file:hover { background: var(--surface-hover); }
+.worktree-open { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; justify-content: flex-start;
+  border-radius: 0; padding: var(--space-1) var(--space-3); font-size: var(--text-sm); }
+.worktree-open span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: left; }
+
+.worktree-detail { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+.stage-empty { padding: var(--space-4); max-width: 46ch; }
+.stage-diff { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.stage-diff .panel-heading code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.diff-actions { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+.diff-scroll { flex: 1; overflow: auto; font-family: var(--font-mono); font-size: var(--text-xs); }
+.stage-hunk { border-top: 1px solid var(--border); }
+.stage-hunk-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2);
+  background: var(--surface); color: var(--muted); position: sticky; top: 0; }
+.stage-hunk-head label { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.stage-hunk-head em { font-style: normal; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.stage-line { display: grid; grid-template-columns: 22px 44px 44px minmax(0, 1fr); align-items: baseline; }
+.stage-line:hover { background: var(--surface-hover); }
+.stage-line input { justify-self: center; }
+.stage-line-spacer { display: block; }
+.line-number { color: var(--muted); text-align: right; padding-right: var(--space-2); user-select: none; }
+.line-text { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: var(--space-2); }
+.stage-line.no-newline .line-text { color: var(--muted); }
+
+.commit-box { display: flex; flex-direction: column; gap: var(--space-1); border-top: 1px solid var(--border); padding: var(--space-2) var(--space-3); }
+.commit-box label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.commit-box textarea { resize: vertical; font-family: var(--font-mono); font-size: var(--text-sm);
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2); }
+.commit-box textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.commit-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); }
+.commit-actions .warn { color: var(--danger); }
+
+.badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px;
+  margin-left: var(--space-1); border-radius: 999px; background: var(--accent); color: var(--bg); font-size: 10px; font-weight: 600; }
+.pill { border: 1px solid var(--border); border-radius: 999px; padding: 0 var(--space-2); font-size: var(--text-xs); color: var(--muted); }
+.sync-note { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-4);
+  background: var(--accent-bg); color: var(--text); font-size: var(--text-xs); }
+.sync-note button { margin-left: auto; }
+
+@media (max-width: 1100px) {
+  .worktree-body { grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); }
+  .stage-line { grid-template-columns: 20px 34px 34px minmax(0, 1fr); }
+}

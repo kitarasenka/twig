@@ -4,12 +4,11 @@ A standalone desktop Git client for macOS, Windows and Linux. Its workspace puts
 commit history in the center, repository navigation on the left, details on the
 right, and the command console below.
 
-**Current version: 0.1.2 — M2.** Twig now shows a real, paginated, virtualized
-commit graph for opened repositories: lane layout, branch/tag badges, a sidebar
-with local/remote/tag sections (branches grouped by `/` into folders), the
-right-hand commit panel with a file list and diff, and range comparison via
-shift-click. The bundled demo history stays a clearly labeled illustration;
-clone and mutations (commit, stage, merge, rebase…) are still disabled.
+**Current version: 0.1.3 — M3.** On top of the real commit graph from M2, Twig
+now changes repositories: stage and unstage whole files or individual lines,
+commit from the working tree screen, stash and pop, and pull or push with
+divergence badges on the toolbar. History rewriting (merge, cherry-pick,
+revert, reset, rebase) and the conflict editor are still to come in M4.
 
 ## Run locally
 
@@ -49,8 +48,12 @@ The app does not require the monorepo server, a token, or an `.env` file.
 - Right-hand commit panel: full message, author, parents (click to jump),
   changed-file list and a read-only diff view; Shift-click two commits to
   compare their range instead of a single commit.
-- An "Uncommitted changes" row at the top of the graph opens a read-only
-  working-tree summary (staging arrives later).
+- An "Uncommitted changes" row at the top of the graph opens the working tree:
+  staged, unstaged and untracked lists, a diff where individual lines and
+  hunks can be picked, and a commit box that checks the message.
+- Toolbar Pull and Push carry incoming/outgoing badges read from the last
+  fetch, plus Stash and Pop. A running network operation can be cancelled;
+  only `--force-with-lease` is ever offered, never a plain force push.
 - Tabs retain the demo's and each repository's selection, filter and scroll
   while switching.
 - Closable details with a keyboard-accessible width slider, collapsible sidebar.
@@ -67,24 +70,28 @@ navigate controls, arrows / Home / End in history, and Escape to close dialogs.
 ## Verify
 
 ```sh
-npm test          # ESLint + parser/executor/graph checks; no Git is spawned
-npm run test:smoke # builds and launches two real Electron sessions; requires a desktop session
+npm test          # ESLint + parser/executor/graph/staging checks
+npm run test:smoke # builds and launches three real Electron sessions; requires a desktop session
 node scripts/smoke.mjs --dev # same M0/M1 check through the local Vite server
 ```
 
-`npm run test:smoke` runs two independent Electron sessions, each with its own
-temporary profile: `scripts/smoke.mjs` covers the M0/M1 shell (sandboxing,
-bridge surface, demo history, console, themes); `scripts/history-smoke.mjs`
-creates a throwaway real Git repository (root commit, a branch, a merge, 259
-linear commits, an annotated tag and an untracked file), opens it for real,
-and drives pagination, keyboard navigation, the file diff, the uncommitted
-changes screen and IPC input validation before writing its own M2 screenshots.
-Both write into ignored `artifacts/`.
+Most checks spawn no Git at all. Two deliberately do: `patch-builder.mjs` and
+`stage.mjs` build throwaway repositories, because the only real proof that a
+partial-staging patch is correct is that `git apply --cached` accepts it and
+the index ends up holding exactly the selected lines.
+
+`npm run test:smoke` runs three independent Electron sessions, each with its
+own temporary profile: `scripts/smoke.mjs` covers the M0/M1 shell (sandboxing,
+the exact preload surface, demo history, console, themes);
+`scripts/history-smoke.mjs` creates a real repository (root commit, a branch,
+a merge, 259 linear commits, an annotated tag) and drives pagination, keyboard
+navigation and the file diff; `scripts/worktree-smoke.mjs` stages individual
+lines, unstages, commits, and pushes to a local bare repository. All write
+screenshots into ignored `artifacts/`.
 
 ## Next milestones and packaging
 
-M3 adds staging, committing, stash, pull and push with divergence badges. M4
-adds history-mutating operations (merge, cherry-pick, revert, reset,
+M4 adds history-mutating operations (merge, cherry-pick, revert, reset,
 interactive rebase, conflict editor). M5 adds the user zone (profile, SSH,
 remotes), Undo/Redo and packaging. `PROMPT.md` is the full specification;
 `CLAUDE.md` records the handoff state.
@@ -115,3 +122,7 @@ inline scripts; Vite development allows its React-refresh preamble.
 
 No telemetry, updater, remote fonts or credential storage. System Git runs only
 through the single logged `spawn` executor; arbitrary commands never cross IPC.
+Staging a line selection sends indices and the digest of the diff the renderer
+was shown, never patch text: main re-reads the diff itself and refuses the
+apply if the file changed in between. Commit messages and patches reach Git on
+stdin, so they are never written to a temp file and never land in the journal.

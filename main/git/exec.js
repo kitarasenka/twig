@@ -11,23 +11,36 @@ function validArguments(argv) {
 
 /**
  * Run a system Git command and mirror every lifecycle event into the command log.
- * @param {{ argv: string[], cwd: string, log: import('../command-log.js').CommandLog, operation?: string }} options
+ *
+ * `stdin` feeds a patch to `git apply` without ever writing it to disk. Its
+ * content is deliberately kept out of the journal — it is the user's own
+ * source, and the journal is persisted — so the console records only how many
+ * bytes were piped in, which keeps the log honest without leaking the file.
+ * `signal` makes long network operations cancellable, as required for pull
+ * and push: aborting kills the process and the cancellation is recorded.
+ * @param {{ argv: string[], cwd: string, log: import('../command-log.js').CommandLog,
+ *   operation?: string, stdin?: ?string, signal?: ?AbortSignal }} options
  */
-export async function runGit({ argv, cwd, log, operation = 'Git command' }) {
+export async function runGit({ argv, cwd, log, operation = 'Git command', stdin = null, signal = null }) {
   if (!validArguments(argv) || typeof cwd !== 'string' || !cwd) throw new TypeError('Invalid Git command');
+  if (stdin !== null && typeof stdin !== 'string') throw new TypeError('Invalid Git command');
   const startedAt = new Date().toISOString();
   const started = performance.now();
   const id = randomUUID();
   const command = [...baseArgs, ...argv];
-  await log.start({ id, argv: command, cwd, operation, startedAt });
+  const label = stdin === null ? operation : `${operation} · ${Buffer.byteLength(stdin, 'utf8')} bytes on stdin`;
+  await log.start({ id, argv: command, cwd, operation: label, startedAt });
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
     let settled = false;
+    let abort = null;
+    let cancelled = false;
     const finish = async (code) => {
       if (settled) return;
       settled = true;
-      const result = { argv: command, cwd, code, stdout, stderr, ms: Math.round(performance.now() - started), startedAt };
+      if (signal && abort) signal.removeEventListener('abort', abort);
+      const result = { argv: command, cwd, code, stdout, stderr, cancelled, ms: Math.round(performance.now() - started), startedAt };
       await log.finish(id, result);
       resolve(result);
     };
@@ -44,6 +57,23 @@ export async function runGit({ argv, cwd, log, operation = 'Git command' }) {
       stderr = error.message;
       void log.output(id, 'stderr', stderr).finally(() => void finish(-1));
       return;
+    }
+    // Always close stdin: a Git command left waiting on an open pipe would
+    // hang forever with no output to explain why.
+    if (stdin === null) child.stdin.end();
+    else {
+      child.stdin.on('error', () => {});
+      child.stdin.end(stdin, 'utf8');
+    }
+    if (signal) {
+      abort = () => {
+        cancelled = true;
+        stderr += 'Cancelled in 🌱Twig.\n';
+        void log.output(id, 'stderr', 'Cancelled in 🌱Twig.\n');
+        child.kill();
+      };
+      if (signal.aborted) abort();
+      else signal.addEventListener('abort', abort, { once: true });
     }
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
