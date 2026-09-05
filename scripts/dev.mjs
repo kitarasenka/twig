@@ -6,7 +6,7 @@ import { buildPreload } from './build.mjs';
 await buildPreload();
 const server = await createServer();
 await server.listen();
-const env = { ...process.env, GIT_DESK_DEV: '1' };
+const env = { ...process.env, TWIG_DEV: '1' };
 delete env.ELECTRON_RUN_AS_NODE;
 const child = spawn(electron, ['.'], {
   stdio: 'inherit', shell: false,

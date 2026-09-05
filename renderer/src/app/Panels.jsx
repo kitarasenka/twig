@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, FilePenLine, Folder, GitBranch, Globe, PanelLeftClose, PanelLeftOpen, Search, Tag, Terminal, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clipboard, FilePenLine, Folder, GitBranch, Globe, PanelLeftClose, PanelLeftOpen, Search, Tag, Terminal, X } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import { commits, sections } from './demo.js';
 
@@ -25,7 +25,7 @@ export function CommitDetails({ selected, onSelect, onClose, mode, setMode }) {
   return <aside className="commit-detail" aria-label="Commit details">
     <header className="panel-heading"><span>COMMIT <code>{commit.id}</code></span><Button icon={X} aria-label="Close commit details" onClick={onClose} /></header>
     <div className="detail-content"><span className="eyebrow">DEMO COMMIT</span><h2>{commit.subject}</h2>
-      <pre className="commit-body">{commit.body}{'\n\n'}This is sample content for the Git Desk workspace preview.</pre>
+      <pre className="commit-body">{commit.body}{'\n\n'}This is sample content for the 🌱Twig workspace preview.</pre>
       <div className="author-card"><span className="avatar">{commit.author.split(' ').map(n => n[0]).join('')}</span><div><strong>{commit.author}</strong><span>Sample author</span></div></div>
       <dl className="metadata"><dt>Authored</dt><dd>{commit.authored}</dd><dt>Committed</dt><dd>{commit.authored}</dd><dt>Parent</dt><dd>{commit.parentIndex !== null
         ? <button className="text-button" onClick={() => onSelect(commits[commit.parentIndex].id)}>{commits[commit.parentIndex].id}</button> : 'Root commit'}</dd></dl>
@@ -37,11 +37,31 @@ export function CommitDetails({ selected, onSelect, onClose, mode, setMode }) {
   </aside>;
 }
 
-export function Console({ expanded, onToggle, mod }) {
+function commandText(entry) { return `$ git ${entry.argv.join(' ')}`; }
+function elapsed(entry) { return entry.ms === null ? 'running' : `${entry.ms}ms`; }
+
+export function Console({ expanded, onToggle, mod, entries }) {
+  const [query, setQuery] = useState('');
+  const [mode, setMode] = useState('all');
+  const [expandedId, setExpandedId] = useState(null);
+  const visible = entries.filter(entry => {
+    const source = `${entry.operation} ${entry.argv.join(' ')} ${entry.cwd}`.toLowerCase();
+    return (mode === 'all' || !entry.operation.startsWith('Background')) && source.includes(query.toLowerCase());
+  }).slice().reverse();
+  const latest = entries.at(-1);
+  async function copy(value) { try { await navigator.clipboard.writeText(value); } catch { /* Clipboard access may be unavailable in a locked-down desktop session. */ } }
   return <section className={`console ${expanded ? 'expanded' : ''}`} aria-label="Command console">
     <button className="console-status" onClick={onToggle} aria-expanded={expanded} title={`Terminal · ${mod}+J`}>
-      <Terminal /><strong>CONSOLE</strong><ChevronDown className={expanded ? '' : 'rotate'} /><span>No commands run yet</span><span className="console-tail">Git Desk · Preview</span>
+      <Terminal /><strong>CONSOLE</strong><ChevronDown className={expanded ? '' : 'rotate'} />
+      <span>{latest ? `${commandText(latest)} · ${latest.code ?? '…'} · ${elapsed(latest)}` : 'No commands run yet'}</span><span className="console-tail">{latest?.state === 'running' ? 'Running' : '🌱Twig'}</span>
     </button>
-    {expanded && <div className="console-empty"><Terminal /><div><strong>Your commands, in plain sight.</strong><p>Every Git command and its output will appear here when a repository is connected.</p><p>This preview does not execute commands.</p></div><kbd>{mod}+J</kbd></div>}
+    {expanded && <div className="console-body">
+      <div className="console-tools"><div className="segmented" aria-label="Command filter"><button aria-pressed={mode === 'all'} onClick={() => setMode('all')}>All</button><button aria-pressed={mode === 'mine'} onClick={() => setMode('mine')}>My actions</button></div><label className="console-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands" aria-label="Search command log" /></label><kbd>{mod}+J</kbd></div>
+      {visible.length === 0 && <div className="console-empty"><Terminal /><div><strong>Your commands, in plain sight.</strong><p>{entries.length ? 'No commands match this filter.' : 'Git checks, repository status and future actions appear here.'}</p></div></div>}
+      {visible.map(entry => <article key={entry.id} className={`console-entry ${entry.code !== null && entry.code !== 0 ? 'failed' : ''}`}>
+        <button className="console-entry-summary" onClick={() => setExpandedId(value => value === entry.id ? null : entry.id)} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} /><code>{commandText(entry)}</code><span>(cwd: {entry.cwd})</span><small>{entry.startedAt.replace('T', ' ').replace('Z', '')} · {entry.code ?? '…'} · {elapsed(entry)}</small></button>
+        {expandedId === entry.id && <div className="console-output"><div className="console-copy"><Button icon={Clipboard} onClick={() => copy(`${commandText(entry)}\n(cwd: ${entry.cwd})\n${entry.stdout}${entry.stderr}`)}>Copy entry</Button></div>{entry.stdout && <pre>{entry.stdout}</pre>}{entry.stderr && <pre className="stderr">{entry.stderr}</pre>}{!entry.stdout && !entry.stderr && <p className="muted">Waiting for output…</p>}</div>}
+      </article>)}
+    </div>}
   </section>;
 }

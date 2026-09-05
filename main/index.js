@@ -3,12 +3,23 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { registerIpc } from './ipc.js';
 import { isExternalLink, isLocalAsset, isTrustedPage } from './security.js';
+import { CommandLog } from './command-log.js';
+import { RepositoryStore } from './store.js';
+import { runGit } from './git/exec.js';
+import { createRepositoryService } from './git/repository.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const development = !app.isPackaged && process.env.GIT_DESK_DEV === '1';
+const iconPath = path.join(root, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+const development = !app.isPackaged && process.env.TWIG_DEV === '1';
 const entryUrl = development ? 'http://127.0.0.1:5188/'
   : pathToFileURL(path.join(root, 'dist/renderer/index.html')).href;
 let window;
+
+async function detectGit(log) {
+  const result = await runGit({ argv: ['--version'], cwd: app.getPath('home'), log, operation: 'Background: check Git installation' });
+  if (result.code !== 0) return { available: false, version: null, instruction: 'Install Git, then restart 🌱Twig.' };
+  return { available: true, version: result.stdout.trim(), instruction: null };
+}
 
 function openExternal(url) {
   if (isExternalLink(url)) void shell.openExternal(url).catch(() => {});
@@ -17,7 +28,7 @@ function openExternal(url) {
 async function createWindow() {
   window = new BrowserWindow({
     width: 1440, height: 920, minWidth: 1000, minHeight: 640,
-    title: 'Git Desk', show: false,
+    title: '🌱Twig', show: false, icon: iconPath,
     webPreferences: {
       preload: path.join(root, 'dist/preload/index.cjs'),
       contextIsolation: true, nodeIntegration: false, sandbox: true,
@@ -39,6 +50,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin') app.dock.setIcon(iconPath);
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
@@ -55,8 +67,16 @@ app.whenReady().then(async () => {
       { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
     { role: 'windowMenu' }
   ]));
-  registerIpc(() => window, entryUrl);
+  const journal = new CommandLog(app.getPath('userData'));
+  await journal.load();
+  const git = await detectGit(journal);
+  const repositories = createRepositoryService({ log: journal, store: new RepositoryStore(app.getPath('userData')) });
+  await repositories.load();
+  journal.onChange((event) => {
+    if (window && !window.isDestroyed()) window.webContents.send('console:update', event);
+  });
+  registerIpc(() => window, entryUrl, { journal, repositories, git });
   await createWindow();
-}).catch((error) => { console.error('Git Desk failed to start:', error.message); app.exit(1); });
+}).catch((error) => { console.error('🌱Twig failed to start:', error.message); app.exit(1); });
 app.on('activate', () => { if (!window) void createWindow(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

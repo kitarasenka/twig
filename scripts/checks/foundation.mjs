@@ -39,14 +39,14 @@ function contrast(a, b) { const values = [luminance(a), luminance(b)].sort((x, y
 for (const theme of ['dark', 'light']) {
   const block = tokens.split(`:root[data-theme='${theme}'] {`)[1].split('}')[0];
   const palette = Object.fromEntries([...block.matchAll(/--([\w-]+): (#\w{6});/g)].map(m => [m[1], m[2].slice(1)]));
-  for (const foreground of ['text', 'muted', 'accent', 'blue', 'violet', 'teal', 'danger']) {
+  for (const foreground of ['text', 'muted', 'accent', 'lane-mint', 'lane-cream', 'lane-leaf', 'danger']) {
     for (const background of ['bg', 'surface', 'surface-raised', 'surface-hover', 'accent-bg']) {
       assert.ok(contrast(palette[foreground], palette[background]) >= 4.5, `${theme}: ${foreground} on ${background}`);
     }
   }
 }
 
-const temp = await mkdtemp(path.join(tmpdir(), 'git-desk-install-check-'));
+const temp = await mkdtemp(path.join(tmpdir(), 'twig-install-check-'));
 try {
   await mkdir(path.join(temp, 'modules/desktop'), { recursive: true });
   await mkdir(path.join(temp, 'modules/docs'), { recursive: true });
@@ -57,11 +57,11 @@ try {
   const marker = path.join(temp, 'called');
   const fakeNpm = path.join(temp, 'bin', process.platform === 'win32' ? 'npm.cmd' : 'npm');
   await writeFile(fakeNpm, process.platform === 'win32'
-    ? '@echo off\r\necho called>>"%GIT_DESK_INSTALL_MARKER%"\r\n'
-    : '#!/bin/sh\nprintf "called\\n" >> "$GIT_DESK_INSTALL_MARKER"\n', { mode: 0o755 });
+    ? '@echo off\r\necho called>>"%TWIG_INSTALL_MARKER%"\r\n'
+    : '#!/bin/sh\nprintf "called\\n" >> "$TWIG_INSTALL_MARKER"\n', { mode: 0o755 });
   const run = () => spawnSync(process.execPath, [installer], {
     cwd: temp, encoding: 'utf8', shell: false,
-    env: { ...process.env, PATH: `${path.join(temp, 'bin')}${path.delimiter}${process.env.PATH}`, GIT_DESK_INSTALL_MARKER: marker }
+    env: { ...process.env, PATH: `${path.join(temp, 'bin')}${path.delimiter}${process.env.PATH}`, TWIG_INSTALL_MARKER: marker }
   });
   let result = run();
   assert.equal(result.status, 0, result.stderr);

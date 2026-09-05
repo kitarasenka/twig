@@ -1,5 +1,5 @@
 try {
-  const saved = localStorage.getItem('git-desk:theme');
+  const saved = localStorage.getItem('twig:theme');
   const preference = ['dark', 'light'].includes(saved) ? saved : 'system';
   document.documentElement.dataset.theme = preference === 'system'
     ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : preference;

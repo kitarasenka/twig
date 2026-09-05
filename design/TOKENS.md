@@ -1,4 +1,4 @@
-# Git Desk — design tokens
+# 🌱Twig — design tokens
 
 M0, 2026-09-05. Source of truth: CSS below is copied exactly to
 `renderer/src/ui/tokens.css`; `npm test` checks parity and text contrast.
@@ -15,11 +15,11 @@ Adopted: Data-Dense Dashboard, restrained surfaces, 13px text, 30px history rows
 visible focus, stable hover, local Fira Sans / Fira Code, semantic HTML, tab state
 preservation. Rejected the initial marketing-page recommendation (hero, sales CTA,
 48px gaps): a desktop Git workspace requires the anatomy in PROMPT.md.
-Palette is our graphite/amber identity, not a product reference palette. No remote
-fonts, brand marks or images. Lucide SVG icons share 16px size and 1.7px stroke.
+The user-supplied Twig logo defines the palette: forest green, bright lime,
+mint and ivory. Use the original logo locally; no external fonts or images. Lucide SVG icons share 16px size and 1.7px stroke.
 
 Spacing: 4/8/12/16/24/32 px. Radii: 4/6/10 px. Shadows only on dialogs.
-Graph lanes use amber, blue, violet, teal; node labels and parent links duplicate
+Graph lanes use lime, mint and cream (darker green/olive in light mode); node labels and parent links duplicate
 color information. M0 has a fixed illustration, not the M2 DAG layout algorithm.
 Complex conflict and diff layouts must go through the skill again in M3/M4.
 
@@ -54,44 +54,46 @@ coarse pointers get 44px targets. System theme by default; explicit theme persis
   --detail-width: 306px;
   --motion: 160ms;
   --icon-size: 16px;
+  --brand-icon-size: 36px;
+  --welcome-logo-size: 96px;
 }
 :root, :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #17191d;
-  --surface: #1e2126;
-  --surface-raised: #25292f;
-  --surface-hover: #30353d;
-  --border: #383e47;
-  --text: #e7e9ee;
-  --muted: #a4adbb;
-  --accent: #edbd75;
-  --accent-bg: #3c3326;
-  --accent-text: #17191d;
-  --blue: #85b9f4;
-  --violet: #c1a1ee;
-  --teal: #86c9bc;
-  --danger: #f19b9b;
+  --bg: #071e18;
+  --surface: #0d2a20;
+  --surface-raised: #143628;
+  --surface-hover: #1e4532;
+  --border: #355747;
+  --text: #f8fae9;
+  --muted: #b6cbb7;
+  --accent: #b7f56d;
+  --accent-bg: #254726;
+  --accent-text: #071e18;
+  --lane-mint: #79dfbd;
+  --lane-cream: #eff6bd;
+  --lane-leaf: #abe39a;
+  --danger: #ffc2b2;
   --shadow: 0 16px 48px #00000066;
   --overlay: #00000080;
 }
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: #f8f7f4;
-  --surface: #eeede9;
-  --surface-raised: #ffffff;
-  --surface-hover: #e1dfd9;
-  --border: #cbc9c2;
-  --text: #24272d;
-  --muted: #56606e;
-  --accent: #795018;
-  --accent-bg: #f0e1c8;
-  --accent-text: #ffffff;
-  --blue: #28649f;
-  --violet: #704499;
-  --teal: #276c60;
-  --danger: #a73c3c;
-  --shadow: 0 16px 48px #24272d26;
-  --overlay: #24272d66;
+  --bg: #f8faee;
+  --surface: #edf2e3;
+  --surface-raised: #fffff6;
+  --surface-hover: #dfe8d4;
+  --border: #becdb6;
+  --text: #102d23;
+  --muted: #46604b;
+  --accent: #30621e;
+  --accent-bg: #dfedc9;
+  --accent-text: #fffff6;
+  --lane-mint: #16604a;
+  --lane-cream: #626018;
+  --lane-leaf: #3e602b;
+  --danger: #973b2e;
+  --shadow: 0 16px 48px #102d2326;
+  --overlay: #102d2366;
 }
 ```
 
@@ -105,3 +107,26 @@ and hover. Dark/light and compact screenshots are in ignored `artifacts/`.
 Compact graph keeps the same SVG width to avoid scaling gaps between rows.
 Future graph virtualization, diff and conflict editor still require their own
 milestone review; this review covers only the M0 shell.
+
+## Twig identity update
+
+User-selected name: **🌱Twig**. Source: `design/twig-logo.png`, the unmodified
+1254×1254 PNG supplied by the user. Platform icons in `build/` and the small
+renderer logo are resized/encoded copies of this same image, never redrawn.
+
+Ran the skill with `--design-system -p Twig` and `desktop git client dense forest
+green lime cream`, followed by UX contrast/focus review. Kept the established
+dense desktop layout and font pair; discarded the marketing/oversized-type
+recommendations. The user's palette and name take precedence over the generic
+skill recommendations, including its general advice against emoji icons: the
+seedling is part of the requested product name, not an action icon.
+
+Forest surfaces and ivory text mirror the logo. Lime marks selection and focus;
+mint and cream distinguish graph lanes. Light mode uses ivory surfaces with
+forest/olive text for readable contrast. Warm error color remains semantic.
+All foregrounds are checked against all surfaces at 4.5:1 by `npm test`.
+
+Twig review completed on macOS: production build and Electron smoke passed;
+checked actual dark/light screenshots and the compact layout. Screenshots now
+finish CSS transitions before capture, so foregrounds are assessed against the
+matching theme surfaces. SVG lanes retain their labels and remote-ref dash style.
