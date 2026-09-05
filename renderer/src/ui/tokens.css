@@ -1,0 +1,64 @@
+:root {
+  --font-ui: 'Fira Sans', system-ui, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 14px;
+  --text-title: 20px;
+  --text-hero: 28px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --row-height: 30px;
+  --tabs-height: 46px;
+  --toolbar-height: 78px;
+  --sidebar-width: 212px;
+  --detail-width: 306px;
+  --motion: 160ms;
+  --icon-size: 16px;
+}
+:root, :root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #17191d;
+  --surface: #1e2126;
+  --surface-raised: #25292f;
+  --surface-hover: #30353d;
+  --border: #383e47;
+  --text: #e7e9ee;
+  --muted: #a4adbb;
+  --accent: #edbd75;
+  --accent-bg: #3c3326;
+  --accent-text: #17191d;
+  --blue: #85b9f4;
+  --violet: #c1a1ee;
+  --teal: #86c9bc;
+  --danger: #f19b9b;
+  --shadow: 0 16px 48px #00000066;
+  --overlay: #00000080;
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f8f7f4;
+  --surface: #eeede9;
+  --surface-raised: #ffffff;
+  --surface-hover: #e1dfd9;
+  --border: #cbc9c2;
+  --text: #24272d;
+  --muted: #56606e;
+  --accent: #795018;
+  --accent-bg: #f0e1c8;
+  --accent-text: #ffffff;
+  --blue: #28649f;
+  --violet: #704499;
+  --teal: #276c60;
+  --danger: #a73c3c;
+  --shadow: 0 16px 48px #24272d26;
+  --overlay: #24272d66;
+}
