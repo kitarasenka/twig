@@ -1,6 +1,6 @@
 {
   "name": "twig",
-  "version": "0.1.3",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "An independent desktop Git workspace with a visual commit graph",
@@ -16,8 +16,9 @@
     "build": "node scripts/build.mjs",
     "start": "node scripts/start.mjs",
     "lint": "eslint .",
-    "test": "npm run lint && node scripts/checks/foundation.mjs && node scripts/checks/status-parser.mjs && node scripts/checks/git-exec.mjs && node scripts/checks/history.mjs && node scripts/checks/refs.mjs && node scripts/checks/commit.mjs && node scripts/checks/graph.mjs && node scripts/checks/diff-parser.mjs && node scripts/checks/patch-builder.mjs && node scripts/checks/stage.mjs",
-    "test:smoke": "npm run build && node scripts/smoke.mjs && node scripts/history-smoke.mjs && node scripts/worktree-smoke.mjs"
+    "test": "npm run lint && node scripts/checks/foundation.mjs && node scripts/checks/status-parser.mjs && node scripts/checks/git-exec.mjs && node scripts/checks/history.mjs && node scripts/checks/refs.mjs && node scripts/checks/commit.mjs && node scripts/checks/graph.mjs && node scripts/checks/panel-width.mjs && node scripts/checks/diff-parser.mjs && node scripts/checks/patch-builder.mjs && node scripts/checks/stage.mjs && node scripts/checks/stash.mjs && node scripts/checks/bisect.mjs && node scripts/checks/conflict-parser.mjs && node scripts/checks/history-ops.mjs && node scripts/checks/history-ops-live.mjs && npm run test:profile",
+    "test:profile": "node scripts/checks/profile.mjs && node scripts/checks/repositories.mjs && node scripts/checks/undo.mjs && node scripts/checks/ssh.mjs",
+    "test:smoke": "npm run build && node scripts/smoke.mjs && node scripts/history-smoke.mjs && node scripts/worktree-smoke.mjs && node scripts/ops-smoke.mjs && node scripts/browse-smoke.mjs && node scripts/profile-smoke.mjs && node scripts/repositories-smoke.mjs && node scripts/ssh-undo-smoke.mjs"
   },
   "dependencies": {
     "@fontsource/fira-code": "^5.2.0",
@@ -41,7 +42,7 @@
   },
   "build": {
     "appId": "app.nodex.twig",
-    "productName": "🌱Twig",
+    "productName": "🌱 Twig",
     "directories": {
       "buildResources": "build",
       "output": "release"

@@ -7,7 +7,8 @@ import { runGit } from '../../main/git/exec.js';
 import { loadWorktree, loadWorktreeDiff } from '../../main/git/worktree.js';
 import { applySelection, buildApplyArgv, buildIntentToAddArgv, buildStageArgv, buildUnstageArgv, intentToAdd, stageFile, unstageFile } from '../../main/git/stage.js';
 import { buildSyncArgv, loadDivergence, runSync } from '../../main/git/sync.js';
-import { createCommit, stashList, stashPop, stashPush, validateCommitMessage } from '../../main/git/commit-ops.js';
+import { createCommit, stashPop, stashPush, validateCommitMessage } from '../../main/git/commit-ops.js';
+import { loadStashes as stashList } from '../../main/git/stash.js';
 
 // Mutating operations are only meaningful against a real repository, so this
 // check builds throwaway ones. Pull and push run against a local bare

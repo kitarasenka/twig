@@ -33,7 +33,6 @@ export function buildStashArgv({ includeUntracked = false, message = '' } = {}) 
 }
 
 export const buildStashPopArgv = () => ['stash', 'pop'];
-export const buildStashListArgv = () => ['stash', 'list', '-z', '--format=%gd%x00%gs'];
 
 async function mutate({ cwd, log, argv, operation, stdin = null }) {
   const result = await runGit({ argv, cwd, log, operation, stdin });
@@ -61,22 +60,4 @@ export function stashPush({ cwd, log, includeUntracked = false, message = '' }) 
 /** @param {{ cwd: string, log: object }} options */
 export function stashPop({ cwd, log }) {
   return mutate({ cwd, log, argv: buildStashPopArgv(), operation: 'Pop stash' });
-}
-
-/**
- * `%gd%x00%gs` gives the ref name and the subject with a NUL between them;
- * `-z` terminates each entry with a NUL, so an entry is two tokens.
- * @param {{ cwd: string, log: object }} options
- * @returns {Promise<{ ref: string, subject: string }[]>}
- */
-export async function stashList({ cwd, log }) {
-  const result = await runGit({ argv: buildStashListArgv(), cwd, log, operation: 'Read stashes' });
-  if (result.code !== 0) throw new Error('Git could not read the stash list.');
-  if (result.stdout.length === 0) return [];
-  const tokens = result.stdout.split('\0');
-  if (tokens.at(-1) === '') tokens.pop();
-  if (tokens.length % 2 !== 0) throw new Error('Unexpected stash list output.');
-  const entries = [];
-  for (let i = 0; i < tokens.length; i += 2) entries.push({ ref: tokens[i], subject: tokens[i + 1] });
-  return entries;
 }

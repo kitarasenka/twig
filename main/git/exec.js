@@ -18,12 +18,20 @@ function validArguments(argv) {
  * bytes were piped in, which keeps the log honest without leaking the file.
  * `signal` makes long network operations cancellable, as required for pull
  * and push: aborting kills the process and the cancellation is recorded.
+ * `env` adds variables for a single run — rebase needs GIT_SEQUENCE_EDITOR
+ * and GIT_EDITOR pointed at this app, and leaving those set for every command
+ * would change how unrelated commands behave. It cannot override the fixed
+ * safety variables below, and the caller must say in `operation` that it
+ * installed an editor, because the console shows argv and not the environment.
  * @param {{ argv: string[], cwd: string, log: import('../command-log.js').CommandLog,
- *   operation?: string, stdin?: ?string, signal?: ?AbortSignal }} options
+ *   operation?: string, stdin?: ?string, signal?: ?AbortSignal, env?: ?Record<string, string> }} options
  */
-export async function runGit({ argv, cwd, log, operation = 'Git command', stdin = null, signal = null }) {
+export async function runGit({ argv, cwd, log, operation = 'Git command', stdin = null, signal = null, env = null }) {
   if (!validArguments(argv) || typeof cwd !== 'string' || !cwd) throw new TypeError('Invalid Git command');
   if (stdin !== null && typeof stdin !== 'string') throw new TypeError('Invalid Git command');
+  if (env !== null && (typeof env !== 'object' || Object.values(env).some(value => typeof value !== 'string'))) {
+    throw new TypeError('Invalid Git command');
+  }
   const startedAt = new Date().toISOString();
   const started = performance.now();
   const id = randomUUID();
@@ -49,7 +57,7 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
       child = spawn('git', command, {
         cwd, shell: false, windowsHide: true,
         env: {
-          ...process.env, ELECTRON_RUN_AS_NODE: '1', GIT_TERMINAL_PROMPT: '0',
+          ...process.env, ...env, ELECTRON_RUN_AS_NODE: '1', GIT_TERMINAL_PROMPT: '0',
           GIT_ASKPASS: `"${process.execPath}" "${askpass}"`
         }
       });
@@ -68,8 +76,8 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
     if (signal) {
       abort = () => {
         cancelled = true;
-        stderr += 'Cancelled in 🌱Twig.\n';
-        void log.output(id, 'stderr', 'Cancelled in 🌱Twig.\n');
+        stderr += 'Cancelled in 🌱 Twig.\n';
+        void log.output(id, 'stderr', 'Cancelled in 🌱 Twig.\n');
         child.kill();
       };
       if (signal.aborted) abort();

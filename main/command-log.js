@@ -6,6 +6,7 @@ const MAX_ENTRIES = 2000;
 function publicEntry(entry) {
   return {
     id: entry.id, argv: [...entry.argv], cwd: entry.cwd, operation: entry.operation,
+    ...(entry.executable ? { executable: entry.executable } : {}),
     startedAt: entry.startedAt, ms: entry.ms, code: entry.code, stdout: entry.stdout,
     stderr: entry.stderr, state: entry.state
   };
@@ -35,7 +36,7 @@ export class CommandLog {
     for (const entry of this.#entries.values()) {
       if (entry.state === 'running') await this.finish(entry.id, {
         code: -1, ms: Math.max(0, Date.now() - Date.parse(entry.startedAt)),
-        stdout: entry.stdout, stderr: `${entry.stderr}Process ended when 🌱Twig closed.\n`
+        stdout: entry.stdout, stderr: `${entry.stderr}Process ended when 🌱 Twig closed.\n`
       });
     }
   }

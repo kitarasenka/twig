@@ -23,7 +23,7 @@ function FileTree({ files, onFile }) {
   return render(tree);
 }
 
-export default function CommitPanel({ repositoryId, commit, loading, error, width, onWidth, onClose, onParent, onFile, onConsole, range }) {
+export default function CommitPanel({ repositoryId, commit, loading, error, onClose, onParent, onFile, onConsole, range }) {
   const [tree, setTree] = useState(false);
   const [all, setAll] = useState(false);
   const [sort, setSort] = useState('path');
@@ -60,6 +60,5 @@ export default function CommitPanel({ repositoryId, commit, loading, error, widt
         {!files.length && (!all || allFiles) && <p className="muted">No matching files.</p>}
       </>}
     </div>
-    <div className="detail-resize"><label>Panel width<input aria-label="Commit panel width" type="range" min="260" max="480" step="10" value={width} onChange={e => onWidth(Number(e.target.value))} /></label></div>
   </aside>;
 }

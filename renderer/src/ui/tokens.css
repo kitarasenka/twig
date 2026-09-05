@@ -21,7 +21,9 @@
   --toolbar-height: 78px;
   --sidebar-width: 212px;
   --detail-width: 306px;
+  --splitter-width: 5px;
   --motion: 160ms;
+  --z-menu: 30;
   --icon-size: 16px;
   --brand-icon-size: 36px;
   --welcome-logo-size: 96px;

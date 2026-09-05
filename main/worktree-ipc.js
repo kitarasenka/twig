@@ -2,8 +2,9 @@ import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { loadWorktree, loadWorktreeDiff } from './git/worktree.js';
 import { applySelection, intentToAdd, stageFile, unstageFile } from './git/stage.js';
-import { createCommit, stashList, stashPop, stashPush } from './git/commit-ops.js';
-import { loadDivergence, runSync } from './git/sync.js';
+import { createCommit, stashPop, stashPush } from './git/commit-ops.js';
+import { loadStashDiff, loadStashes, loadStashFiles, runStashAction } from './git/stash.js';
+import { loadDivergence, pushRef, runSync } from './git/sync.js';
 
 /**
  * Working-tree and synchronisation channels.
@@ -14,7 +15,7 @@ import { loadDivergence, runSync } from './git/sync.js';
  * produced, and a selection made against a stale diff is refused instead of
  * silently staging the wrong lines.
  */
-export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal }) {
+export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal, undo }) {
   const running = new Map();
 
   function handler(channel, count, read) {
@@ -25,9 +26,18 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
         || typeof args[0] !== 'string') throw new Error('Invalid working tree request');
       const repo = repositories.snapshot().repositories.find(item => item.id === args[0]);
       if (!repo || !repo.available) throw new Error('Repository is unavailable');
-      return read({ cwd: repo.path, log: journal }, ...args.slice(1));
+      const run = () => read({ cwd: repo.path, log: journal }, ...args.slice(1));
+      const kind = channel === 'stash:action' && ['apply', 'pop'].includes(args[1]) ? `stash:${args[1]}` : channel;
+      const parameters = kind !== channel ? [args[2]] : args.slice(1);
+      return ['worktree:read', 'worktree:diff', 'stash:list', 'stash:files', 'stash:diff', 'sync:divergence', 'sync:cancel', 'sync:run', 'sync:push-ref'].includes(channel)
+        ? run() : undo.perform(repo.path, kind, parameters, run);
     });
   }
+
+  const asOid = value => {
+    if (typeof value !== 'string' || !/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(value)) throw new Error('Invalid object id');
+    return value;
+  };
 
   const asPath = value => {
     if (typeof value !== 'string' || value.length === 0 || value.length > 32768) throw new Error('Invalid file path');
@@ -67,7 +77,25 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     return stashPush({ ...options, includeUntracked, message }).then(() => true);
   });
   handler('stash:pop', 1, options => stashPop(options).then(() => true));
-  handler('stash:list', 1, options => stashList(options));
+  handler('stash:list', 1, options => loadStashes(options));
+  handler('stash:files', 2, (options, oid) => loadStashFiles({ ...options, oid: asOid(oid) }));
+  handler('stash:diff', 4, (options, oid, path, untracked) => {
+    if (typeof untracked !== 'boolean') throw new Error('Invalid stash diff request');
+    return loadStashDiff({ ...options, oid: asOid(oid), file: asPath(path), untracked });
+  });
+
+  /**
+   * One channel for apply, pop, drop and branch. The index names the stash and
+   * the object id says which stash that index was showing: main re-reads the
+   * list and refuses when the two no longer agree, because dropping any earlier
+   * stash renumbers every later one.
+   */
+  handler('stash:action', 5, (options, action, index, expectedOid, name) => {
+    if (typeof action !== 'string' || !Number.isInteger(index) || (name !== null && typeof name !== 'string')) {
+      throw new Error('Invalid stash action request');
+    }
+    return runStashAction({ ...options, action, index, expectedOid: asOid(expectedOid), name });
+  });
 
   handler('sync:divergence', 2, (options, branch) => {
     if (branch !== null && typeof branch !== 'string') throw new Error('Invalid divergence request');
@@ -81,7 +109,30 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     const controller = new AbortController();
     running.set(key, controller);
     try {
-      return await runSync({ ...options, mode, branch, signal: controller.signal });
+      return await undo.perform(options.cwd, 'sync:run', [mode, branch], () => controller.signal.aborted
+        ? { ok: false, cancelled: true, notStarted: true, message: 'Cancelled before Git started.' }
+        : runSync({ ...options, mode, branch, signal: controller.signal }));
+    } finally {
+      if (running.get(key) === controller) running.delete(key);
+    }
+  });
+
+  /**
+   * Publishing or deleting one ref on a remote. It shares the cancellation of
+   * `sync:run` because it is the same kind of work: a network call the user
+   * must be able to stop.
+   */
+  handler('sync:push-ref', 4, async (options, remote, ref, remove) => {
+    if (typeof remote !== 'string' || typeof ref !== 'string' || typeof remove !== 'boolean'
+      || remote.length > 255 || ref.length > 512) throw new Error('Invalid push request');
+    const key = options.cwd;
+    running.get(key)?.abort();
+    const controller = new AbortController();
+    running.set(key, controller);
+    try {
+      return await undo.perform(options.cwd, 'sync:push-ref', [], () => controller.signal.aborted
+        ? { ok: false, cancelled: true, notStarted: true, message: 'Cancelled before Git started.' }
+        : pushRef({ ...options, remote, ref, remove, signal: controller.signal }));
     } finally {
       if (running.get(key) === controller) running.delete(key);
     }

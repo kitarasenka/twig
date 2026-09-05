@@ -1,0 +1,15 @@
+dialog.wide:has(.repository-manager) { width: min(760px, calc(100vw - var(--space-8))); }
+.repository-manager { display: grid; gap: var(--space-4); }
+.manager-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.manager-field { display: grid; gap: var(--space-2); margin-block: var(--space-3); }
+.manager-field input { width: 100%; min-width: 0; }
+.manager-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
+.manager-list > li { padding: var(--space-4); background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.manager-item-heading { display: flex; justify-content: space-between; gap: var(--space-3); }
+.manager-item-heading small { color: var(--muted); }
+.manager-path { display: block; overflow-wrap: anywhere; color: var(--muted); font-size: var(--text-xs); margin-block: var(--space-2); }
+.manager-confirm { padding: var(--space-3); margin-top: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.manager-confirm p { margin-bottom: var(--space-2); }
+.manager-add { padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.manager-output { max-height: 160px; overflow: auto; background: var(--bg); color: var(--text); padding: var(--space-3); white-space: pre-wrap; overflow-wrap: anywhere; }
+.repository-manager progress { width: 100%; accent-color: var(--accent); }

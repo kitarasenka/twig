@@ -11,12 +11,14 @@ export function relativeDate(value) {
   return format.format(Math.round(seconds / 86400), 'day');
 }
 
-const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, head, refs, onSelect, dayStart }) {
+const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, head, refs, onSelect, onMenu, dayStart }) {
   return <div role="option" id={`commit-${commit.oid}`} aria-selected={selected} aria-posinset={index + 1} aria-setsize={total}
     className={`real-commit-row ${selected ? 'selected' : ''} ${dayStart ? 'new-day' : ''}`}
-    style={{ top: index * ROW_HEIGHT }} onClick={event => onSelect(commit.oid, event.shiftKey)}>
-    <span className="ref-cell">{head && <Check aria-label="HEAD" />}{refs?.map(ref => <span key={ref.fullName} title={ref.fullName} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''}`}>
-      {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}{ref.name}</span>)}</span>
+    style={{ top: index * ROW_HEIGHT }} onClick={event => onSelect(commit.oid, event.shiftKey)}
+    onContextMenu={event => { event.preventDefault(); onSelect(commit.oid); onMenu(commit.oid, event.clientX, event.clientY); }}>
+    <span className="ref-cell">{head && <Check aria-label="HEAD" />}{refs?.slice(0, 2).map(ref => <span key={ref.fullName} title={ref.fullName} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''}`}>
+      {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
+    {refs?.length > 2 && <span className="ref-badge ref-more" title={refs.slice(2).map(ref => ref.fullName).join('\n')}>+{refs.length - 2}</span>}</span>
     <svg className="real-lane" aria-hidden="true" height={ROW_HEIGHT}>
       {layout.segments.map((segment, i) => <path key={i} className={`graph-color-${segment.color}`} d={segmentPath(segment)} />)}
       <circle className={`graph-color-${layout.color}`} cx={12 + layout.lane * LANE_WIDTH} cy={15} r={4} />
@@ -27,7 +29,7 @@ const CommitRow = memo(function CommitRow({ commit, layout, index, total, select
   </div>;
 });
 
-export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, head, onSelect, loadMore, hasMore, loading, changes, onWorktree, active }) {
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, head, onSelect, onMenu, loadMore, hasMore, loading, changes, onWorktree, active }) {
   const scroller = useRef(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
   const [focusIndex, setFocusIndex] = useState(0);
@@ -53,6 +55,16 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   const { start, end } = visibleRange(commits.length, viewport.top, viewport.height);
   const focused = focusIndex >= start && focusIndex < end ? commits[focusIndex]?.oid : null;
   function keyboard(event) {
+    // Shift+F10 and the Menu key are how a keyboard reaches a context menu;
+    // the menu opens over the focused row rather than at the pointer.
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      const commit = commits[focusIndex];
+      if (!commit) return;
+      event.preventDefault();
+      const row = scroller.current.querySelector(`#commit-${CSS.escape(commit.oid)}`)?.getBoundingClientRect();
+      onMenu(commit.oid, row ? row.left + 24 : 24, row ? row.bottom : 24);
+      return;
+    }
     let index = focusIndex;
     if (event.key === 'ArrowDown') index++;
     else if (event.key === 'ArrowUp') index--;
@@ -78,7 +90,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
       }}>
       <div className="virtual-commits" style={{ height: commits.length * ROW_HEIGHT }}>
         {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
-          selected={selected === commit.oid} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect}
+          selected={selected === commit.oid} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu}
           dayStart={start + offset > 0 && commit.committedAt.slice(0, 10) !== commits[start + offset - 1].committedAt.slice(0, 10)} />)}
       </div>
     </div>

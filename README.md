@@ -1,14 +1,29 @@
-# 🌱Twig
+# 🌱 Twig
 
 A standalone desktop Git client for macOS, Windows and Linux. Its workspace puts
 commit history in the center, repository navigation on the left, details on the
 right, and the command console below.
 
-**Current version: 0.1.3 — M3.** On top of the real commit graph from M2, Twig
-now changes repositories: stage and unstage whole files or individual lines,
-commit from the working tree screen, stash and pop, and pull or push with
-divergence badges on the toolbar. History rewriting (merge, cherry-pick,
-revert, reset, rebase) and the conflict editor are still to come in M4.
+**Current version: 0.2.0 — M4.** Twig now rewrites history as well as recording
+it: a context menu on every commit, merge, cherry-pick, revert, reset,
+interactive rebase driven by Git itself, a three-way conflict editor, and a
+banner for an operation Git stopped in the middle of. Destructive commands ask
+first, showing the exact command and what it destroys.
+
+M5 is in progress. The Git profile button now edits name, email, editor, pull
+strategy and initial branch for this repository or globally. Each field has an
+explicit Save/Remove action, shows its effective value, and detects stale edits.
+Settings now also opens repository and remote management. Add or remove a
+repository entry (its files stay on disk), add/edit/remove remotes, or fetch and
+prune explicitly. The new-repository tab can clone into a fresh folder with live
+output and cancellation. SSH, application Undo/Redo and installers are still
+pending. The M2–M4 requirements audit is in `tasks/M4-HISTORY-OPS-RESULT.md`.
+
+Cloning never overwrites an existing folder. On failure or cancellation, only
+an empty destination is removed; remaining files are kept for inspection.
+Remote editing changes the primary fetch URL; additional fetch URLs and explicit
+push URLs are displayed read-only. Existing credential-bearing remote addresses
+are hidden in command-log output; new addresses must use a credential helper.
 
 ## Run locally
 
@@ -54,6 +69,18 @@ The app does not require the monorepo server, a token, or an `.env` file.
 - Toolbar Pull and Push carry incoming/outgoing badges read from the last
   fetch, plus Stash and Pop. A running network operation can be cancelled;
   only `--force-with-lease` is ever offered, never a plain force push.
+- A context menu on any commit — right-click, or Shift+F10 from the keyboard:
+  create a branch or tag, check out, merge with or without a fast-forward,
+  rebase, cherry-pick, revert, reset in all three modes, copy the SHA or the
+  message. Only what applies to that commit is offered.
+- An interactive rebase editor: reorder by dragging, by buttons or by
+  Alt+Arrow, and choose pick, reword, edit, squash, fixup or drop per commit.
+  Git performs the rebase — Twig supplies the plan as its sequence editor.
+- A three-way conflict editor: ours, base and theirs beside an editable
+  result, taking whole sides or individual lines in either order, with its own
+  undo and redo and a warning if conflict markers are left behind.
+- A banner above the history whenever a merge, cherry-pick, revert or rebase
+  is unfinished, with the conflicted files and Continue, Skip and Abort.
 - Tabs retain the demo's and each repository's selection, filter and scroll
   while switching.
 - Closable details with a keyboard-accessible width slider, collapsible sidebar.
@@ -75,29 +102,39 @@ npm run test:smoke # builds and launches three real Electron sessions; requires 
 node scripts/smoke.mjs --dev # same M0/M1 check through the local Vite server
 ```
 
-Most checks spawn no Git at all. Two deliberately do: `patch-builder.mjs` and
-`stage.mjs` build throwaway repositories, because the only real proof that a
-partial-staging patch is correct is that `git apply --cached` accepts it and
-the index ends up holding exactly the selected lines.
+Most checks spawn no Git at all. Three deliberately do: `patch-builder.mjs`,
+`stage.mjs` and `history-ops-live.mjs` build throwaway repositories. The only
+real proof that a partial-staging patch is correct is that `git apply --cached`
+accepts it and the index ends up holding exactly the selected lines; the only
+real proof that an interactive rebase works is that Git replayed the supplied
+plan — reordered, reworded, squashed and dropped — and not its own default.
 
-`npm run test:smoke` runs three independent Electron sessions, each with its
+`npm run test:smoke` runs six independent Electron scripts, each with its
 own temporary profile: `scripts/smoke.mjs` covers the M0/M1 shell (sandboxing,
 the exact preload surface, demo history, console, themes);
 `scripts/history-smoke.mjs` creates a real repository (root commit, a branch,
 a merge, 259 linear commits, an annotated tag) and drives pagination, keyboard
 navigation and the file diff; `scripts/worktree-smoke.mjs` stages individual
-lines, unstages, commits, and pushes to a local bare repository. All write
-screenshots into ignored `artifacts/`.
+lines, unstages, commits, and pushes to a local bare repository;
+`scripts/ops-smoke.mjs` opens the context menu with mouse and keyboard, runs a
+merge into a conflict, resolves it line by line, confirms a `reset --hard`
+dialog without accepting it, and drives an interactive rebase. All write
+screenshots into ignored `artifacts/`. `scripts/profile-smoke.mjs` checks global
+and local profile edits, inheritance, stale-value refusal, IPC and both themes;
+its global Git config lives in a temporary directory. `npm test` also runs
+`checks/profile.mjs` against isolated Git configuration.
+`checks/repositories.mjs` verifies remotes, cloning, cancellation, list persistence
+and disk preservation. `repositories-smoke.mjs` exercises the corresponding UI,
+history after clone/fetch, both themes and persistence after an Electron restart.
 
 ## Next milestones and packaging
 
-M4 adds history-mutating operations (merge, cherry-pick, revert, reset,
-interactive rebase, conflict editor). M5 adds the user zone (profile, SSH,
-remotes), Undo/Redo and packaging. `PROMPT.md` is the full specification;
+M5 has profile and repository management. SSH, Undo/Redo and packaging
+remain. `PROMPT.md` is the full specification;
 `CLAUDE.md` records the handoff state.
 
 `electron-builder` is installed for the fixed stack. Installers are **not built
-in M5**. M5 targets macOS dmg (x64 + arm64), Windows nsis (x64), and Linux AppImage
+yet**. M5 targets macOS dmg (x64 + arm64), Windows nsis (x64), and Linux AppImage
 + deb (x64), with native-platform validation. No signing or notarization is
 planned: macOS Gatekeeper will warn about the unsigned app. Only open a build
 whose origin you trust, using macOS's explicit Open/Privacy & Security flow.
@@ -126,3 +163,8 @@ Staging a line selection sends indices and the digest of the diff the renderer
 was shown, never patch text: main re-reads the diff itself and refuses the
 apply if the file changed in between. Commit messages and patches reach Git on
 stdin, so they are never written to a temp file and never land in the journal.
+Branch and tag names are checked against git-check-ref-format and passed after
+`--`, so a name like `--force` stays a name. Input that is not valid Git is
+refused at the channel rather than answered with a failure. A rebase plan is
+written under the app's own state directory, never inside the repository, and
+is deleted as soon as the operation ends.

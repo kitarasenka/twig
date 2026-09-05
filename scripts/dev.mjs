@@ -2,7 +2,9 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'vite';
 import electron from 'electron';
 import { buildPreload } from './build.mjs';
+import { brandDevelopmentApp } from './app-identity.mjs';
 
+brandDevelopmentApp();
 await buildPreload();
 const server = await createServer();
 await server.listen();

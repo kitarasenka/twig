@@ -37,7 +37,6 @@
 .file-controls select, .file-controls input { font-size: var(--text-xs); }
 .detail-skeleton { margin-bottom: var(--space-3); }
 .author-card div { min-width: 0; overflow-wrap: anywhere; }
-.detail-resize label { display: flex; align-items: center; width: 100%; gap: var(--space-2); }
 .metadata dd .text-button { margin-right: var(--space-2); }
 .diff-view { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .diff-view .panel-heading code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

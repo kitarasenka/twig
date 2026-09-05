@@ -19,10 +19,11 @@ export class RepositoryStore {
   snapshot() { return { repositories: this.#state.repositories.map(repository => ({ ...repository })), activeId: this.#state.activeId }; }
 
   async save(repositories, activeId) {
-    this.#state = { repositories, activeId };
+    const next = { repositories, activeId };
     const temporary = `${this.#file}.next`;
-    await writeFile(temporary, JSON.stringify(this.#state, null, 2), 'utf8');
+    await writeFile(temporary, JSON.stringify(next, null, 2), 'utf8');
     await rename(temporary, this.#file);
+    this.#state = next;
     return this.snapshot();
   }
 }

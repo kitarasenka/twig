@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import electron from 'electron';
+import { brandDevelopmentApp } from './app-identity.mjs';
 
+brandDevelopmentApp();
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 delete env.TWIG_DEV;

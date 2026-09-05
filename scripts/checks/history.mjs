@@ -76,9 +76,9 @@ assert.deepEqual(parseHistoryV1(''), []);
 {
   const body = 'Технически:\n- версия: 0.1.0 → 0.1.1\tсо табом\n82df62445b05a04be53291bb36b5db80e46dad77 not-a-real-field\n🌱 done';
   const input = record(SHA1_A, '', 'ktarasenko', 'k@example.com', '2026-09-05T00:00:00Z', '2026-09-05T00:00:00Z',
-    'feat: 🌱Twig — тема с кириллицей и emoji', body);
+    'feat: 🌱 Twig — тема с кириллицей и emoji', body);
   const [commit] = parseHistoryV1(input);
-  assert.equal(commit.subject, 'feat: 🌱Twig — тема с кириллицей и emoji');
+  assert.equal(commit.subject, 'feat: 🌱 Twig — тема с кириллицей и emoji');
   assert.equal(commit.body, body);
 }
 

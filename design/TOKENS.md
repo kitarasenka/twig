@@ -1,9 +1,60 @@
-# 🌱Twig — design tokens
+# 🌱 Twig — design tokens
 
 M0, 2026-09-05. Source of truth: CSS below is copied exactly to
 `renderer/src/ui/tokens.css`; `npm test` checks parity and text contrast.
 
 ## Skill decisions
+
+M5 repository management: reran design-system for desktop Git repository
+management and React controlled forms/async feedback. Kept Twig's existing
+identity and density instead of the suggested marketing layout. Native folder
+selection, labeled inputs, explicit list removal, pending/Cancel states and live
+Git output define the forms. Existing tokens only; dialogs capped at 760px.
+Reviewed clone, repositories and remotes screenshots at 1000×640, including both
+remote-manager themes; long paths wrap, forms scroll without horizontal overflow.
+
+M5 profile, 2026-09-05: ran the skill design-system for a dense desktop developer
+tool settings form, then React async-state and UX form-label/error-feedback
+searches (`stacks/react.csv`, `ux-guidelines.csv`). Retained the logo palette,
+local fonts and spacing below. Adopted explicit scope, visible labels, per-field
+save/removal, inherited/effective values, loading skeletons, recoverable errors,
+and keyboard-accessible controls. Marketing layout and new palette suggestions
+do not override the existing desktop identity. Profile UI uses existing tokens.
+M5 profile review: dark/light screenshots at 1000×640, no horizontal overflow,
+scroll access to the final fields, keyboard focus within the dialog, Save/Remove
+feedback and retry after stale edits checked in Electron. Dialog width is capped
+at 700px to keep labels and field actions together.
+
+M5 final review, 2026-09-06: ran the skill over every M5 screen (profile,
+repositories, clone, remotes, SSH, branches and tags, stashes, bisect banner,
+Undo/Redo toolbar) with `--domain ux`, `--domain web` and `--stack react`, then
+read the dark and light screenshots produced by the Electron smokes.
+
+Fixed from that pass: the branch search was the only control in the app that
+cancelled its focus outline (`outline: none` with a border-colour change as the
+sole replacement, which also made colour the only carrier of focus); the stash
+screen printed "No stashes" during its first load instead of skeletons; the
+stash heading glued its icon to the title because `.panel-heading > div` had no
+flex rule where `.graph-heading > div` does; the row actions for rename,
+upstream and delete were icon-only with an `aria-label` but no tooltip, so a
+sighted mouse user had no name for them at all; ref badges in the graph were cut
+mid-glyph for want of `text-overflow`. The command journal (up to 2000 rows) and
+the ref rows now use `content-visibility: auto` with an intrinsic size, which
+skips off-screen rendering without adding a virtualisation library.
+
+Rejected, with reasons: 44px touch targets — this is a pointer-first desktop
+tool and PROMPT.md fixes the row height at 28-32px; per-field inline errors —
+§2.7 requires one readable line plus a link into the console, and the exact argv
+lives there; `key={index}` for SSH config lines — a line's identity in that file
+is its position; full list virtualisation for refs and the journal — the graph is
+the only list that grows without bound, and content-visibility covers the rest;
+deep linking of screen state — a single-window desktop app has no router.
+
+Left open on purpose, not design defects: the graph does not mark commits
+already tested by bisect, the toolbar Branch and Actions buttons are inert, and
+the real repository sidebar has no STASHES/REMOTES sections (the demo panel
+does). Full M5 UI review is complete; these are functional gaps listed in
+CLAUDE.md.
 
 Read `.claude/skills/ui-ux-pro-max/SKILL.md`; ran `--design-system -p "Git Desk"`
 with `desktop git client developer tool dense dark dashboard`, then searched
@@ -52,7 +103,9 @@ coarse pointers get 44px targets. System theme by default; explicit theme persis
   --toolbar-height: 78px;
   --sidebar-width: 212px;
   --detail-width: 306px;
+  --splitter-width: 5px;
   --motion: 160ms;
+  --z-menu: 30;
   --icon-size: 16px;
   --brand-icon-size: 36px;
   --welcome-logo-size: 96px;
@@ -110,7 +163,7 @@ milestone review; this review covers only the M0 shell.
 
 ## Twig identity update
 
-User-selected name: **🌱Twig**. Source: `design/twig-logo.png`, the unmodified
+User-selected name: **🌱 Twig**. Source: `design/twig-logo.png`, the unmodified
 1254×1254 PNG supplied by the user. Platform icons in `build/` and the small
 renderer logo are resized/encoded copies of this same image, never redrawn.
 

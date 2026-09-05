@@ -1,5 +1,7 @@
 import { runGit } from './exec.js';
 import { loadRefs } from './refs.js';
+import { validateRefName } from './refs-ops.js';
+import { loadRemotes, validateRemoteName, validateRepositoryUrl } from './remotes.js';
 
 /**
  * Network operations. Each one takes an AbortSignal because the brief
@@ -63,4 +65,37 @@ export async function loadDivergence({ cwd, log, branch }) {
   const current = refs.find(ref => ref.type === 'local' && ref.name === branch);
   if (!current) return { ahead: 0, behind: 0, upstream: null };
   return { ahead: current.ahead, behind: current.behind, upstream: current.upstream };
+}
+
+/**
+ * Publishing or removing one ref on a remote — the half of `git push` the
+ * toolbar has no place for: sending a tag that would otherwise stay local
+ * forever, and deleting a branch or tag that only exists on the server.
+ *
+ * The ref is spelled in full (`refs/heads/x`, `refs/tags/x`) so the remote
+ * side is never guessed from a short name, and it sits behind `--` so a ref
+ * that looks like an option stays a ref.
+ */
+export function buildPushRefArgv({ remote, ref, remove = false }) {
+  validateRemoteName(remote);
+  const match = /^refs\/(heads|tags)\/(.+)$/.exec(typeof ref === 'string' ? ref : '');
+  if (!match) throw new TypeError('A ref to push must be refs/heads/… or refs/tags/…');
+  validateRefName(match[2]);
+  return ['push', '--progress', ...(remove ? ['--delete'] : []), remote, '--', ref];
+}
+
+/**
+ * @param {{ cwd: string, log: object, remote: string, ref: string, remove?: boolean, signal?: ?AbortSignal }} options
+ * @returns {Promise<{ ok: boolean, cancelled: boolean, message: ?string }>}
+ */
+export async function pushRef({ cwd, log, remote, ref, remove = false, signal = null }) {
+  const argv = buildPushRefArgv({ remote, ref, remove });
+  const configured = (await loadRemotes({ cwd, log })).find(item => item.name === remote);
+  if (!configured) throw new Error('This remote is not configured any more. Reload the list.');
+  for (const address of [...configured.urls, ...configured.pushUrls]) validateRepositoryUrl(address);
+  const operation = `${remove ? 'Delete on' : 'Push to'} ${remote}: ${ref}`;
+  const result = await runGit({ cwd, log, argv, signal, operation });
+  if (result.cancelled) return { ok: false, cancelled: true, message: `${operation} was cancelled.` };
+  if (result.code !== 0) return { ok: false, cancelled: false, message: `${operation} failed. Show output in the console.` };
+  return { ok: true, cancelled: false, message: null };
 }

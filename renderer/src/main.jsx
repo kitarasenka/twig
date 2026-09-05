@@ -9,5 +9,9 @@ import './ui/tokens.css';
 import './ui/layout.css';
 import './ui/history.css';
 import './ui/worktree.css';
+import './ui/refs.css';
+import './ui/ops.css';
+import './ui/settings.css';
+import './ui/repositories.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><App /></React.StrictMode>);

@@ -1,9 +1,11 @@
 import { runGit } from './exec.js';
 import { parseHistoryV1 } from './history-parser.js';
+import { validateOid } from './commit.js';
 
 const FORMAT = '%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b';
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 500;
+const MAX_REBASE_ENTRIES = 1000;
 
 function validateLimit(limit) {
   if (!Number.isInteger(limit) || limit < MIN_LIMIT || limit > MAX_LIMIT) {
@@ -42,4 +44,27 @@ export async function loadHistoryPage({ cwd, log, limit = 250, skip = 0 }) {
   if (result.code !== 0) throw new Error('Git could not read commit history.');
   const commits = parseHistoryV1(result.stdout);
   return { commits, nextSkip: commits.length < limit ? null : skip + commits.length };
+}
+
+/**
+ * The commits `git rebase --interactive <oid>` would put in its todo list:
+ * everything reachable from HEAD but not from `<oid>`, oldest first, without
+ * merges — which is what a rebase without `--rebase-merges` replays.
+ *
+ * There is no `--max-count` here on purpose: with `--reverse` Git applies the
+ * limit before reversing, so a capped read would silently describe the wrong
+ * end of the range. The count is checked afterwards instead.
+ */
+export function buildRebaseTodoArgv(oid) {
+  return ['log', '--reverse', '--topo-order', '--no-merges', '-z', `--format=${FORMAT}`, `${validateOid(oid)}..HEAD`];
+}
+
+/** @param {{ cwd: string, log: import('../command-log.js').CommandLog, oid: string }} options */
+export async function loadRebaseCandidates({ cwd, log, oid }) {
+  const result = await runGit({ argv: buildRebaseTodoArgv(oid), cwd, log, operation: 'Read commits to rebase' });
+  if (result.code !== 0) throw new Error('Git could not list the commits to rebase. This commit may not be behind the current branch.');
+  const commits = parseHistoryV1(result.stdout);
+  if (commits.length === 0) throw new Error('There is nothing between this commit and the current branch to rebase.');
+  if (commits.length > MAX_REBASE_ENTRIES) throw new Error(`That is ${commits.length} commits. 🌱 Twig edits a rebase plan of at most ${MAX_REBASE_ENTRIES}.`);
+  return commits;
 }

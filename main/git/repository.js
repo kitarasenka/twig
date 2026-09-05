@@ -18,6 +18,12 @@ async function readStatus(directory, log) {
 /** @param {{ log: import('../command-log.js').CommandLog, store: import('../store.js').RepositoryStore }} options */
 export function createRepositoryService({ log, store }) {
   let state = store.snapshot();
+  let pending = Promise.resolve();
+  const serialize = action => (...args) => {
+    const next = pending.then(() => action(...args));
+    pending = next.catch(() => {});
+    return next;
+  };
 
   async function statusFor(repository) {
     const root = await resolveRoot(repository.path, log);
@@ -63,9 +69,17 @@ export function createRepositoryService({ log, store }) {
     return refresh();
   }
 
+  async function remove(id) {
+    if (!state.repositories.some(item => item.id === id)) throw new Error('Unknown repository.');
+    const repositories = state.repositories.filter(item => item.id !== id);
+    const activeId = state.activeId === id ? repositories.find(item => item.available)?.id || repositories[0]?.id || null : state.activeId;
+    state = await store.save(repositories, activeId);
+    return state;
+  }
+
   return {
-    async load() { state = await store.load(); return refresh(); },
-    add, select,
+    load: serialize(async () => { state = await store.load(); return refresh(); }),
+    add: serialize(add), select: serialize(select), remove: serialize(remove),
     snapshot: () => state
   };
 }

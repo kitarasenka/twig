@@ -2,14 +2,16 @@ import { useRef, useState } from 'react';
 import { GitBranch, PanelRightOpen, Search } from 'lucide-react';
 import DemoGraph from '../features/graph/DemoGraph.jsx';
 import Button from '../ui/Button.jsx';
+import Splitter from '../ui/Splitter.jsx';
 import { Sidebar, CommitDetails } from './Panels.jsx';
+import { PANEL_DEFAULT } from '../ui/panel-width.js';
 import { commits } from './demo.js';
 
 export default function Workspace({ filterRef, mod, sidebar, onSidebar, searchSignal }) {
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState(commits[0].id);
   const [detail, setDetail] = useState(true);
-  const [width, setWidth] = useState(306);
+  const [width, setWidth] = useState(PANEL_DEFAULT);
   const scroll = useRef(0);
   return <div className={`workspace ${sidebar ? 'sidebar-small' : ''} ${detail ? '' : 'no-detail'}`} style={{ '--detail-width': `${width}px` }}>
     <Sidebar collapsed={sidebar} onCollapse={onSidebar} filter={filter} onFilter={setFilter} filterRef={filterRef} mod={mod} />
@@ -20,6 +22,7 @@ export default function Workspace({ filterRef, mod, sidebar, onSidebar, searchSi
       <div className="demo-notice" id="demo-notice"><span className="demo-pill">PREVIEW</span><span>Sample repository. Explore the layout; no Git commands are run.</span></div>
       <DemoGraph selected={selected} onSelect={(id) => { setSelected(id); setDetail(true); }} filter={filter} scroll={scroll.current} onScroll={(value) => { scroll.current = value; }} />
     </main>
-    {detail && <CommitDetails selected={selected} onSelect={setSelected} onClose={() => setDetail(false)} mode={width} setMode={setWidth} />}
+    {detail && <Splitter width={width} onWidth={setWidth} />}
+    {detail && <CommitDetails selected={selected} onSelect={setSelected} onClose={() => setDetail(false)} />}
   </div>;
 }

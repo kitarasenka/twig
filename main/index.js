@@ -7,6 +7,7 @@ import { CommandLog } from './command-log.js';
 import { RepositoryStore } from './store.js';
 import { runGit } from './git/exec.js';
 import { createRepositoryService } from './git/repository.js';
+import { UndoService } from './undo.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const iconPath = path.join(root, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -17,7 +18,7 @@ let window;
 
 async function detectGit(log) {
   const result = await runGit({ argv: ['--version'], cwd: app.getPath('home'), log, operation: 'Background: check Git installation' });
-  if (result.code !== 0) return { available: false, version: null, instruction: 'Install Git, then restart 🌱Twig.' };
+  if (result.code !== 0) return { available: false, version: null, instruction: 'Install Git, then restart 🌱 Twig.' };
   return { available: true, version: result.stdout.trim(), instruction: null };
 }
 
@@ -28,7 +29,7 @@ function openExternal(url) {
 async function createWindow() {
   window = new BrowserWindow({
     width: 1440, height: 920, minWidth: 1000, minHeight: 640,
-    title: '🌱Twig', show: false, icon: iconPath,
+    title: '🌱 Twig', show: false, icon: iconPath,
     webPreferences: {
       preload: path.join(root, 'dist/preload/index.cjs'),
       contextIsolation: true, nodeIntegration: false, sandbox: true,
@@ -75,8 +76,10 @@ app.whenReady().then(async () => {
   journal.onChange((event) => {
     if (window && !window.isDestroyed()) window.webContents.send('console:update', event);
   });
-  registerIpc(() => window, entryUrl, { journal, repositories, git });
+  const undo = new UndoService({ directory: app.getPath('userData'), log: journal });
+  await undo.load();
+  registerIpc(() => window, entryUrl, { journal, repositories, git, undo });
   await createWindow();
-}).catch((error) => { console.error('🌱Twig failed to start:', error.message); app.exit(1); });
+}).catch((error) => { console.error('🌱 Twig failed to start:', error.message); app.exit(1); });
 app.on('activate', () => { if (!window) void createWindow(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
