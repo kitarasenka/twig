@@ -30,7 +30,8 @@ try {
   assert.equal(info.name, '🌱Twig');
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
   assert.equal(await page.evaluate(() => typeof window.process), 'undefined');
-  assert.deepEqual(await page.evaluate(() => Object.keys(window.twig).sort()), ['getAppInfo', 'getConsoleEntries', 'getWorkspace', 'onConsoleUpdate', 'openRepository', 'selectRepository']);
+  assert.deepEqual(await page.evaluate(() => Object.keys(window.twig).sort()), ['compareCommits', 'getAppInfo', 'getCommit', 'getCommitFiles',
+    'getConsoleEntries', 'getFileDiff', 'getHistoryPage', 'getRefs', 'getWorkspace', 'onConsoleUpdate', 'openRepository', 'selectRepository']);
   const security = await app.evaluate(({ BrowserWindow }) => {
     const prefs = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
     return { sandbox: prefs.sandbox, contextIsolation: prefs.contextIsolation, nodeIntegration: prefs.nodeIntegration };

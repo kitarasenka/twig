@@ -1,0 +1,56 @@
+.real-workspace, .history-slot { min-width: 0; min-height: 0; }
+.history-slot { display: flex; flex: 1; }
+.real-history { min-width: 0; overflow: hidden; }
+.real-history-columns, .real-commit-row { display: grid; grid-template-columns: 140px var(--graph-width) minmax(180px, 1fr) 100px 104px; align-items: center; padding-inline: var(--space-3); }
+.real-history-columns { color: var(--muted); font-size: var(--text-xs); min-height: 34px; border-bottom: 1px solid var(--border); }
+.real-history-scroll { flex: 1; overflow: auto; min-height: 0; }
+.real-history-scroll:focus-visible, .diff-lines:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.virtual-commits { position: relative; min-width: calc(568px + var(--graph-width)); }
+.real-commit-row { position: absolute; width: 100%; height: var(--row-height); font-size: var(--text-sm); cursor: pointer; }
+.real-commit-row:hover { background: var(--surface-hover); }
+.real-commit-row.selected, .worktree-row.selected { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); }
+.real-commit-row.new-day { box-shadow: inset 0 1px var(--border); }
+.real-commit-row .ref-cell { gap: var(--space-1); }
+.real-commit-row .ref-cell > svg { color: var(--accent); }
+.real-commit-row .date-cell, .real-commit-row .author-col { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.real-lane { width: var(--graph-width); height: var(--row-height); overflow: visible; }
+.real-lane path { fill: none; stroke-width: 2; }
+.real-lane circle { fill: var(--bg); stroke-width: 2.5; }
+.graph-color-0 { stroke: var(--accent); }
+.graph-color-1 { stroke: var(--lane-mint); }
+.graph-color-2 { stroke: var(--lane-cream); }
+.graph-color-3 { stroke: var(--lane-leaf); }
+.worktree-row { justify-content: flex-start; border-bottom: 1px solid var(--border); border-radius: 0; padding-inline: var(--space-4); color: var(--accent); }
+.history-pagination { display: flex; align-items: center; justify-content: center; min-height: 34px; padding-inline: var(--space-2); color: var(--muted); font-size: var(--text-xs); border-top: 1px solid var(--border); }
+.history-error { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; color: var(--danger); padding: var(--space-2) var(--space-4); }
+.real-branch { display: flex; width: 100%; justify-content: flex-start; min-height: var(--row-height); border-radius: 0; padding-inline: var(--space-3); font-size: var(--text-sm); }
+.real-branch span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.real-branch small { color: var(--muted); margin-left: auto; }
+.branch-folder, .file-folder { margin: 0; padding-left: var(--space-3); }
+.branch-folder summary, .file-folder summary { text-transform: none; letter-spacing: 0; }
+.commit-file { display: flex; width: 100%; justify-content: flex-start; min-height: var(--row-height); font-size: var(--text-xs); padding-inline: 0; }
+.commit-file > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-status { min-width: var(--space-4); font-family: var(--font-mono); color: var(--accent); }
+.file-controls label { display: flex; align-items: center; font-size: var(--text-xs); gap: var(--space-1); }
+.file-controls input[type='checkbox'] { min-height: auto; accent-color: var(--accent); }
+.file-controls input:not([type='checkbox']) { width: 100%; min-width: 0; }
+.file-controls select, .file-controls input { font-size: var(--text-xs); }
+.detail-skeleton { margin-bottom: var(--space-3); }
+.author-card div { min-width: 0; overflow-wrap: anywhere; }
+.detail-resize label { display: flex; align-items: center; width: 100%; gap: var(--space-2); }
+.metadata dd .text-button { margin-right: var(--space-2); }
+.diff-view { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.diff-view .panel-heading code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.diff-lines { flex: 1; overflow: auto; font: var(--text-sm)/1.7 var(--font-mono); padding-block: var(--space-3); }
+.diff-lines > div { white-space: pre; min-width: max-content; padding-inline: var(--space-4); }
+.diff-added { color: var(--accent); background: var(--accent-bg); }
+.diff-deleted { color: var(--danger); background: var(--surface); }
+.diff-hunk { color: var(--lane-mint); background: var(--surface-raised); }
+.worktree-summary { overflow: auto; }
+.worktree-summary > p { padding: var(--space-4); }
+.worktree-file { display: flex; gap: var(--space-3); padding: var(--space-1) var(--space-4); overflow-wrap: anywhere; }
+.worktree-file code { color: var(--accent); }
+@media (max-width: 1250px) {
+  .real-history-columns, .real-commit-row { grid-template-columns: 110px var(--graph-width) minmax(160px, 1fr) 96px; padding-inline: var(--space-2); }
+  .virtual-commits { min-width: calc(382px + var(--graph-width)); }
+}

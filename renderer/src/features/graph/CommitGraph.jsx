@@ -1,0 +1,89 @@
+import { memo, useLayoutEffect, useRef, useState } from 'react';
+import { Check, GitBranch, Globe, Tag, FilePenLine } from 'lucide-react';
+import { LANE_WIDTH, ROW_HEIGHT, segmentPath, visibleRange } from './layout.js';
+
+export function relativeDate(value) {
+  const seconds = Math.round((Date.parse(value) - Date.now()) / 1000);
+  const format = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  if (Math.abs(seconds) < 60) return 'just now';
+  if (Math.abs(seconds) < 3600) return format.format(Math.round(seconds / 60), 'minute');
+  if (Math.abs(seconds) < 86400) return format.format(Math.round(seconds / 3600), 'hour');
+  return format.format(Math.round(seconds / 86400), 'day');
+}
+
+const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, head, refs, onSelect, dayStart }) {
+  return <div role="option" id={`commit-${commit.oid}`} aria-selected={selected} aria-posinset={index + 1} aria-setsize={total}
+    className={`real-commit-row ${selected ? 'selected' : ''} ${dayStart ? 'new-day' : ''}`}
+    style={{ top: index * ROW_HEIGHT }} onClick={event => onSelect(commit.oid, event.shiftKey)}>
+    <span className="ref-cell">{head && <Check aria-label="HEAD" />}{refs?.map(ref => <span key={ref.fullName} title={ref.fullName} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''}`}>
+      {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}{ref.name}</span>)}</span>
+    <svg className="real-lane" aria-hidden="true" height={ROW_HEIGHT}>
+      {layout.segments.map((segment, i) => <path key={i} className={`graph-color-${segment.color}`} d={segmentPath(segment)} />)}
+      <circle className={`graph-color-${layout.color}`} cx={12 + layout.lane * LANE_WIDTH} cy={15} r={4} />
+    </svg>
+    <span className="commit-subject" title={`${commit.subject}\n${commit.body}`}><span>{commit.subject || '(no subject)'}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
+    <span className="author-col" title={commit.author.email}>{commit.author.name}</span>
+    <span className="date-cell" title={commit.committedAt}>{relativeDate(commit.committedAt)}</span>
+  </div>;
+});
+
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, head, onSelect, loadMore, hasMore, loading, changes, onWorktree, active }) {
+  const scroller = useRef(null);
+  const [viewport, setViewport] = useState({ top: 0, height: 600 });
+  const [focusIndex, setFocusIndex] = useState(0);
+  const previousSelection = useRef(null);
+  useLayoutEffect(() => {
+    const node = scroller.current;
+    const observer = new ResizeObserver(() => {
+      if (node.clientHeight) setViewport({ top: node.scrollTop, height: node.clientHeight });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    const index = indexMap.get(selected);
+    if (index === undefined || previousSelection.current === selected) return;
+    previousSelection.current = selected;
+    setFocusIndex(index);
+    const node = scroller.current;
+    if (index * ROW_HEIGHT < node.scrollTop) node.scrollTop = index * ROW_HEIGHT;
+    else if ((index + 1) * ROW_HEIGHT > node.scrollTop + node.clientHeight) node.scrollTop = (index + 1) * ROW_HEIGHT - node.clientHeight;
+    setViewport({ top: node.scrollTop, height: node.clientHeight || 600 });
+  }, [selected, indexMap]);
+  const { start, end } = visibleRange(commits.length, viewport.top, viewport.height);
+  const focused = focusIndex >= start && focusIndex < end ? commits[focusIndex]?.oid : null;
+  function keyboard(event) {
+    let index = focusIndex;
+    if (event.key === 'ArrowDown') index++;
+    else if (event.key === 'ArrowUp') index--;
+    else if (event.key === 'Home') index = 0;
+    else if (event.key === 'End') index = commits.length - 1;
+    else if (event.key === 'PageDown') index += Math.floor(viewport.height / ROW_HEIGHT);
+    else if (event.key === 'PageUp') index -= Math.floor(viewport.height / ROW_HEIGHT);
+    else return;
+    event.preventDefault();
+    index = Math.max(0, Math.min(index, commits.length - 1));
+    if (commits[index]) onSelect(commits[index].oid, event.shiftKey);
+    if (index >= commits.length - 2 && hasMore && !loading) loadMore();
+  }
+  return <div className="history real-history" style={{ '--graph-width': `${Math.max(72, laneCount * LANE_WIDTH + 24)}px` }}>
+    <div className="real-history-columns"><span>Branch / tag</span><span>Graph</span><span>Commit message</span><span className="author-col">Author</span><span>Date</span></div>
+    {changes > 0 && <button className={`worktree-row ${selected === 'worktree' ? 'selected' : ''}`} onClick={onWorktree}><FilePenLine />Uncommitted changes, {changes} files</button>}
+    <div className="real-history-scroll" ref={scroller} role="listbox" aria-label="Commit history" tabIndex={0}
+      aria-busy={loading} aria-activedescendant={focused && active ? `commit-${focused}` : undefined}
+      onKeyDown={keyboard} onScroll={event => {
+        const node = event.currentTarget;
+        setViewport({ top: node.scrollTop, height: node.clientHeight });
+        if (node.scrollHeight - node.scrollTop - node.clientHeight < ROW_HEIGHT * 15 && hasMore && !loading) loadMore();
+      }}>
+      <div className="virtual-commits" style={{ height: commits.length * ROW_HEIGHT }}>
+        {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
+          selected={selected === commit.oid} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect}
+          dayStart={start + offset > 0 && commit.committedAt.slice(0, 10) !== commits[start + offset - 1].committedAt.slice(0, 10)} />)}
+      </div>
+    </div>
+    <div className="history-pagination">{loading ? <span role="status">Loading history…</span> : hasMore
+      ? <button onClick={loadMore}>Load older commits</button>
+      : <span>{commits.length ? 'Beginning of history' : 'No commits yet. Create your first commit to start this history.'}</span>}</div>
+  </div>;
+}

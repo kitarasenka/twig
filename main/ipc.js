@@ -1,5 +1,6 @@
 import { app, dialog, ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
+import { registerHistoryIpc } from './history-ipc.js';
 
 function validSender(event, getWindow, entryUrl, args, count) {
   const window = getWindow();
@@ -9,6 +10,7 @@ function validSender(event, getWindow, entryUrl, args, count) {
 }
 
 export function registerIpc(getWindow, entryUrl, { journal, repositories, git }) {
+  registerHistoryIpc(getWindow, entryUrl, { journal, repositories });
   ipcMain.handle('app:info', (event, ...args) => {
     if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid app information request');
     return { name: '🌱Twig', version: app.getVersion(), platform: process.platform };

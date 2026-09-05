@@ -1,6 +1,6 @@
 {
   "name": "twig",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "An independent desktop Git workspace with a visual commit graph",
@@ -16,8 +16,8 @@
     "build": "node scripts/build.mjs",
     "start": "node scripts/start.mjs",
     "lint": "eslint .",
-    "test": "npm run lint && node scripts/checks/foundation.mjs && node scripts/checks/status-parser.mjs && node scripts/checks/git-exec.mjs",
-    "test:smoke": "npm run build && node scripts/smoke.mjs"
+    "test": "npm run lint && node scripts/checks/foundation.mjs && node scripts/checks/status-parser.mjs && node scripts/checks/git-exec.mjs && node scripts/checks/history.mjs && node scripts/checks/refs.mjs && node scripts/checks/commit.mjs && node scripts/checks/graph.mjs",
+    "test:smoke": "npm run build && node scripts/smoke.mjs && node scripts/history-smoke.mjs"
   },
   "dependencies": {
     "@fontsource/fira-code": "^5.2.0",

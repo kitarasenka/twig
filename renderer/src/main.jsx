@@ -7,5 +7,6 @@ import '@fontsource/fira-code/400.css';
 import App from './app/App.jsx';
 import './ui/tokens.css';
 import './ui/layout.css';
+import './ui/history.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><App /></React.StrictMode>);

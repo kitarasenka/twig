@@ -45,6 +45,8 @@ export async function runGit({ argv, cwd, log, operation = 'Git command' }) {
       void log.output(id, 'stderr', stderr).finally(() => void finish(-1));
       return;
     }
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString('utf8');
       stdout += text;
