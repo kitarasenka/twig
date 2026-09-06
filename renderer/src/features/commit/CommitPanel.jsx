@@ -91,11 +91,6 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
       {error && <p role="alert">{error} <button onClick={onConsole}>Show output</button></p>}
       {!loading && !error && commit && <>
         {range && <p className="muted">Changes from {range.base.slice(0, 8)} to {range.oid.slice(0, 8)}</p>}
-        <h2>{commit.subject || '(no subject)'}</h2><pre className="commit-body">{commit.body}</pre>
-        <div className="author-card"><span className="avatar">{commit.author.name.split(/\s+/).slice(0, 2).map(part => part[0]).join('')}</span><div>
-          <strong>{commit.author.name}{links?.authorCommits && <a className="forge-link" href={links.authorCommits} rel="noreferrer" title={`Commits by ${commit.author.name} on ${forgeLabel(links.forge)}`}><ForgeIcon forge={links.forge} aria-hidden="true" /></a>}</strong>
-          <span>{EMAIL.test(email) ? <a className="text-link" href={`mailto:${email}`}>{email}</a> : email}</span>
-        </div></div>
         {!range && onSetMark && <div className="mark-editor">
           <p className="mark-label">{mark ? 'Mark' : 'Mark this commit'}</p>
           <div className="mark-swatches" role="group" aria-label="Commit mark colour">
@@ -112,6 +107,11 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
               reason={noteDraft === (mark.note || '') ? 'The note is unchanged' : undefined}>Save note</Button>
           </div>}
         </div>}
+        <h2>{commit.subject || '(no subject)'}</h2><pre className="commit-body">{commit.body}</pre>
+        <div className="author-card"><span className="avatar">{commit.author.name.split(/\s+/).slice(0, 2).map(part => part[0]).join('')}</span><div>
+          <strong>{commit.author.name}{links?.authorCommits && <a className="forge-link" href={links.authorCommits} rel="noreferrer" title={`Commits by ${commit.author.name} on ${forgeLabel(links.forge)}`}><ForgeIcon forge={links.forge} aria-hidden="true" /></a>}</strong>
+          <span>{EMAIL.test(email) ? <a className="text-link" href={`mailto:${email}`}>{email}</a> : email}</span>
+        </div></div>
         <dl className="metadata"><dt>Authored</dt><dd>{new Date(commit.author.date).toLocaleString('en-GB')}</dd><dt>Committed</dt><dd className={ageTextClass(age)} title={age === null ? undefined : AGE_STOPS[age].label}>{new Date(commit.committedAt).toLocaleString('en-GB')}</dd><dt>Parents</dt><dd>{commit.parents.length ? commit.parents.map(oid => <button key={oid} className="text-button" onClick={() => onParent(oid)}>{oid.slice(0, 8)}</button>) : 'Root commit'}</dd></dl>
         <div className="files-heading"><FilePenLine /><strong>{commit.files.length} changed files</strong></div>
         {commit.parents.length > 1 && !range && <p className="muted">Compared with first parent</p>}
