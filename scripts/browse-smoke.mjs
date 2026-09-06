@@ -81,6 +81,10 @@ try {
     }
   };
   const row = name => page.locator('.refs-row').filter({ hasText: name }).first();
+  const hunterTool = page.locator('.toolbar .bughunter-tool');
+  await hunterTool.waitFor();
+  assert.equal(await hunterTool.isDisabled(), true, 'BugHunter needs a real repository');
+  assert.equal(await hunterTool.locator('..').getAttribute('title'), 'Connect a repository to use this action', 'disabled hover explains how to enable it');
 
   await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
   await page.getByRole('button', { name: 'Open repository', exact: true }).click();
@@ -144,27 +148,77 @@ try {
   await page.getByRole('button', { name: 'Push to origin', exact: true }).click();
   await expect('v1.0.0 pushed to origin.', 'the tag was published');
   assert.match(await git(['ls-remote', '--tags', '--', 'origin']), /refs\/tags\/v1\.0\.0/);
+  await page.waitForFunction(() => document.querySelector('.bughunter-tool')?.title === 'Select a commit with the bug in the history first');
+  assert.equal(await hunterTool.isDisabled(), true, 'the branch screen has no selected commit');
 
   // --- bisect ----------------------------------------------------------------
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   const history = page.getByRole('listbox', { name: 'Commit history', exact: true });
   await history.waitFor();
   // Rows are addressed by object id: `git log --all` also lists the stash
   // commits, whose subjects quote the commit they were made on.
   const commitRow = oid => page.locator(`#commit-${oid}`);
+  await history.press('Home');
   await commitRow(commits.at(-1)).click({ button: 'right' });
   const menu = page.getByRole('menu');
   await menu.waitFor();
   // Starting from a commit means "this one is broken", so the banner asks for
   // the other end of the range straight away.
-  await menu.getByRole('menuitem', { name: /Start bisect/ }).click();
-  await expect(`${commits.at(-1).slice(0, 7)} is bad. Now mark an older, working commit as good.`, 'the start marks the bad end');
+  await menu.getByRole('menuitem', { name: /BugHunter \(bisect\)/ }).click();
+  await expect(`${commits.at(-1).slice(0, 7)} has the bug. Select an older commit where the same bug is absent.`, 'the start explains how to choose the range');
+  const hunter = page.getByRole('region', { name: '🌱 BugHunter (bisect)', exact: true });
+  await page.waitForFunction(() => document.querySelector('.bughunter-tool')?.title === 'BugHunter is already running. Use the panel below.');
+  assert.equal(await hunterTool.isDisabled(), true, 'the toolbar cannot restart an active search');
+  await hunterTool.locator('..').hover();
+  assert.equal(await hunterTool.locator('..').getAttribute('title'), 'BugHunter is already running. Use the panel below.', 'hover on the disabled button reaches its explanation');
+  await hunter.getByText('How to use BugHunter', { exact: true }).click();
+  await hunter.getByText(/16 candidate commits usually need about 4 tests/).waitFor();
+  await shot('bughunter-help');
+  await hunter.getByText('How to use BugHunter', { exact: true }).click();
 
-  await commitRow(commits[0]).click({ button: 'right' });
-  await menu.waitFor();
-  await menu.getByRole('menuitem', { name: /Mark .* as good/ }).click();
-  await page.locator('.bisect-banner').getByText(/revisions? left/).waitFor();
+  await history.press('End');
+  await commitRow(commits[0]).click();
+  await hunter.getByRole('button', { name: `Bug absent at ${commits[0].slice(0, 7)}`, exact: true }).click();
+  await hunter.getByText(/About \d+ more tests? after this one/).waitFor();
+  await hunter.getByRole('button', { name: 'Show test commit', exact: true }).click();
+  const testOid = await git(['rev-parse', 'HEAD']);
+  await page.locator(`#commit-${testOid}[aria-selected="true"]`).waitFor();
+  await history.press('Home');
+  await commitRow(commits.at(-1)).click();
+  assert.match(await hunter.innerText(), new RegExp(`Testing ${testOid.slice(0, 7)}`), 'browsing history does not change the test target');
+  await hunter.getByRole('button', { name: 'Cannot test · Skip', exact: true }).click();
+  await hunter.getByText(/1 skipped/).waitFor();
+  assert.notEqual(await git(['rev-parse', 'HEAD']), testOid, 'Skip checks out another test revision');
+  for (const theme of ['dark', 'light']) {
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByLabel('Appearance').selectOption(theme);
+    await page.keyboard.press('Escape');
+    await shot(`bughunter-${theme}`);
+  }
   await shot('bisect');
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 640));
+  await page.waitForFunction(() => innerWidth === 1000);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'the toolbar fits at compact width');
+  assert.equal(await hunter.evaluate(node => node.scrollWidth > node.clientWidth), false, 'BugHunter has no horizontal overflow at compact width');
+  assert.ok(await history.evaluate(node => node.clientHeight) >= 30, 'the history remains usable below BugHunter');
+  await hunter.getByRole('button', { name: 'Bug present', exact: true }).scrollIntoViewIfNeeded();
+  await shot('bughunter-compact');
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 888));
+  await page.waitForFunction(() => innerWidth === 1440);
+  await hunter.getByRole('button', { name: 'Stop and return', exact: true }).click();
+  await hunter.waitFor({ state: 'detached' });
+  assert.equal(await git(['rev-parse', '--abbrev-ref', 'HEAD']), 'main', 'stopping also restores the original branch');
+  await history.press('Home');
+  await commitRow(commits.at(-1)).click();
+  await page.waitForFunction(() => !document.querySelector('.bughunter-tool')?.disabled);
+  assert.match(await hunterTool.getAttribute('title'), new RegExp(commits.at(-1).slice(0, 7)), 'the tooltip identifies the selected starting commit');
+  await hunterTool.click();
+  await hunter.getByText(/Select an older commit/).waitFor();
+  await history.press('End');
+  await commitRow(commits[0]).click();
+  await hunter.getByRole('button', { name: `Bug absent at ${commits[0].slice(0, 7)}`, exact: true }).click();
+  await hunter.getByText(/About \d+ more tests? after this one/).waitFor();
 
   // Answer for each revision Git checks out, reading the file it just placed
   // in the working tree — the same thing a person would look at.
@@ -172,17 +226,17 @@ try {
     // Read the verdict only once the banner has settled: while the answer is
     // being applied its buttons are disabled, and asking then can catch the
     // step between "not done yet" and the buttons this loop clicks.
-    await page.locator('.bisect-banner.done, .bisect-banner button:not([disabled])').first().waitFor();
+    await page.locator('.bisect-banner[aria-busy="false"]').waitFor();
     if (await page.locator('.bisect-banner.done').count()) break;
     const content = await readFile(path.join(cwd, 'app.txt'), 'utf8');
-    await page.getByRole('button', { name: content.includes('BUG') ? /It is broken/ : /It works/ }).click();
+    await page.getByRole('button', { name: content.includes('BUG') ? /^Bug present$/ : /^Bug absent$/ }).click();
     await page.waitForTimeout(120);
   }
   const verdict = page.locator('.bisect-banner.done');
   await verdict.waitFor();
   assert.match(await verdict.innerText(), new RegExp(`First bad commit: ${firstBroken.slice(0, 7)}`), 'bisect landed on the planted commit');
   await shot('bisect-done');
-  await page.getByRole('button', { name: 'End bisect', exact: true }).click();
+  await page.getByRole('button', { name: 'Finish and return', exact: true }).click();
   await verdict.waitFor({ state: 'detached' });
   assert.equal(await git(['rev-parse', '--abbrev-ref', 'HEAD']), 'main', 'ending a bisect puts the branch back');
 
@@ -215,6 +269,7 @@ try {
   assert.match(await dialog.innerText(), /\$ git stash drop stash@\{1\}/, 'the exact stash is named');
   await page.getByRole('button', { name: 'Drop the stash', exact: true }).click();
   await expect('stash@{1} dropped.', 'the older stash was dropped');
+  await stashScreen.getByRole('button', { name: /stash@\{1\}/ }).waitFor({ state: 'detached' });
   await page.getByRole('button', { name: /stash@\{0\}/ }).waitFor();
   assert.equal(await page.locator('.stash-list li').count(), 1, 'one stash is left');
 

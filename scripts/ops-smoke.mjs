@@ -8,7 +8,8 @@ import { runGit } from '../main/git/exec.js';
 
 // Drives M4 in a real Electron window: the commit context menu, a merge that
 // conflicts, the three-way conflict editor, the interrupted-operation banner,
-// a destructive confirmation and an interactive rebase.
+// a destructive confirmation, an interactive rebase and rewording a commit
+// both on the tip and from inside the history.
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'twig-ops-smoke-'));
 let app;
@@ -196,6 +197,51 @@ try {
     ['add alpha, renamed by the plan', 'add beta'],
     'Git replayed the plan Twig supplied, in the order shown, with the new message');
 
+  // --- rewording ---------------------------------------------------------------
+  // Something is staged on purpose: `--amend` alone would swallow it into the
+  // commit whose message was being fixed.
+  await writeFile(path.join(cwd, 'staged.txt'), 'not part of that commit\n', 'utf8');
+  await git(['add', '--', ':(literal)staged.txt']);
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.getByRole('option', { name: /add alpha, renamed by the plan/ }).click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: /^Reword / }).click();
+  const reword = page.getByRole('dialog');
+  await reword.waitFor();
+  assert.equal(await reword.locator('.confirm-command').innerText(), '$ git commit --amend --only --file=-');
+  assert.match(await reword.locator('.confirm-consequence').innerText(), /staged is left out/);
+  const messageBox = reword.getByRole('textbox', { name: 'Commit message' });
+  assert.equal(await messageBox.inputValue(), 'add alpha, renamed by the plan', 'the dialog opens on the message it has');
+  await shot('reword');
+  await messageBox.fill('add alpha, reworded on the tip');
+  await reword.getByRole('button', { name: 'Rewrite the message', exact: true }).click();
+  await expect('Message rewritten.', 'the tip commit is reworded');
+  assert.equal(await git(['log', '-1', '--format=%s']), 'add alpha, reworded on the tip');
+  assert.deepEqual((await git(['diff', '--cached', '--name-only'])).split('\n').filter(Boolean), ['staged.txt'],
+    'the staged file stayed staged instead of joining the reworded commit');
+
+  // An older commit is reworded by replaying the range, which needs the clean
+  // tree a rebase needs — the menu says so before the click.
+  await page.getByRole('option', { name: /add beta/ }).click({ button: 'right' });
+  assert.match(await menu.getByRole('menuitem', { name: /^Reword / }).getAttribute('title'), /stash/);
+  await page.keyboard.press('Escape');
+  await git(['reset', '--', ':(literal)staged.txt']);
+  await rm(path.join(cwd, 'staged.txt'), { force: true });
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+
+  await page.getByRole('option', { name: /add beta/ }).click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: /^Reword / }).click();
+  const replay = page.getByRole('dialog');
+  await replay.waitFor();
+  assert.match(await replay.locator('.confirm-command').innerText(), /^\$ git rebase --interactive [0-9a-f]{40}$/);
+  assert.match(await replay.locator('.confirm-consequence').innerText(), /the one commit after it/);
+  await replay.getByRole('textbox', { name: 'Commit message' }).fill('add beta, reworded from inside the history');
+  await replay.getByRole('button', { name: 'Rewrite and replay', exact: true }).click();
+  await expect('Message rewritten.', 'an older commit is reworded by replaying the range');
+  assert.deepEqual((await git(['log', '--format=%s', '-2'])).split('\n'),
+    ['add alpha, reworded on the tip', 'add beta, reworded from inside the history'],
+    'only the targeted message changed; the commit after it was replayed as it was');
+  assert.equal(await readFile(path.join(cwd, 'alpha.txt'), 'utf8'), 'alpha\n', 'the replayed content is untouched');
+
   // --- rejected IPC input ---------------------------------------------------
   const rejected = await page.evaluate(async () => {
     const workspace = await window.twig.getWorkspace();
@@ -205,11 +251,13 @@ try {
       window.twig.createBranch(id, 'bad name', '0'.repeat(40), false),
       window.twig.runSequencer(id, 'push', 'continue'),
       window.twig.readConflict(id, '../escape'),
-      window.twig.rebaseOnto(id, 'not-an-oid', null)
+      window.twig.rebaseOnto(id, 'not-an-oid', null),
+      window.twig.rewordCommit(id, 'not-an-oid', 'a message'),
+      window.twig.rewordCommit(id, '0'.repeat(40), '')
     ]);
     return results.map(result => result.status);
   });
-  assert.deepEqual(rejected, Array(5).fill('rejected'));
+  assert.deepEqual(rejected, Array(7).fill('rejected'));
 
   // The commit panel finishes loading before the theme shots, so the review
   // images show the real thing rather than skeleton placeholders.
@@ -223,12 +271,18 @@ try {
     await page.getByRole('option', { name: /add beta/ }).click({ button: 'right' });
     await menu.waitFor();
     await shot(`menu-${theme}`);
-    await page.keyboard.press('Escape');
-    await menu.waitFor({ state: 'detached' });
+    // The reword dialog is a new surface, so it is reviewed in both themes
+    // too. Cancelling it leaves the repository exactly as it was.
+    await menu.getByRole('menuitem', { name: /^Reword / }).click();
+    const themed = page.getByRole('dialog');
+    await themed.waitFor();
+    await shot(`reword-${theme}`);
+    await themed.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await themed.waitFor({ state: 'detached' });
   }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  console.log('M4 Electron passed: context menu, merge conflict, conflict editor, banner, confirmation, interactive rebase, IPC validation.');
+  console.log('M4 Electron passed: context menu, merge conflict, conflict editor, banner, confirmation, interactive rebase, reword on the tip and inside history, IPC validation.');
 } finally {
   if (app) await app.close();
   await rm(root, { recursive: true, force: true });

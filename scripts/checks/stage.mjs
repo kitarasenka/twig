@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { CommandLog } from '../../main/command-log.js';
 import { runGit } from '../../main/git/exec.js';
 import { loadWorktree, loadWorktreeDiff } from '../../main/git/worktree.js';
-import { applySelection, buildApplyArgv, buildIntentToAddArgv, buildStageArgv, buildUnstageArgv, intentToAdd, stageFile, unstageFile } from '../../main/git/stage.js';
+import { applySelection, buildApplyArgv, buildIntentToAddArgv, buildStageArgv, buildStagePathsArgv, buildStageTrackedArgv, buildUnstageAllArgv, buildUnstageArgv, intentToAdd, stageAll, stageFile, unstageAll, unstageFile } from '../../main/git/stage.js';
 import { buildSyncArgv, loadDivergence, runSync } from '../../main/git/sync.js';
 import { createCommit, stashPop, stashPush, validateCommitMessage } from '../../main/git/commit-ops.js';
 import { loadStashes as stashList } from '../../main/git/stash.js';
@@ -20,6 +21,11 @@ assert.deepEqual(buildStageArgv('src/a.js'), ['add', '--', ':(literal)src/a.js']
 assert.deepEqual(buildUnstageArgv('src/a.js'), ['restore', '--staged', '--', ':(literal)src/a.js']);
 assert.deepEqual(buildUnstageArgv('src/a.js', true), ['rm', '--cached', '--force', '--', ':(literal)src/a.js']);
 assert.deepEqual(buildIntentToAddArgv('new.txt'), ['add', '--intent-to-add', '--', ':(literal)new.txt']);
+assert.deepEqual(buildStageTrackedArgv(), ['add', '--update']);
+assert.deepEqual(buildStagePathsArgv(), ['add', '--pathspec-from-file=-', '--pathspec-file-nul']);
+assert.equal(buildStagePathsArgv().includes('--all'), false, 'the untracked section never sweeps in tracked changes');
+assert.deepEqual(buildUnstageAllArgv(), ['reset']);
+assert.equal(buildUnstageAllArgv().some(part => part.startsWith('--')), false, 'unstage all is a mixed reset, never --hard');
 assert.deepEqual(buildApplyArgv(false), ['apply', '--cached', '--whitespace=nowarn', '-']);
 assert.deepEqual(buildApplyArgv(true), ['apply', '--cached', '--whitespace=nowarn', '--reverse', '-']);
 for (const bad of ['', '/abs/path', '../escape', 'a/../../b', 'nul\0byte', 42, null]) {
@@ -196,7 +202,84 @@ try {
     assert.equal(cancelled.ok, false);
   }
 
-  console.log('stage: all checks passed against real repositories, including unborn branch, stash and a local remote');
+
+  // 7. Bulk staging: a section, never a list of files sent by the renderer.
+  {
+    const bulk = path.join(root, 'bulk');
+    await mkdir(bulk, { recursive: true });
+    const bgit = (argv, allowFailure = false) => git(argv, bulk, allowFailure);
+    await bgit(['init', '--initial-branch=main']);
+    await bgit(['config', 'user.name', 'Twig Fixture']);
+    await bgit(['config', 'user.email', 'fixture@example.invalid']);
+    await bgit(['config', 'commit.gpgsign', 'false']);
+    const tree = () => loadWorktree({ cwd: bulk, log });
+
+    // Before the first commit `restore --staged` fails, so unstage all cannot use it.
+    await writeFile(path.join(bulk, 'a.txt'), 'a\n', 'utf8');
+    await stageFile({ cwd: bulk, log, path: 'a.txt' });
+    assert.equal(await unstageAll({ cwd: bulk, log }), 1, 'unstage all works on an unborn branch');
+    assert.deepEqual((await tree()).staged, []);
+
+    await stageFile({ cwd: bulk, log, path: 'a.txt' });
+    await writeFile(path.join(bulk, 'gone.txt'), 'gone\n', 'utf8');
+    await stageFile({ cwd: bulk, log, path: 'gone.txt' });
+    await createCommit({ cwd: bulk, log, message: 'base' });
+
+    await writeFile(path.join(bulk, 'a.txt'), 'a changed\n', 'utf8');
+    await rm(path.join(bulk, 'gone.txt'));
+    await mkdir(path.join(bulk, 'new/deep'), { recursive: true });
+    await writeFile(path.join(bulk, 'new/deep/n.txt'), 'n\n', 'utf8');
+    await writeFile(path.join(bulk, 'star[1].txt'), 'literal name\n', 'utf8');
+
+    assert.equal(await stageAll({ cwd: bulk, log, scope: 'tracked' }), 2, 'the modification and the deletion');
+    let now = await tree();
+    assert.deepEqual(now.staged.map(entry => entry.path).sort(), ['a.txt', 'gone.txt']);
+    assert.deepEqual(now.untracked.map(entry => entry.path).sort(), ['new/', 'star[1].txt'], 'new files stayed untracked');
+
+    assert.equal(await stageAll({ cwd: bulk, log, scope: 'untracked' }), 2);
+    now = await tree();
+    assert.deepEqual(now.staged.map(entry => entry.path).sort(), ['a.txt', 'gone.txt', 'new/deep/n.txt', 'star[1].txt'],
+      'an untracked directory is staged recursively and a name with glob characters stays literal');
+    assert.deepEqual(now.untracked, []);
+    assert.equal(await stageAll({ cwd: bulk, log, scope: 'untracked' }), 0, 'an empty section runs no Git command');
+    await assert.rejects(() => stageAll({ cwd: bulk, log, scope: 'everything' }), TypeError);
+
+    assert.equal(await unstageAll({ cwd: bulk, log }), 4);
+    now = await tree();
+    assert.deepEqual(now.staged, []);
+    assert.equal(now.unstaged.find(entry => entry.path === 'gone.txt').status, 'D', 'the deletion is back in the unstaged list');
+    assert.equal(await readFile(path.join(bulk, 'a.txt'), 'utf8'), 'a changed\n', 'the working tree is untouched');
+    assert.equal(existsSync(path.join(bulk, 'new/deep/n.txt')), true, 'unstaging never removes a new file');
+
+    await bgit(['checkout', '--', '.']);
+    await rm(path.join(bulk, 'new'), { recursive: true, force: true });
+    await rm(path.join(bulk, 'star[1].txt'), { force: true });
+
+    // A conflicted merge: `add` would mark the conflict resolved as it stands,
+    // and `reset` would delete MERGE_HEAD and cancel the merge outright.
+    await bgit(['checkout', '-b', 'side']);
+    await writeFile(path.join(bulk, 'conflict.txt'), 'side\n', 'utf8');
+    await stageFile({ cwd: bulk, log, path: 'conflict.txt' });
+    await createCommit({ cwd: bulk, log, message: 'side' });
+    await bgit(['checkout', 'main']);
+    await writeFile(path.join(bulk, 'conflict.txt'), 'main\n', 'utf8');
+    await stageFile({ cwd: bulk, log, path: 'conflict.txt' });
+    await createCommit({ cwd: bulk, log, message: 'main' });
+    assert.notEqual((await bgit(['merge', 'side'], true)).code, 0, 'the fixture merge must conflict');
+
+    await assert.rejects(() => stageAll({ cwd: bulk, log, scope: 'tracked' }), /Resolve 1 conflicted file/);
+    await assert.rejects(() => stageAll({ cwd: bulk, log, scope: 'untracked' }), /Resolve 1 conflicted file/);
+    await assert.rejects(() => unstageAll({ cwd: bulk, log }), /Finish or abort the merge first/);
+
+    // Resolving every conflict is still not enough: the merge itself is open.
+    await writeFile(path.join(bulk, 'conflict.txt'), 'resolved\n', 'utf8');
+    await stageFile({ cwd: bulk, log, path: 'conflict.txt' });
+    await assert.rejects(() => unstageAll({ cwd: bulk, log }), /Finish or abort the merge first/);
+    assert.equal(existsSync(path.join(bulk, '.git', 'MERGE_HEAD')), true, 'the refusal left the merge in place');
+    await bgit(['merge', '--abort']);
+  }
+
+  console.log('stage: all checks passed against real repositories, including unborn branch, bulk staging, stash and a local remote');
 } finally {
   await rm(root, { recursive: true, force: true });
 }

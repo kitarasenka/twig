@@ -43,6 +43,11 @@
   --lane-mint: #79dfbd;
   --lane-cream: #eff6bd;
   --lane-leaf: #abe39a;
+  --age-fresh: #7ef0a6;
+  --age-young: #bff081;
+  --age-mature: #ecd98a;
+  --age-old: #e3b78b;
+  --age-root: #dca58a;
   --danger: #ffc2b2;
   --shadow: 0 16px 48px #00000066;
   --overlay: #00000080;
@@ -62,6 +67,11 @@
   --lane-mint: #16604a;
   --lane-cream: #626018;
   --lane-leaf: #3e602b;
+  --age-fresh: #15683f;
+  --age-young: #40631a;
+  --age-mature: #6a5410;
+  --age-old: #7c4a1c;
+  --age-root: #6f3626;
   --danger: #973b2e;
   --shadow: 0 16px 48px #102d2326;
   --overlay: #102d2366;

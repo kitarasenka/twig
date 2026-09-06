@@ -73,9 +73,25 @@ button.danger:disabled { border-color: var(--border); }
 .stash-files small svg { width: 12px; height: 12px; }
 .stash-detail .diff-view { border-top: 1px solid var(--border); }
 
-.bisect-banner .operation-headline > svg { color: var(--accent); }
-.bisect-banner.done .operation-headline > svg { color: var(--lane-mint); }
-.bisect-note { margin: 0; padding: 0 var(--space-4) var(--space-2); color: var(--muted); font-size: var(--text-xs); }
+.bisect-banner { flex: 0 1 auto; min-height: 0; max-height: 50%; overflow: auto; }
+.bisect-banner .operation-actions { flex-wrap: wrap; }
+.bisect-phase { color: var(--muted); font-size: var(--text-xs); }
+.bisect-body { padding: 0 var(--space-4) var(--space-3); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.bisect-body p { margin: 0 0 var(--space-2); line-height: 1.5; }
+.bisect-test-heading, .bisect-controls, .bisect-result { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.bisect-test-heading { margin-bottom: var(--space-2); }
+.bisect-estimate { padding: var(--space-1) var(--space-2); background: var(--accent-bg); color: var(--accent); border-radius: var(--radius-sm); }
+.bisect-controls { margin-bottom: var(--space-2); }
+.bisect-selection { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.bisect-result > svg { color: var(--accent); }
+.bisect-help { margin: var(--space-2) 0; }
+.bisect-help summary { display: flex; align-items: center; gap: var(--space-1); width: fit-content; cursor: pointer; color: var(--muted); }
+.bisect-help summary::before { content: '›'; }
+.bisect-help[open] summary::before { content: '⌄'; }
+.bisect-help summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bisect-help svg { width: 14px; height: 14px; }
+.bisect-help ol { padding-left: var(--space-6); line-height: 1.5; }
+.bisect-body .bisect-return { color: var(--muted); font-size: var(--text-xs); margin-bottom: 0; }
 
 @media (max-width: 900px) {
   .stash-list { width: 200px; }

@@ -14,7 +14,7 @@ function FileRow({ entry, active, onOpen, onPrimary, primaryIcon: Icon, primaryL
   </div>;
 }
 
-export default function WorktreeScreen({ repository, onConsole, onChanged, onBack }) {
+export default function WorktreeScreen({ repository, operation = null, onConsole, onChanged, onBack }) {
   const [tree, setTree] = useState(EMPTY);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -85,6 +85,19 @@ export default function WorktreeScreen({ repository, onConsole, onChanged, onBac
   }
 
   const unborn = Boolean(tree.branch?.unborn);
+  const conflicts = tree.unstaged.filter(entry => entry.status === 'U').length;
+  /**
+   * A bulk action is refused where the per-file buttons still work: `git add`
+   * on a conflicted file would mark it resolved unseen, and unstaging
+   * everything is a mixed reset, which deletes the marker of a merge, rebase,
+   * cherry-pick or revert and so cancels it. Main refuses these too; the
+   * disabled button says why before the click.
+   */
+  const bulkReason = busy ? 'Git is working'
+    : conflicts ? `Resolve the ${conflicts === 1 ? 'conflict' : 'conflicts'} first` : undefined;
+  const unstageAllReason = bulkReason
+    || (operation && operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : undefined);
+  const bulk = (run, describe) => guard(async () => setNotice(describe(await run())));
   const apply = selected => guard(async () => {
     const payload = Object.entries(selected)
       .filter(([, lines]) => lines.length > 0)
@@ -121,7 +134,9 @@ export default function WorktreeScreen({ repository, onConsole, onChanged, onBac
     <div className="worktree-body">
       <div className="worktree-lists">
         <section aria-label="Staged changes">
-          <h3><Check /> Staged <span className="count">{tree.staged.length}</span></h3>
+          <h3><Check /> Staged <span className="count">{tree.staged.length}</span>
+            {tree.staged.length > 0 && <Button className="bulk" icon={Minus} reason={unstageAllReason}
+              onClick={() => bulk(() => window.twig.unstageAll(repository.id), count => `Unstaged ${count} file${count === 1 ? '' : 's'}.`)}>Unstage all</Button>}</h3>
           {tree.staged.map(entry => <FileRow key={`s-${entry.path}`} entry={entry} busy={busy}
             active={open?.path === entry.path && open?.staged}
             onOpen={() => openDiff(entry.path, true)} primaryIcon={Minus} primaryLabel="Unstage"
@@ -129,7 +144,9 @@ export default function WorktreeScreen({ repository, onConsole, onChanged, onBac
           {!tree.staged.length && <p className="muted">Nothing staged yet.</p>}
         </section>
         <section aria-label="Unstaged changes">
-          <h3><FilePenLine /> Changes <span className="count">{tree.unstaged.length}</span></h3>
+          <h3><FilePenLine /> Changes <span className="count">{tree.unstaged.length}</span>
+            {tree.unstaged.length > 0 && <Button className="bulk" icon={Plus} reason={bulkReason}
+              onClick={() => bulk(() => window.twig.stageAll(repository.id, 'tracked'), count => `Staged ${count} file${count === 1 ? '' : 's'}.`)}>Stage all</Button>}</h3>
           {tree.unstaged.map(entry => <FileRow key={`u-${entry.path}`} entry={entry} busy={busy}
             active={open?.path === entry.path && !open?.staged}
             onOpen={() => openDiff(entry.path, false)} primaryIcon={Plus} primaryLabel="Stage"
@@ -137,7 +154,9 @@ export default function WorktreeScreen({ repository, onConsole, onChanged, onBac
           {!tree.unstaged.length && <p className="muted">No unstaged changes.</p>}
         </section>
         <section aria-label="Untracked files">
-          <h3><FilePlus2 /> Untracked <span className="count">{tree.untracked.length}</span></h3>
+          <h3><FilePlus2 /> Untracked <span className="count">{tree.untracked.length}</span>
+            {tree.untracked.length > 0 && <Button className="bulk" icon={Plus} reason={bulkReason}
+              onClick={() => bulk(() => window.twig.stageAll(repository.id, 'untracked'), count => `Staged ${count} new path${count === 1 ? '' : 's'}.`)}>Stage all</Button>}</h3>
           {tree.untracked.map(entry => <FileRow key={`n-${entry.path}`} entry={entry} busy={busy}
             active={open?.path === entry.path}
             onOpen={() => trackAndOpen(entry.path)}

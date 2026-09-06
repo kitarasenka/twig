@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { loadWorktree, loadWorktreeDiff } from './git/worktree.js';
-import { applySelection, intentToAdd, stageFile, unstageFile } from './git/stage.js';
+import { applySelection, intentToAdd, stageAll, stageFile, unstageAll, unstageFile } from './git/stage.js';
 import { createCommit, stashPop, stashPush } from './git/commit-ops.js';
 import { loadStashDiff, loadStashes, loadStashFiles, runStashAction } from './git/stash.js';
 import { loadDivergence, pushRef, runSync } from './git/sync.js';
@@ -55,6 +55,17 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     return unstageFile({ ...options, path: asPath(path), unborn }).then(() => true);
   });
   handler('worktree:track', 2, (options, path) => intentToAdd({ ...options, path: asPath(path) }).then(() => true));
+
+  /**
+   * The bulk actions take a section, never a list of files: the paths are read
+   * from a fresh `git status` inside main, so what gets staged is what the
+   * section holds at the moment of the click.
+   */
+  handler('worktree:stage-all', 2, (options, scope) => {
+    if (!['tracked', 'untracked'].includes(scope)) throw new Error('Invalid stage request');
+    return stageAll({ ...options, scope });
+  });
+  handler('worktree:unstage-all', 1, options => unstageAll(options));
 
   handler('worktree:apply', 5, async (options, path, staged, digest, selection) => {
     if (typeof staged !== 'boolean' || typeof digest !== 'string' || !Array.isArray(selection)) throw new Error('Invalid apply request');

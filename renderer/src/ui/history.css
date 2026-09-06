@@ -20,6 +20,18 @@
 .graph-color-1 { stroke: var(--lane-mint); }
 .graph-color-2 { stroke: var(--lane-cream); }
 .graph-color-3 { stroke: var(--lane-leaf); }
+/* Commit age ramp, chosen in Settings: brown roots, green new work. */
+.graph-age-0 { stroke: var(--age-fresh); }
+.graph-age-1 { stroke: var(--age-young); }
+.graph-age-2 { stroke: var(--age-mature); }
+.graph-age-3 { stroke: var(--age-old); }
+.graph-age-4 { stroke: var(--age-root); }
+.age-text-0 { color: var(--age-fresh); }
+.age-text-1 { color: var(--age-young); }
+.age-text-2 { color: var(--age-mature); }
+.age-text-3 { color: var(--age-old); }
+.age-text-4 { color: var(--age-root); }
+.real-history[data-colors='age'] .worktree-row { color: var(--age-fresh); }
 .worktree-row { justify-content: flex-start; border-bottom: 1px solid var(--border); border-radius: 0; padding-inline: var(--space-4); color: var(--accent); }
 .history-pagination { display: flex; align-items: center; justify-content: center; min-height: 34px; padding-inline: var(--space-2); color: var(--muted); font-size: var(--text-xs); border-top: 1px solid var(--border); }
 .history-error { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; color: var(--danger); padding: var(--space-2) var(--space-4); }

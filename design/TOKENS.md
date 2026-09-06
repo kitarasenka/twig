@@ -5,6 +5,28 @@ M0, 2026-09-05. Source of truth: CSS below is copied exactly to
 
 ## Skill decisions
 
+Commit age ramp, 2026-09-06: five stops (`--age-fresh` … `--age-root`) paint the
+graph lanes, the Date column and the committed date in the commit panel from
+green new work down to brown roots. It is a Settings choice, stored next to the
+theme as `twig:commit-colors`, and the ramp is the default. The scale is
+absolute — today, this week, this month, this year, older — not relative to the
+loaded page: a relative scale would repaint rows already on screen the moment an
+older page arrives. Dark mode keeps the logo's light hues (spring green through
+clay); light mode inverts to forest, olive and bark. All ten colours pass 4.5:1
+against every surface in `foundation.mjs`, because the ramp also colours text.
+Colour is never the only carrier: the same row prints "45 days ago" next to the
+lane, and the Settings legend names every stop. No skill rerun for this one — it
+adds tokens and a settings row, not a screen.
+
+BugHunter, 2026-09-06: reran design-system for guided desktop debugging and
+React semantic controls. Retained Twig's tokens, local fonts and density.
+Adopted three named phases, an explicit remaining-test estimate, visible
+instructions, descriptive answer/skip/return buttons and expandable help.
+The requested sprout is part of the feature name. The panel wraps controls
+and scrolls within a bounded height so the history remains accessible.
+Reviewed dark/light and 1000×640 Electron screenshots; the compact check
+asserts no panel overflow and space for at least one history row.
+
 M5 repository management: reran design-system for desktop Git repository
 management and React controlled forms/async feedback. Kept Twig's existing
 identity and density instead of the suggested marketing layout. Native folder
@@ -125,6 +147,11 @@ coarse pointers get 44px targets. System theme by default; explicit theme persis
   --lane-mint: #79dfbd;
   --lane-cream: #eff6bd;
   --lane-leaf: #abe39a;
+  --age-fresh: #7ef0a6;
+  --age-young: #bff081;
+  --age-mature: #ecd98a;
+  --age-old: #e3b78b;
+  --age-root: #dca58a;
   --danger: #ffc2b2;
   --shadow: 0 16px 48px #00000066;
   --overlay: #00000080;
@@ -144,6 +171,11 @@ coarse pointers get 44px targets. System theme by default; explicit theme persis
   --lane-mint: #16604a;
   --lane-cream: #626018;
   --lane-leaf: #3e602b;
+  --age-fresh: #15683f;
+  --age-young: #40631a;
+  --age-mature: #6a5410;
+  --age-old: #7c4a1c;
+  --age-root: #6f3626;
   --danger: #973b2e;
   --shadow: 0 16px 48px #102d2326;
   --overlay: #102d2366;

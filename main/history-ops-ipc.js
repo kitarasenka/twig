@@ -4,6 +4,7 @@ import { loadOperationState, resolveGitDir } from './git/operation-state.js';
 import { cherryPick, merge, reset, revert, sequencer } from './git/history-ops.js';
 import { checkout, createBranch, createTag, deleteBranch, deleteTag, renameBranch, setUpstream } from './git/refs-ops.js';
 import { loadBisectState, runBisect } from './git/bisect.js';
+import { rewordHead } from './git/commit-ops.js';
 import { clearPlan, planFiles, startRebase } from './git/rebase.js';
 import { loadConflict, markResolved, saveResolution, takeSide } from './git/conflicts.js';
 
@@ -104,6 +105,26 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
       ...options, kind: asString(kind, 16), step: asString(step, 16),
       messagesFile: planFiles({ stateDir, cwd: options.cwd }).messagesFile
     })));
+
+  /**
+   * Rewriting the message of the tip commit. The oid the renderer was showing
+   * is checked against HEAD inside `rewordHead`, and an operation in progress
+   * refuses it here: mid-merge or mid-rebase HEAD is not the commit the user
+   * is looking at, and `--amend` would rewrite the wrong one.
+   */
+  handler('ops:reword', 3, (options, oid, message) => {
+    // A message that is not one is refused at the channel, like every other
+    // malformed argument; a HEAD that moved is a real outcome and comes back
+    // as `ok: false` with the state that followed.
+    const text = asString(message, 100_000);
+    if (text.trim().length === 0) throw new Error('Invalid text argument');
+    return withState(options, async () => {
+      const state = await loadOperationState(options);
+      if (state.kind !== 'none') return { ok: false, message: `Finish or abort the ${state.kind} first.` };
+      const warnings = await rewordHead({ ...options, message: text, expectedOid: oid });
+      return { ok: true, message: warnings.join(' ') || null };
+    });
+  });
 
   handler('ops:rebase', 3, (options, oid, entries) => {
     if (entries !== null && !Array.isArray(entries)) throw new Error('Invalid rebase request');

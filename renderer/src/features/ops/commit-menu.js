@@ -1,4 +1,4 @@
-import { ClipboardCopy, GitBranch, GitCommitHorizontal, GitMerge, ListOrdered, Redo2, RotateCcw, Scissors, Tag, Target, Undo2 } from 'lucide-react';
+import { ClipboardCopy, GitBranch, GitCommitHorizontal, GitMerge, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Undo2 } from 'lucide-react';
 
 /**
  * The items of the commit context menu (§8.2), as data.
@@ -47,7 +47,17 @@ export function buildCommitMenu({ commit, refs = [], head = {}, operation = { ki
     items.push({ key: 'merge-none', icon: GitMerge, text: `Merge into ${target}`, reason: 'No branch points at this commit', run: () => {} });
   }
 
+  // Rewording the tip is `commit --amend`, which needs nothing but HEAD. An
+  // older commit is rewritten by replaying the range, so it inherits every
+  // condition a rebase has: a clean tree, a commit that has a parent to replay
+  // from, and no merge, which a plain rebase does not replay at all.
+  const rewordReason = reason || (isHead ? undefined
+    : commit.parents.length === 0 ? 'Only the newest commit can be reworded here; this one starts the history'
+      : commit.parents.length > 1 ? 'A merge commit cannot be replayed by rebase'
+        : dirty ? 'Commit or stash your changes first' : undefined);
   items.push(
+    { key: 'reword', icon: PenLine, text: `Reword ${short}…`,
+      hint: isHead ? 'change the message only' : 'replays the commits after it', reason: rewordReason, run: handlers.reword },
     { key: 'rebase', icon: Redo2, text: `Rebase ${target} onto ${short}`, reason: reason || (isHead ? 'This is already where the branch is' : undefined), run: handlers.rebase },
     { key: 'rebase-i', icon: ListOrdered, text: `Rebase ${target} interactively from ${short}…`, reason: reason || (isHead ? 'There is nothing after this commit to replay' : undefined), run: handlers.interactiveRebase },
     { separator: true },
@@ -70,8 +80,8 @@ export function buildCommitMenu({ commit, refs = [], head = {}, operation = { ki
   items.push({ separator: true });
   if (!bisect.active) {
     items.push({
-      key: 'bisect-start', icon: Target, text: `Start bisect — ${short} is broken`,
-      hint: 'search for the commit that broke it', reason: bisectReason, run: () => handlers.bisect('start')
+      key: 'bisect-start', icon: Target, text: `🌱 BugHunter (bisect) — start at ${short}`,
+      hint: 'this commit has the bug; find where it started', reason: bisectReason, run: () => handlers.bisect('start')
     });
   } else {
     if (!bisect.done) {
@@ -80,7 +90,7 @@ export function buildCommitMenu({ commit, refs = [], head = {}, operation = { ki
         { key: 'bisect-good', icon: Target, text: `Mark ${short} as ${terms.good}`, reason: bisectReason, run: () => handlers.bisect('good') }
       );
     }
-    items.push({ key: 'bisect-reset', icon: Target, text: 'End bisect and return', reason, run: () => handlers.bisect('reset') });
+    items.push({ key: 'bisect-reset', icon: Target, text: 'Stop BugHunter and return', reason, run: () => handlers.bisect('reset') });
   }
 
   items.push(

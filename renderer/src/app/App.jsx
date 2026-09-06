@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Bell, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, Search, Settings, SquareTerminal, Undo2, Upload, UserRound, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Bell, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, Settings, SquareTerminal, Undo2, Upload, UserRound, X } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
 import Workspace from './Workspace.jsx';
@@ -10,11 +10,18 @@ import Repositories from '../features/settings/Repositories.jsx';
 import CloneRepository from '../features/settings/CloneRepository.jsx';
 import Remotes from '../features/settings/Remotes.jsx';
 import SshSettings from '../features/settings/SshSettings.jsx';
+import { AGE_STOPS, ageTextClass } from '../features/graph/age-color.js';
 
 const unavailable = 'Connect a repository to use this action';
 function initialTheme() {
   try { const value = localStorage.getItem('twig:theme'); return ['dark', 'light'].includes(value) ? value : 'system'; }
   catch { return 'system'; }
+}
+
+/** Age colours are the default: the ramp says how old the history is, lanes only say which branch. */
+function initialCommitColors() {
+  try { return localStorage.getItem('twig:commit-colors') === 'lanes' ? 'lanes' : 'age'; }
+  catch { return 'age'; }
 }
 
 function applyConsoleUpdate(entries, update) {
@@ -30,10 +37,12 @@ function applyConsoleUpdate(entries, update) {
 
 export default function App() {
   const [theme, setTheme] = useState(initialTheme);
+  const [commitColors, setCommitColors] = useState(initialCommitColors);
   const [active, setActive] = useState('demo');
   const [demoOpen, setDemoOpen] = useState(true);
   const [emptyOpen, setEmptyOpen] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
+  const [bugHunterSlot, setBugHunterSlot] = useState(null);
   const [sidebar, setSidebar] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [dialogBusy, setDialogBusy] = useState(false);
@@ -46,6 +55,7 @@ export default function App() {
   const [syncNote, setSyncNote] = useState('');
   const [worktreeVersion, setWorktreeVersion] = useState(0);
   const [remoteRevisions, setRemoteRevisions] = useState({});
+  const [closedTabs, setClosedTabs] = useState(() => new Set());
   const [undoState, setUndoState] = useState({ undo: false, redo: false, undoReason: 'No application actions to undo.', redoReason: 'No next action.' });
   const [undoMoving, setUndoMoving] = useState(false);
   const filterRef = useRef(null);
@@ -78,6 +88,9 @@ export default function App() {
     system.addEventListener('change', apply);
     return () => system.removeEventListener('change', apply);
   }, [theme]);
+  useEffect(() => {
+    try { localStorage.setItem('twig:commit-colors', commitColors); } catch { /* Preference remains session-local if storage is unavailable. */ }
+  }, [commitColors]);
   const branchName = repository?.status?.branch?.name || null;
   useEffect(() => {
     const request = ++divergenceRequest.current;
@@ -177,8 +190,19 @@ export default function App() {
     const request = ++selectionRequest.current;
     try {
       const next = await window.twig.selectRepository(id);
-      if (request === selectionRequest.current) { setWorkspace(next); setActive(`repository:${id}`); }
+      if (request === selectionRequest.current) {
+        setWorkspace(next); setActive(`repository:${id}`);
+        setClosedTabs(current => { if (!current.has(id)) return current; const copy = new Set(current); copy.delete(id); return copy; });
+      }
     } catch (error) { setStartupError(error.message || 'Could not select this repository.'); }
+  }
+  function closeRepositoryTab(id) {
+    setClosedTabs(current => new Set(current).add(id));
+    if (active !== `repository:${id}`) return;
+    const openRepositories = (workspace?.repositories || []).filter(item => item.id !== id && !closedTabs.has(item.id));
+    if (openRepositories.length > 0) setActive(`repository:${openRepositories[0].id}`);
+    else if (demoOpen) setActive('demo');
+    else openEmpty();
   }
   function acceptWorkspace(next, open = false) {
     ++selectionRequest.current;
@@ -223,7 +247,7 @@ export default function App() {
     <header className="tab-bar"><div className="brand"><img className="brand-logo" src="./twig-logo.png" alt="" width="36" height="36" /><strong>🌱 Twig</strong></div>
       <nav className="tabs" aria-label="Repository tabs">
         {demoOpen && <div className={`tab ${active === 'demo' ? 'active' : ''}`}><button aria-current={active === 'demo' ? 'page' : undefined} onClick={() => setActive('demo')}><GitBranch /><span>workspace-demo</span><small>DEMO</small></button><Button icon={X} aria-label="Close demo tab" title={`${mod}+W`} onClick={() => { setDemoOpen(false); openEmpty(); }} /></div>}
-        {workspace?.repositories.map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{!item.available && <small>OFFLINE</small>}</button></div>)}
+        {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{!item.available && <small>OFFLINE</small>}</button><Button icon={X} aria-label={`Close ${item.name} tab`} onClick={() => closeRepositoryTab(item.id)} /></div>)}
         {emptyOpen && <div className={`tab ${active === 'new' ? 'active' : ''}`}><button aria-current={active === 'new' ? 'page' : undefined} onClick={() => setActive('new')}><FolderOpen />New repository</button>{demoOpen && <Button icon={X} aria-label="Close new tab" onClick={() => { setEmptyOpen(false); setActive('demo'); }} />}</div>}
         <Button icon={Plus} aria-label="New repository tab" title={`${mod}+T`} onClick={openEmpty} />
       </nav>
@@ -245,8 +269,12 @@ export default function App() {
       <div className="tool-group"><Button className="tool" icon={GitBranch} reason={unavailable}>Branch</Button>
         <Button className="tool" icon={Layers} onClick={() => runStash('stash')} reason={syncReason}>Stash</Button>
         <Button className="tool" icon={Upload} onClick={() => runStash('pop')} reason={syncReason}>Pop</Button></div>
-      <div className="tool-group"><Button className={`tool ${consoleOpen ? 'pressed' : ''}`} icon={SquareTerminal} title={`${mod}+J`} aria-pressed={consoleOpen} onClick={() => setConsoleOpen(!consoleOpen)}>Terminal</Button></div>
-      <div className="toolbar-end"><Button reason={unavailable}>Actions<ChevronDown /></Button><Button icon={Search} title={`${mod}+F`} reason={active === 'demo' || repositoryActive ? undefined : 'Open a repository to search'} onClick={focusSearch}>Search</Button></div>
+      <div className="tool-group"><Button className={`tool ${consoleOpen ? 'pressed' : ''}`} icon={SquareTerminal} title={`${mod}+J`} aria-pressed={consoleOpen} onClick={() => setConsoleOpen(!consoleOpen)}>Terminal</Button>
+        <span className="bughunter-tool-slot" ref={setBugHunterSlot}>
+          {!workspace?.repositories.some(item => item.available && active === `repository:${item.id}`) &&
+            <Button className="tool bughunter-tool" reason={unavailable}>🌱 BugHunter (bisect)</Button>}
+        </span>
+      </div>
     </section>
     {startupError && <div className="startup-error" role="status">{startupError}</div>}
     {syncNote && <div className="sync-note" role="status"><span>{syncNote}</span><button onClick={() => setSyncNote('')} aria-label="Dismiss">×</button></div>}
@@ -254,7 +282,7 @@ export default function App() {
     {ready && <div className="workspace-container">
       {demoOpen && <div className="workspace-tab" hidden={active !== 'demo'}><Workspace filterRef={filterRef} mod={mod} sidebar={sidebar} onSidebar={() => setSidebar(!sidebar)} searchSignal={focusSearch} /></div>}
       {workspace?.repositories.map(item => <div className="workspace-tab" key={item.id} hidden={active !== `repository:${item.id}`}>
-        {item.available ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} mod={mod} referencesRevision={remoteRevisions[item.id] || 0}
+        {item.available ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} mod={mod} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} toolbarSlot={bugHunterSlot} toolbarBusyReason={syncing ? `${syncing} is running` : undoMoving ? 'Reversing the action…' : undefined}
           filterRef={node => { if (node) repositoryFilters.current.set(item.id, node); else repositoryFilters.current.delete(item.id); }}
           onConsole={() => setConsoleOpen(true)} onRepositoryChanged={refreshRepository} />
           : <RepositoryReady repository={item} onOpen={openRepository} />}
@@ -263,7 +291,11 @@ export default function App() {
     </div>}
     <Console expanded={consoleOpen} onToggle={() => setConsoleOpen(!consoleOpen)} mod={mod} entries={entries} />
     {dialog && <Dialog title={dialog} wide={['Git profile', 'Repositories', 'Clone repository', 'Remotes', 'SSH'].includes(dialog)} closeReason={dialogBusy ? 'Wait for the action to finish or cancel it first' : undefined} onClose={() => setDialog(null)}>
-      {dialog === 'Settings' && <><p className="muted">Make this workspace feel like yours.</p><label className="setting-row" htmlFor="theme"><span><strong>Appearance</strong><small>System follows your device setting.</small></span><select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label><div className="settings-note">🌱 Twig {info?.version || '0.2.0'}<br />Local fonts. No telemetry. No automatic updates.</div></>}
+      {dialog === 'Settings' && <><p className="muted">Make this workspace feel like yours.</p>
+        <label className="setting-row" htmlFor="theme"><span><strong>Appearance</strong><small>System follows your device setting.</small></span><select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
+        <label className="setting-row" htmlFor="commit-colors"><span><strong>Commit colors</strong><small>Age shades the graph and the dates from brown roots to green new work.</small></span><select id="commit-colors" value={commitColors} onChange={(e) => setCommitColors(e.target.value)}><option value="age">Commit age</option><option value="lanes">Branch lanes</option></select></label>
+        {commitColors === 'age' && <ul className="age-legend" aria-label="Commit age colors">{AGE_STOPS.map((stop, index) => <li key={stop.key} className={ageTextClass(index)}>{stop.label}</li>)}</ul>}
+        <div className="settings-note">🌱 Twig {info?.version || '0.2.0'}<br />Local fonts. No telemetry. No automatic updates.</div></>}
       {dialog === 'Settings' && <div className="manager-actions"><Button icon={FolderOpen} onClick={() => setDialog('Repositories')}>Manage repositories</Button><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : 'Open a repository first'} onClick={() => setDialog('Remotes')}>Manage remotes</Button></div>}
       {dialog === 'Settings' && <Button onClick={() => setDialog('SSH')}>SSH keys and config</Button>}
       {dialog === 'SSH' && <SshSettings entries={entries} onBusyChange={setDialogBusy} onConsole={showManagerOutput} />}

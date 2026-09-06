@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Archive, GitBranch, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
@@ -13,8 +14,9 @@ import BisectBanner from '../ops/BisectBanner.jsx';
 import RefsScreen from '../refs/RefsScreen.jsx';
 import StashScreen from '../stash/StashScreen.jsx';
 import RebaseDialog from '../rebase/RebaseDialog.jsx';
-import { ConfirmDialog, NameDialog } from '../ops/dialogs.jsx';
+import { ConfirmDialog, MessageDialog, NameDialog } from '../ops/dialogs.jsx';
 import { buildCommitMenu } from '../ops/commit-menu.js';
+import { buildRewordPlan } from '../ops/reword-plan.js';
 import { createLaneLayout } from './layout.js';
 
 const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
@@ -48,7 +50,7 @@ function Diff({ diff, onClose }) {
   </section>;
 }
 
-export default function HistoryWorkspace({ repository, active, mod, filterRef, onConsole, onRepositoryChanged, referencesRevision = 0 }) {
+export default function HistoryWorkspace({ repository, active, mod, filterRef, onConsole, onRepositoryChanged, referencesRevision = 0, commitColors = 'lanes', toolbarSlot, toolbarBusyReason }) {
   const [data, setData] = useState({ commits: [], lanes: [], refs: [], nextSkip: 0, width: 1 });
   const dataRef = useRef(data);
   const layout = useRef(createLaneLayout());
@@ -66,6 +68,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const [diff, setDiff] = useState(null);
   const [operation, setOperation] = useState(IDLE);
   const [bisect, setBisect] = useState(NO_BISECT);
+  const [operationReady, setOperationReady] = useState(false);
   const [stashCount, setStashCount] = useState(0);
   const [menu, setMenu] = useState(null);
   const [dialog, setDialog] = useState(null);
@@ -127,12 +130,15 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     }
   }, [repository.id, loadMore]);
   const refreshOperation = useCallback(async () => {
+    setOperationReady(false);
+    let verified = true;
     try {
       setOperation(await window.twig.getOperationState(repository.id));
-    } catch { setOperation(IDLE); }
+    } catch { setOperation(IDLE); verified = false; }
     try {
       setBisect(await window.twig.getBisectState(repository.id));
-    } catch { setBisect(NO_BISECT); }
+    } catch { setBisect(NO_BISECT); verified = false; }
+    setOperationReady(verified);
   }, [repository.id]);
   useEffect(() => {
     void reload();
@@ -184,12 +190,12 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     try {
       const result = await window.twig.runBisect(repository.id, step, oid);
       setBisect(result.bisect);
-      if (result.ok) setNote(step === 'start' ? 'Bisect started.' : step === 'reset' ? 'Bisect ended.' : `Revision marked ${step}.`);
-      else { setNote(result.message || 'Bisect did not finish.'); onConsole(); }
+      if (result.ok) setNote(step === 'start' ? '🌱 BugHunter (bisect) started.' : step === 'reset' ? 'BugHunter ended.' : `Revision marked ${step}.`);
+      else { setNote(result.message || 'BugHunter did not finish.'); onConsole(); }
       await reload();
       onRepositoryChanged?.();
     } catch (failure) {
-      setNote(failure.message || 'Bisect failed.');
+      setNote(failure.message || 'BugHunter failed.');
       onConsole();
       await refreshOperation();
     } finally { setWorking(false); }
@@ -235,6 +241,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       revert: () => perform(() => window.twig.revertCommit(repository.id, commit.oid, commit.parents.length > 1 ? 1 : null), `Reverted ${short}.`),
       rebase: () => perform(() => window.twig.rebaseOnto(repository.id, commit.oid, null), `Rebased ${target} onto ${short}.`),
       interactiveRebase: () => void openRebase(commit.oid),
+      reword: () => void openReword(commit),
       reset: mode => {
         const run = () => perform(() => window.twig.resetTo(repository.id, mode, commit.oid), `Reset ${target} to ${short}.`);
         if (mode !== 'hard') { run(); return; }
@@ -254,6 +261,46 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   function confirmIfDirty({ title, command, consequence, confirmLabel, run }) {
     if (!dirty) { run(); return; }
     setDialog({ type: 'confirm', title, command, consequence, confirmLabel, onConfirm: run });
+  }
+
+  /**
+   * Rewording the tip is `commit --amend`, which touches nothing but HEAD, so
+   * it is offered straight away. An older commit is rewritten the way Git
+   * rewrites history — by replaying the range — so the commits Git would
+   * replay are read first: the dialog can then say how many of them change
+   * their object id, and a commit that is not on the current branch is refused
+   * before the user writes a message for nothing.
+   */
+  async function openReword(commit) {
+    const short = commit.oid.slice(0, 7);
+    const initial = [commit.subject, commit.body].filter(Boolean).join('\n\n');
+    const dialogFor = (command, consequence, confirmLabel, onConfirm) => setDialog({
+      type: 'message', title: `Reword ${short}`, label: 'Commit message',
+      initial, command, consequence, confirmLabel, onConfirm
+    });
+    if (headOid === commit.oid) {
+      dialogFor(['commit', '--amend', '--only', '--file=-'],
+        `${short} gets a new object id. Its changes stay exactly as they are, and whatever is staged is left out of it. If the commit is already pushed, the remote will only accept it after a force push.`,
+        'Rewrite the message',
+        text => perform(() => window.twig.rewordCommit(repository.id, commit.oid, text), 'Message rewritten.'));
+      return;
+    }
+    setWorking(true); setNote('');
+    try {
+      const parent = commit.parents[0];
+      const commits = await window.twig.getRebaseCandidates(repository.id, parent);
+      if (!commits.some(item => item.oid === commit.oid)) {
+        throw new Error(`${short} is not on ${headBranch || 'the current HEAD'}. Check out the branch that contains it first.`);
+      }
+      const replayed = commits.length - 1;
+      dialogFor(['rebase', '--interactive', parent],
+        `${short} and ${replayed === 1 ? 'the one commit' : `the ${replayed} commits`} after it get new object ids; their changes are replayed unchanged. If any of them is already pushed, the remote will only accept them after a force push.`,
+        'Rewrite and replay',
+        text => perform(() => window.twig.rebaseOnto(repository.id, parent, buildRewordPlan(commits, commit.oid, text)), 'Message rewritten.'));
+    } catch (failure) {
+      setNote(failure.message || 'Could not read the commits to replay.');
+      onConsole();
+    } finally { setWorking(false); }
   }
 
   async function openRebase(oid) {
@@ -308,9 +355,22 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   }
   const changes = repository.status?.entries || [];
   const screen = SCREENS.includes(selected) ? selected : null;
+  const hunterCommit = !screen && !range ? data.commits[indexMap.get(selected)] : null;
+  const hunterReason = toolbarBusyReason || (working ? 'Git is working' : undefined)
+    || (!operationReady ? 'Repository state is not verified yet. Refresh to check it.' : undefined)
+    || (bisect.active ? 'BugHunter is already running. Use the panel below.' : undefined)
+    || (operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : undefined)
+    || (dirty || operation.conflicts.length > 0 ? 'Commit or stash your changes first' : undefined)
+    || (loading ? 'History is loading' : undefined)
+    || (!data.commits.length ? 'This repository has no commits to search' : undefined)
+    || (!hunterCommit ? 'Select a commit with the bug in the history first' : undefined);
   const visibleRefs = data.refs.filter(ref => ref.name.toLowerCase().includes(filter.toLowerCase()));
   const showDetail = detail && !conflict && !screen;
   return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${width}px` }}>
+    {active && toolbarSlot && createPortal(
+      <Button className="tool bughunter-tool" reason={hunterReason}
+        title={hunterCommit ? `Start from ${hunterCommit.oid.slice(0, 7)}: choose a commit where the bug is present` : undefined}
+        onClick={() => { if (!hunterReason) void performBisect('start', hunterCommit.oid); }}>🌱 BugHunter (bisect)</Button>, toolbarSlot)}
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} aria-label="Repository navigation">
       {collapsed ? <Button icon={PanelLeftOpen} aria-label="Expand repository sidebar" onClick={() => setCollapsed(false)} /> : <>
         <div className="sidebar-filter"><Search /><input ref={filterRef} aria-label="Filter repository references" placeholder={`Filter refs · ${mod}+F`} value={filter} onChange={event => setFilter(event.target.value)} /></div>
@@ -333,11 +393,14 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       {note && <div className="operation-note" role="status"><span>{note}</span><button onClick={() => setNote('')} aria-label="Dismiss">×</button></div>}
       <OperationBanner state={operation} busy={working} onOpenConflict={setConflict}
         onStep={step => perform(() => window.twig.runSequencer(repository.id, operation.kind, step), `${operation.kind} ${step === 'abort' ? 'aborted' : step === 'skip' ? 'skipped a commit' : 'finished'}.`)} />
-      <BisectBanner state={bisect} busy={working} onStep={step => void performBisect(step, null)} onOpenCommit={jump} />
+      <BisectBanner state={bisect} busy={working}
+        blockedReason={operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : dirty ? 'Commit or stash your changes before the next test' : undefined}
+        selectedCommit={!screen && !range ? data.commits[indexMap.get(selected)] : null}
+        onStep={(step, oid = null) => void performBisect(step, oid)} onOpenCommit={jump} />
       <div hidden={Boolean(diff) || Boolean(conflict) || Boolean(screen)} className="history-slot">
         {loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} head={repository.status?.branch?.oid}
-            onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} changes={changes.length} onWorktree={() => choose('worktree')} active={active} />}
+            onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} changes={changes.length} onWorktree={() => choose('worktree')} active={active} commitColors={commitColors} />}
       </div>
       {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}
         onResolved={state => { setConflict(null); setOperation(state); setNote(`${conflict} marked resolved.`); void reload(); onRepositoryChanged?.(); }} />}
@@ -345,12 +408,12 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} />}
       {!conflict && screen === 'stashes' && <StashScreen repository={repository} busy={working}
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} />}
-      {!conflict && screen === 'worktree' && <WorktreeScreen repository={repository} onConsole={onConsole} onChanged={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }}
+      {!conflict && screen === 'worktree' && <WorktreeScreen repository={repository} operation={operation} onConsole={onConsole} onChanged={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }}
         onBack={() => choose(data.commits[0]?.oid || null)} />}
       {!conflict && diff && <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} />}
     </main>
     {showDetail && <Splitter width={width} onWidth={setWidth} />}
-    {showDetail && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile} onConsole={onConsole} range={range} />}
+    {showDetail && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile} onConsole={onConsole} range={range} commitColors={commitColors} />}
     {menu && <Menu x={menu.x} y={menu.y} label={`Actions for commit ${menu.commit.oid.slice(0, 7)}`} onClose={() => setMenu(null)}
       items={buildCommitMenu({
         commit: menu.commit, refs: refMap.get(menu.commit.oid) || [], operation, bisect, dirty,
@@ -359,6 +422,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       })} />}
     {dialog?.type === 'confirm' && <ConfirmDialog {...dialog} onClose={() => setDialog(null)} />}
     {dialog?.type === 'name' && <NameDialog {...dialog} onClose={() => setDialog(null)} />}
+    {dialog?.type === 'message' && <MessageDialog {...dialog} onClose={() => setDialog(null)} />}
     {dialog?.type === 'rebase' && <RebaseDialog commits={dialog.commits} onClose={() => setDialog(null)}
       onRun={entries => perform(() => window.twig.rebaseOnto(repository.id, dialog.oid, entries), 'Rebase finished.')} />}
   </div>;

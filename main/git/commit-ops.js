@@ -1,4 +1,5 @@
 import { runGit } from './exec.js';
+import { validateOid } from './commit.js';
 
 /** Commit creation and the stash, i.e. local writes that move HEAD or shelve work. */
 
@@ -27,6 +28,18 @@ export function buildCommitArgv({ amend = false } = {}) {
   return ['commit', '--file=-', '--cleanup=strip', ...(amend ? ['--amend'] : [])];
 }
 
+/**
+ * Rewriting the message of the tip commit, and nothing else.
+ *
+ * `--only` with no paths is what keeps this a reword: a bare `git commit
+ * --amend` would fold whatever is staged into the commit being reworded, so a
+ * user who only wanted to fix a typo would silently ship their staged work
+ * inside somebody else's commit. Git documents the pair as exactly this case.
+ */
+export function buildRewordArgv() {
+  return ['commit', '--amend', '--only', '--file=-', '--cleanup=strip'];
+}
+
 export function buildStashArgv({ includeUntracked = false, message = '' } = {}) {
   return ['stash', 'push', ...(includeUntracked ? ['--include-untracked'] : []),
     ...(message ? ['--message', message] : [])];
@@ -49,6 +62,27 @@ export async function createCommit({ cwd, log, message, amend = false }) {
   const check = validateCommitMessage(message);
   if (!check.valid) throw new Error(check.error);
   await mutate({ cwd, log, argv: buildCommitArgv({ amend }), stdin: message, operation: 'Commit' });
+  return check.warnings;
+}
+
+/**
+ * Replaces the message of the commit HEAD is on. The caller says which commit
+ * it was showing: HEAD is re-read here and a mismatch is refused, because the
+ * message on screen belongs to one commit and `--amend` would rewrite whatever
+ * HEAD has become in the meantime.
+ * @param {{ cwd: string, log: object, message: string, expectedOid: string }} options
+ * @returns {Promise<string[]>} the same message warnings a commit reports
+ */
+export async function rewordHead({ cwd, log, message, expectedOid }) {
+  const check = validateCommitMessage(message);
+  if (!check.valid) throw new Error(check.error);
+  validateOid(expectedOid);
+  const head = await runGit({ argv: ['rev-parse', '--verify', 'HEAD'], cwd, log, operation: 'Read the commit being reworded' });
+  if (head.code !== 0) throw new Error('There is no commit to reword yet.');
+  if (head.stdout.trim().toLowerCase() !== expectedOid.toLowerCase()) {
+    throw new Error('The branch moved since this message was read. Refresh the history and try again.');
+  }
+  await mutate({ cwd, log, argv: buildRewordArgv(), stdin: message, operation: 'Reword the tip commit' });
   return check.warnings;
 }
 

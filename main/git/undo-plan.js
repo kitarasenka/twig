@@ -26,7 +26,8 @@ export function buildUndoPlan(entry, direction) {
   }
   const undo = direction === 'undo';
   let commands; let destructive = false;
-  if (kind === 'worktree:commit') {
+  if (kind === 'worktree:commit' || kind === 'ops:reword') {
+    // A reword always has a commit under it; only a first commit undoes to nothing.
     commands = undo && !before.head ? [['update-ref', '-d', 'HEAD', after.head]]
       : [reset('--soft', undo ? before.head : after.head)];
   } else if (['ops:merge', 'ops:revert', 'ops:cherry-pick'].includes(kind)) {
@@ -62,6 +63,6 @@ export function inverseReason(kind, before, after, args) {
   if (kind === 'stash:pop' && args[0] > 0) return 'Undo cannot safely restore the position of a popped stash below the top entry.';
   if (kind === 'refs:checkout' && !before.head) return 'Checkout from an unborn branch has no revision to restore.';
   if (kind === 'refs:create-branch' && !before.head) return 'There is no previous revision to restore.';
-  if (!['worktree:commit', 'ops:merge', 'ops:revert', 'ops:cherry-pick', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind)) return `${kind.replaceAll(':', ' ')} ends the Undo chain.`;
+  if (!['worktree:commit', 'ops:reword', 'ops:merge', 'ops:revert', 'ops:cherry-pick', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind)) return `${kind.replaceAll(':', ' ')} ends the Undo chain.`;
   return null;
 }

@@ -1,6 +1,7 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { Check, GitBranch, Globe, Tag, FilePenLine } from 'lucide-react';
 import { LANE_WIDTH, ROW_HEIGHT, segmentPath, visibleRange } from './layout.js';
+import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
 
 export function relativeDate(value) {
   const seconds = Math.round((Date.parse(value) - Date.now()) / 1000);
@@ -11,7 +12,10 @@ export function relativeDate(value) {
   return format.format(Math.round(seconds / 86400), 'day');
 }
 
-const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, head, refs, onSelect, onMenu, dayStart }) {
+const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, head, refs, onSelect, onMenu, dayStart, age }) {
+  // In age mode a row paints its own age onto every lane crossing it, so the
+  // graph reads as one gradient down the page instead of per-branch colours.
+  const stroke = age === null ? null : ageStrokeClass(age);
   return <div role="option" id={`commit-${commit.oid}`} aria-selected={selected} aria-posinset={index + 1} aria-setsize={total}
     className={`real-commit-row ${selected ? 'selected' : ''} ${dayStart ? 'new-day' : ''}`}
     style={{ top: index * ROW_HEIGHT }} onClick={event => onSelect(commit.oid, event.shiftKey)}
@@ -20,16 +24,16 @@ const CommitRow = memo(function CommitRow({ commit, layout, index, total, select
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
     {refs?.length > 2 && <span className="ref-badge ref-more" title={refs.slice(2).map(ref => ref.fullName).join('\n')}>+{refs.length - 2}</span>}</span>
     <svg className="real-lane" aria-hidden="true" height={ROW_HEIGHT}>
-      {layout.segments.map((segment, i) => <path key={i} className={`graph-color-${segment.color}`} d={segmentPath(segment)} />)}
-      <circle className={`graph-color-${layout.color}`} cx={12 + layout.lane * LANE_WIDTH} cy={15} r={4} />
+      {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment)} />)}
+      <circle className={stroke || `graph-color-${layout.color}`} cx={12 + layout.lane * LANE_WIDTH} cy={15} r={4} />
     </svg>
     <span className="commit-subject" title={`${commit.subject}\n${commit.body}`}><span>{commit.subject || '(no subject)'}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
     <span className="author-col" title={commit.author.email}>{commit.author.name}</span>
-    <span className="date-cell" title={commit.committedAt}>{relativeDate(commit.committedAt)}</span>
+    <span className={`date-cell ${age === null ? '' : ageTextClass(age)}`} title={commit.committedAt}>{relativeDate(commit.committedAt)}</span>
   </div>;
 });
 
-export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, head, onSelect, onMenu, loadMore, hasMore, loading, changes, onWorktree, active }) {
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, head, onSelect, onMenu, loadMore, hasMore, loading, changes, onWorktree, active, commitColors = 'lanes' }) {
   const scroller = useRef(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
   const [focusIndex, setFocusIndex] = useState(0);
@@ -78,7 +82,10 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
     if (commits[index]) onSelect(commits[index].oid, event.shiftKey);
     if (index >= commits.length - 2 && hasMore && !loading) loadMore();
   }
-  return <div className="history real-history" style={{ '--graph-width': `${Math.max(72, laneCount * LANE_WIDTH + 24)}px` }}>
+  // One clock reading per render, shared by every visible row: age is a property
+  // of the moment the graph is drawn, not of each row on its own.
+  const now = commitColors === 'age' ? Date.now() : null;
+  return <div className="history real-history" data-colors={commitColors} style={{ '--graph-width': `${Math.max(72, laneCount * LANE_WIDTH + 24)}px` }}>
     <div className="real-history-columns"><span>Branch / tag</span><span>Graph</span><span>Commit message</span><span className="author-col">Author</span><span>Date</span></div>
     {changes > 0 && <button className={`worktree-row ${selected === 'worktree' ? 'selected' : ''}`} onClick={onWorktree}><FilePenLine />Uncommitted changes, {changes} files</button>}
     <div className="real-history-scroll" ref={scroller} role="listbox" aria-label="Commit history" tabIndex={0}
@@ -90,7 +97,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
       }}>
       <div className="virtual-commits" style={{ height: commits.length * ROW_HEIGHT }}>
         {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
-          selected={selected === commit.oid} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu}
+          selected={selected === commit.oid} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} age={now === null ? null : ageStop(commit.committedAt, now)}
           dayStart={start + offset > 0 && commit.committedAt.slice(0, 10) !== commits[start + offset - 1].committedAt.slice(0, 10)} />)}
       </div>
     </div>

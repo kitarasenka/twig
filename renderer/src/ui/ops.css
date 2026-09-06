@@ -26,14 +26,15 @@
 .dialog-actions .muted { margin-right: auto; font-size: var(--text-xs); }
 .checkbox-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
 
-.confirm-dialog, .name-dialog { display: flex; flex-direction: column; gap: var(--space-2); max-width: 62ch; }
+.confirm-dialog, .name-dialog, .message-dialog { display: flex; flex-direction: column; gap: var(--space-2); max-width: 62ch; }
 .confirm-consequence { display: flex; gap: var(--space-2); margin: 0; line-height: 1.6; }
 .confirm-consequence svg { flex: none; color: var(--danger); }
 .confirm-command { display: block; padding: var(--space-2) var(--space-3); background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--text-sm); overflow-x: auto; white-space: pre; }
-.name-dialog label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-.name-dialog input, .name-dialog textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border);
+.name-dialog label, .message-dialog label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.name-dialog input, .name-dialog textarea, .message-dialog textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: var(--space-2); font-family: var(--font-mono); font-size: var(--text-sm); }
+.message-dialog p { margin: 0; }
 .name-dialog .checkbox-row { text-transform: none; letter-spacing: 0; color: var(--text); }
 
 .operation-note { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-4);

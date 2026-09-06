@@ -39,7 +39,8 @@ function contrast(a, b) { const values = [luminance(a), luminance(b)].sort((x, y
 for (const theme of ['dark', 'light']) {
   const block = tokens.split(`:root[data-theme='${theme}'] {`)[1].split('}')[0];
   const palette = Object.fromEntries([...block.matchAll(/--([\w-]+): (#\w{6});/g)].map(m => [m[1], m[2].slice(1)]));
-  for (const foreground of ['text', 'muted', 'accent', 'lane-mint', 'lane-cream', 'lane-leaf', 'danger']) {
+  for (const foreground of ['text', 'muted', 'accent', 'lane-mint', 'lane-cream', 'lane-leaf', 'danger',
+    'age-fresh', 'age-young', 'age-mature', 'age-old', 'age-root']) {
     for (const background of ['bg', 'surface', 'surface-raised', 'surface-hover', 'accent-bg']) {
       assert.ok(contrast(palette[foreground], palette[background]) >= 4.5, `${theme}: ${foreground} on ${background}`);
     }

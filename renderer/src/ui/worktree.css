@@ -10,6 +10,10 @@
   font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .worktree-lists h3 svg { width: 14px; height: 14px; }
 .worktree-lists .count { margin-left: auto; }
+.worktree-lists h3 .bulk { min-height: 22px; padding: 0 var(--space-2); font-size: var(--text-xs);
+  text-transform: none; letter-spacing: 0; color: var(--accent); }
+.worktree-lists h3 .bulk svg { width: 12px; height: 12px; }
+.worktree-lists h3 .bulk:disabled { color: var(--muted); }
 .worktree-lists .muted { padding: 0 var(--space-3) var(--space-2); font-size: var(--text-xs); }
 .worktree-file { display: flex; align-items: center; gap: var(--space-1); padding-right: var(--space-2); }
 .worktree-file.selected { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); }

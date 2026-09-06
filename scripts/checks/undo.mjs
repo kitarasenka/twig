@@ -7,7 +7,7 @@ import { runGit } from '../../main/git/exec.js';
 import { UndoService } from '../../main/undo.js';
 import { captureState } from '../../main/git/undo-snapshot.js';
 import { buildUndoPlan } from '../../main/git/undo-plan.js';
-import { createCommit, stashPop, stashPush } from '../../main/git/commit-ops.js';
+import { createCommit, rewordHead, stashPop, stashPush } from '../../main/git/commit-ops.js';
 import { createBranch, checkout } from '../../main/git/refs-ops.js';
 import { merge, revert } from '../../main/git/history-ops.js';
 
@@ -36,6 +36,14 @@ try {
   await move('undo'); assert.equal(await git(['rev-parse', 'HEAD']), first.head);
   undo = new UndoService({ directory: root, log }); await undo.load();
   assert.equal((await undo.inspect(cwd)).redo, true); await move('redo'); assert.equal((await state()).digest, second.digest);
+  // A reword is undone like a commit — a soft reset back to the commit that
+  // was rewritten — and the message itself is never written to the journal.
+  await run('ops:reword', [second.head, 'Second, reworded'], () => rewordHead({ ...options, message: 'Second, reworded', expectedOid: second.head }));
+  const reworded = await state(); assert.equal(await git(['log', '-1', '--format=%s']), 'Second, reworded');
+  assert.ok(!(await readFile(path.join(root, 'operations.json'), 'utf8')).includes('Second, reworded'), 'the Undo journal stores no commit messages');
+  await move('undo'); assert.equal((await state()).digest, second.digest); assert.equal(await git(['log', '-1', '--format=%s']), 'Second');
+  await move('redo'); assert.equal((await state()).digest, reworded.digest);
+  await move('undo'); assert.equal((await state()).digest, second.digest);
   await run('refs:create-branch', ['feature', second.head, true], () => createBranch({ ...options, name: 'feature', startPoint: second.head, checkout: true }));
   const branch = await state(); await move('undo'); assert.equal((await state()).digest, second.digest);
   await move('redo'); assert.equal((await state()).digest, branch.digest);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
@@ -48,6 +48,39 @@ export function NameDialog({ title, label, placeholder, confirmLabel, extra, wit
       <div className="dialog-actions">
         <Button type="button" onClick={onClose}>Cancel</Button>
         <Button type="submit" className="primary" reason={name.trim().length === 0 ? 'Enter a name first' : invalid ? 'This name is not valid' : undefined}>{confirmLabel}</Button>
+      </div>
+    </form>
+  </Dialog>;
+}
+
+/**
+ * Rewrites a commit message. The exact command is shown the way §6.5 asks for
+ * a destructive one, because a reword is a rewrite: the commit gets a new
+ * object id whether Git reached it through `--amend` or through a replay.
+ *
+ * A message identical to the one on screen is refused rather than run: it
+ * would still mint a new id, which is all cost and no change.
+ */
+export function MessageDialog({ title, label, initial, confirmLabel, command, consequence, onConfirm, onClose }) {
+  const [text, setText] = useState(initial);
+  const field = useRef(null);
+  // showModal() focuses the textarea; the caret belongs after the text, not before it.
+  useEffect(() => { field.current?.setSelectionRange(initial.length, initial.length); }, [initial]);
+  const subject = text.split('\n')[0];
+  const reason = text.trim().length === 0 ? 'Write a message first'
+    : text === initial ? 'This is the message it already has' : undefined;
+  return <Dialog title={title} onClose={onClose}>
+    <form className="name-dialog message-dialog" onSubmit={event => { event.preventDefault(); onClose(); onConfirm(text); }}>
+      <label htmlFor="reword-message">{label}</label>
+      <textarea id="reword-message" ref={field} rows={6} value={text} spellCheck={false}
+        onChange={event => setText(event.target.value)} />
+      <p className={subject.length > 72 ? 'warn' : 'muted'}>{subject.length}/72 in the subject</p>
+      <p className="confirm-consequence"><AlertTriangle aria-hidden="true" />{consequence}</p>
+      <p className="muted">This command will run:</p>
+      <code className="confirm-command">$ git {command.join(' ')}</code>
+      <div className="dialog-actions">
+        <Button type="button" onClick={onClose}>Cancel</Button>
+        <Button type="submit" className="primary" reason={reason}>{confirmLabel}</Button>
       </div>
     </form>
   </Dialog>;

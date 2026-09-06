@@ -13,6 +13,8 @@ import { pushRefCommand, splitRemoteRef } from '../../renderer/src/features/refs
 import { buildEditorEnv, buildMessageMap, buildRebaseArgv, buildTodo, planDirectory } from '../../main/git/rebase.js';
 import { buildRebaseTodoArgv } from '../../main/git/history.js';
 import { buildMarkResolvedArgv, buildStageContentArgv, buildTakeSideArgv } from '../../main/git/conflicts.js';
+import { buildRewordArgv } from '../../main/git/commit-ops.js';
+import { buildRewordPlan } from '../../renderer/src/features/ops/reword-plan.js';
 import { buildCommitMenu } from '../../renderer/src/features/ops/commit-menu.js';
 
 const A = '82df62445b05a04be53291bb36b5db80e46dad77';
@@ -122,7 +124,7 @@ const keysOf = menu => menu.filter(item => !item.separator).map(item => item.key
 // Menu.jsx disables any item that carries a reason, so the check reads it the same way.
 const enabledOf = menu => menu.filter(item => !item.separator && !item.reason).map(item => item.key);
 const handlers = Object.fromEntries(['createBranch', 'createTag', 'checkoutBranch', 'checkoutCommit', 'merge',
-  'cherryPick', 'revert', 'rebase', 'interactiveRebase', 'reset', 'copy'].map(name => [name, () => {}]));
+  'cherryPick', 'revert', 'rebase', 'interactiveRebase', 'reword', 'reset', 'copy'].map(name => [name, () => {}]));
 
 // No branch points at this commit: Merge is shown but disabled, with the
 // reason, because its absence would read as a missing feature.
@@ -237,6 +239,50 @@ assert.equal(splitRemoteRef('refs/remotes/origin/', ['origin']), null, 'a remote
   });
   assert.ok(!keysOf(finished).includes('bisect-bad'), 'a finished search has nothing left to mark');
   assert.ok(enabledOf(finished).includes('bisect-reset'));
+}
+
+// --- rewording a commit ------------------------------------------------------
+// `--only` with no paths is the whole point: without it `--amend` would fold
+// whatever is staged into the commit whose message was being fixed.
+assert.deepEqual(buildRewordArgv(), ['commit', '--amend', '--only', '--file=-', '--cleanup=strip']);
+
+// An older commit is reworded by replaying the range: exactly one line is a
+// reword, every other commit is picked, and the order Git executes is kept.
+{
+  const commits = [{ oid: A }, { oid: B }, { oid: C }];
+  assert.deepEqual(buildRewordPlan(commits, B, 'a better subject'), [
+    { action: 'pick', oid: A },
+    { action: 'reword', oid: B, message: 'a better subject' },
+    { action: 'pick', oid: C }
+  ]);
+  assert.deepEqual(buildTodo(buildRewordPlan(commits, B, 'x')), `pick ${A}\nreword ${B}\npick ${C}\n`);
+  assert.deepEqual(buildMessageMap(buildRewordPlan(commits, B, 'x')), { [B]: 'x' });
+  assert.throws(() => buildRewordPlan(commits, SHA256, 'x'), /not among/, 'a commit outside the range is refused');
+  assert.throws(() => buildRewordPlan(commits, B, '  '), /needs a message/);
+  assert.throws(() => buildRewordPlan([], B, 'x'), /no commits/);
+}
+
+// The tip is reworded by `--amend` and needs nothing else; an older commit
+// inherits every condition a rebase has, and each refusal says which one.
+{
+  const tip = buildCommitMenu({ commit, refs: [], head: { branch: 'main', oid: A }, dirty: true, handlers });
+  assert.ok(enabledOf(tip).includes('reword'), 'amending the tip does not care about the working tree');
+
+  const older = buildCommitMenu({ commit, refs: [], head: { branch: 'main', oid: C }, handlers });
+  assert.ok(enabledOf(older).includes('reword'));
+  assert.match(older.find(item => item.key === 'reword').hint, /replays/);
+
+  const dirtyOlder = buildCommitMenu({ commit, refs: [], head: { branch: 'main', oid: C }, dirty: true, handlers });
+  assert.match(dirtyOlder.find(item => item.key === 'reword').reason, /stash/);
+
+  const root = buildCommitMenu({ commit: { oid: A, subject: 'root', body: '', parents: [] }, refs: [], head: { branch: 'main', oid: C }, handlers });
+  assert.match(root.find(item => item.key === 'reword').reason, /starts the history/);
+
+  const mergeCommit = buildCommitMenu({ commit: { oid: A, subject: 'merge', body: '', parents: [B, C] }, refs: [], head: { branch: 'main', oid: C }, handlers });
+  assert.match(mergeCommit.find(item => item.key === 'reword').reason, /merge commit/);
+
+  const busy = buildCommitMenu({ commit, refs: [], head: { branch: 'main', oid: A }, operation: { kind: 'merge' }, handlers });
+  assert.ok(!enabledOf(busy).includes('reword'), 'mid-merge HEAD is not the commit on screen');
 }
 
 console.log('history-ops: all checks passed');

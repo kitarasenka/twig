@@ -8,7 +8,11 @@ import { loadOperationState, resolveGitDir } from '../../main/git/operation-stat
 import { cherryPick, merge, reset, revert, sequencer } from '../../main/git/history-ops.js';
 import { checkout, createBranch, createTag } from '../../main/git/refs-ops.js';
 import { clearPlan, planDirectory, startRebase } from '../../main/git/rebase.js';
+import { loadRebaseCandidates } from '../../main/git/history.js';
+import { buildUndoPlan, inverseReason } from '../../main/git/undo-plan.js';
 import { loadConflict, saveResolution, takeSide } from '../../main/git/conflicts.js';
+import { rewordHead } from '../../main/git/commit-ops.js';
+import { buildRewordPlan } from '../../renderer/src/features/ops/reword-plan.js';
 import { parseConflictFile } from '../../renderer/src/features/conflicts/conflict-parser.js';
 
 /**
@@ -226,6 +230,62 @@ try {
   await takeSide({ ...options, path: 'blob.bin', side: 'theirs' });
   assert.deepEqual([...await readFile(path.join(cwd, 'blob.bin'))], [0, 1, 2, 0, 3]);
   await sequencer({ ...options, kind: 'merge', step: 'abort' });
+
+  // --- rewording -------------------------------------------------------------
+  // The tip, with something staged. This is the case an ordinary `--amend`
+  // gets wrong: the staged file would be swallowed by the commit being
+  // reworded, which is why the argv carries `--only`.
+  await git(['checkout', 'main', '--']);
+  await write('reword.txt', 'first\n');
+  await git(['add', '--', ':(literal)reword.txt']);
+  await git(['commit', '--message', 'typpo in the subject']);
+  const beforeReword = await git(['rev-parse', 'HEAD']);
+  const treeBefore = await git(['rev-parse', 'HEAD^{tree}']);
+  await write('staged.txt', 'not part of that commit\n');
+  await git(['add', '--', ':(literal)staged.txt']);
+
+  const warnings = await rewordHead({ cwd, log, message: 'typo in the subject\n\nAnd a body.', expectedOid: beforeReword });
+  assert.deepEqual(warnings, [], 'a short subject with a blank line after it warns about nothing');
+  assert.equal(await git(['log', '-1', '--format=%s']), 'typo in the subject');
+  assert.equal(await git(['log', '-1', '--format=%b']).then(body => body.trim()), 'And a body.');
+  assert.equal(await git(['rev-parse', 'HEAD^{tree}']), treeBefore, 'the reworded commit keeps its own tree');
+  assert.notEqual(await git(['rev-parse', 'HEAD']), beforeReword, 'rewriting a message mints a new object id');
+  assert.deepEqual((await git(['diff', '--cached', '--name-only'])).split('\n').filter(Boolean), ['staged.txt'],
+    'what was staged stays staged instead of being folded into the reworded commit');
+
+  // The undo of a reword is the same soft reset a commit gets: HEAD goes back
+  // to the commit that was rewritten, and the index is left alone.
+  const afterReword = await git(['rev-parse', 'HEAD']);
+  assert.deepEqual(buildUndoPlan({ kind: 'ops:reword', args: [], before: { head: beforeReword, branch: 'main', paths: [] }, after: { head: afterReword, branch: 'main', paths: [] } }, 'undo'),
+    { commands: [['reset', '--soft', beforeReword]], destructive: false, explanation: 'Only the recorded application action will be reversed.' });
+  assert.equal(inverseReason('ops:reword', { operation: 'none', clean: true }, { operation: 'none', clean: true }, []), null,
+    'a reword does not end the Undo chain');
+
+  // The oid the renderer was showing is checked against HEAD: a message
+  // written for one commit must not land on another.
+  await assert.rejects(() => rewordHead({ cwd, log, message: 'wrong target', expectedOid: beforeReword }), /moved since/);
+  assert.equal(await git(['log', '-1', '--format=%s']), 'typo in the subject', 'the refused reword changed nothing');
+  await assert.rejects(() => rewordHead({ cwd, log, message: '   ', expectedOid: afterReword }), /needs a message/);
+  await git(['reset', '--', ':(literal)staged.txt']);
+
+  // An older commit is reworded by replaying the range. Everything after it
+  // must keep its content and its own message; only the target's changes.
+  await write('later.txt', 'later\n');
+  await git(['add', '--', ':(literal)later.txt']);
+  await git(['commit', '--message', 'a later commit']);
+  const older = await git(['rev-parse', 'HEAD~1']);
+  const parent = await git(['rev-parse', 'HEAD~2']);
+  const range = await loadRebaseCandidates({ cwd, log, oid: parent });
+  assert.deepEqual(range.map(entry => entry.subject), ['typo in the subject', 'a later commit'],
+    'the replayed range is oldest first, exactly as Git executes it');
+  const replayed = await startRebase({ ...options, stateDir, oid: parent, entries: buildRewordPlan(range, older, 'reworded from inside the history') });
+  assert.equal(replayed.ok, true, `the replay finished: ${replayed.message || ''}`);
+  assert.deepEqual(await subjects(`${parent}..HEAD`), ['a later commit', 'reworded from inside the history'],
+    'only the targeted message changed and the commit after it was replayed as it was');
+  assert.equal(await git(['show', '--no-patch', '--format=%s', 'HEAD']), 'a later commit');
+  assert.equal(await readFile(path.join(cwd, 'reword.txt'), 'utf8'), 'first\n', 'the replayed content is unchanged');
+  assert.equal((await loadOperationState(options)).kind, 'none');
+  await clearPlan({ stateDir, cwd });
 
   console.log('history-ops-live: all checks passed');
 } finally {
