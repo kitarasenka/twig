@@ -48,6 +48,12 @@
   --age-mature: #ecd98a;
   --age-old: #e3b78b;
   --age-root: #dca58a;
+  --mark-red: #ff8a80;
+  --mark-amber: #ffce6b;
+  --mark-green: #7ee787;
+  --mark-blue: #7fbfff;
+  --mark-violet: #d0a9ff;
+  --mark-slate: #b0becb;
   --danger: #ffc2b2;
   --shadow: 0 16px 48px #00000066;
   --overlay: #00000080;
@@ -72,6 +78,12 @@
   --age-mature: #6a5410;
   --age-old: #7c4a1c;
   --age-root: #6f3626;
+  --mark-red: #c62f2f;
+  --mark-amber: #8a5a00;
+  --mark-green: #2e7d32;
+  --mark-blue: #1f5fbf;
+  --mark-violet: #7b3fbf;
+  --mark-slate: #556370;
   --danger: #973b2e;
   --shadow: 0 16px 48px #102d2326;
   --overlay: #102d2366;

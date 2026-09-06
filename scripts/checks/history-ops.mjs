@@ -124,7 +124,7 @@ const keysOf = menu => menu.filter(item => !item.separator).map(item => item.key
 // Menu.jsx disables any item that carries a reason, so the check reads it the same way.
 const enabledOf = menu => menu.filter(item => !item.separator && !item.reason).map(item => item.key);
 const handlers = Object.fromEntries(['createBranch', 'createTag', 'checkoutBranch', 'checkoutCommit', 'merge',
-  'cherryPick', 'revert', 'rebase', 'interactiveRebase', 'reword', 'reset', 'copy'].map(name => [name, () => {}]));
+  'cherryPick', 'revert', 'rebase', 'interactiveRebase', 'reword', 'reset', 'copy', 'mark', 'removeMark'].map(name => [name, () => {}]));
 
 // No branch points at this commit: Merge is shown but disabled, with the
 // reason, because its absence would read as a missing feature.
@@ -158,8 +158,18 @@ const handlers = Object.fromEntries(['createBranch', 'createTag', 'checkoutBranc
 // spelled out rather than left to be inferred from a shrunken menu.
 {
   const menu = buildCommitMenu({ commit, refs: [], head: { branch: 'main', oid: C }, operation: { kind: 'rebase' }, handlers });
-  assert.deepEqual(enabledOf(menu), ['copy-sha', 'copy-message']);
+  assert.deepEqual(enabledOf(menu), ['mark', 'copy-sha', 'copy-message']);
   assert.match(menu.find(item => item.key === 'reset-hard').reason, /rebase/);
+}
+// Local marks are userData metadata, not Git: the item is always enabled, and
+// "Remove mark" only shows once a mark exists.
+{
+  const clean = buildCommitMenu({ commit, refs: [], head: { branch: 'main', oid: C }, handlers });
+  assert.equal(keysOf(clean).includes('unmark'), false);
+  assert.equal(clean.find(item => item.key === 'mark').text, 'Mark this commit…');
+  const marked = buildCommitMenu({ commit, refs: [], head: { branch: 'main', oid: C }, mark: { color: 'red', note: 'x' }, operation: { kind: 'rebase' }, handlers });
+  assert.deepEqual(enabledOf(marked).filter(key => key.startsWith('mark') || key === 'unmark'), ['mark', 'unmark']);
+  assert.equal(marked.find(item => item.key === 'mark').text, 'Edit mark and note…');
 }
 // A merge commit is labelled as one, so `--mainline` is not a surprise.
 {

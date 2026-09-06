@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Archive, GitBranch, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag } from 'lucide-react';
+import { Archive, GitBranch, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
 import Splitter from '../../ui/Splitter.jsx';
-import { PANEL_DEFAULT } from '../../ui/panel-width.js';
+import { PANEL_DEFAULT, SIDEBAR_SIZE } from '../../ui/panel-width.js';
 import CommitGraph from './CommitGraph.jsx';
 import WorktreeScreen from '../worktree/WorktreeScreen.jsx';
 import ConflictEditor from '../conflicts/ConflictEditor.jsx';
@@ -50,6 +50,26 @@ function Diff({ diff, onClose }) {
   </section>;
 }
 
+/** Every commit that touched one file, newest first; a click jumps to it in the graph. */
+function FileHistory({ data, onSelect, onClose, onConsole }) {
+  return <section className="diff-view file-history" aria-label="File history">
+    <header className="panel-heading"><span>HISTORY <code>{data.path}</code>{data.commits ? <small> · {data.commits.length}</small> : null}</span>
+      <Button icon={X} aria-label="Close file history" onClick={onClose} /></header>
+    {data.loading ? <div className="loading-shell" aria-label="Loading file history"><div className="skeleton" /></div>
+      : data.error ? <p role="alert" className="empty-inline">{data.error} <button onClick={onConsole}>Show output</button></p>
+      : !data.commits.length ? <p className="empty-inline">Git has no recorded history for this file.</p>
+        : <ul className="file-history-list">
+          {data.commits.map(commit => <li key={commit.oid}>
+            <button className="file-history-entry" onClick={() => onSelect(commit.oid)} title={commit.subject}>
+              <code>{commit.oid.slice(0, 8)}</code>
+              <span className="file-history-subject">{commit.subject || '(no subject)'}</span>
+              <span className="file-history-meta">{commit.author.name} · {new Date(commit.committedAt).toLocaleDateString('en-GB')}</span>
+            </button>
+          </li>)}
+        </ul>}
+  </section>;
+}
+
 export default function HistoryWorkspace({ repository, active, mod, filterRef, onConsole, onRepositoryChanged, referencesRevision = 0, commitColors = 'lanes', toolbarSlot, toolbarBusyReason }) {
   const [data, setData] = useState({ commits: [], lanes: [], refs: [], nextSkip: 0, width: 1 });
   const dataRef = useRef(data);
@@ -63,13 +83,18 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const [commitState, setCommitState] = useState({ commit: null, loading: false, error: '' });
   const [detail, setDetail] = useState(true);
   const [width, setWidth] = useState(PANEL_DEFAULT);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_SIZE.defaultWidth);
   const [collapsed, setCollapsed] = useState(false);
   const [filter, setFilter] = useState('');
   const [diff, setDiff] = useState(null);
+  const [fileHistory, setFileHistory] = useState(null);
+  const [fileMenu, setFileMenu] = useState(null);
   const [operation, setOperation] = useState(IDLE);
   const [bisect, setBisect] = useState(NO_BISECT);
   const [operationReady, setOperationReady] = useState(false);
-  const [stashCount, setStashCount] = useState(0);
+  const [stashes, setStashes] = useState([]);
+  const [remotes, setRemotes] = useState([]);
+  const [marks, setMarks] = useState({});
   const [menu, setMenu] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [conflict, setConflict] = useState(null);
@@ -112,14 +137,18 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     // screen: staging refreshes history, and the screen lives in `selected`.
     busy.current = true; setLoading(true); setError('');
     setSelected(current => (SCREENS.includes(current) ? current : null));
-    setRange(null); setDiff(null); diffRequest.current++;
+    setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
     try {
-      const [refs, stashes] = await Promise.all([
+      const [refs, stashList, remoteList, markMap] = await Promise.all([
         window.twig.getRefs(repository.id),
-        window.twig.stashList(repository.id).catch(() => [])
+        window.twig.stashList(repository.id).catch(() => []),
+        window.twig.getRemotes(repository.id).catch(() => []),
+        window.twig.listMarks(repository.id).catch(() => ({}))
       ]);
       if (generation.current !== epoch) return;
-      setStashCount(stashes.length);
+      setStashes(stashList);
+      setRemotes(remoteList);
+      setMarks(markMap);
       layout.current = createLaneLayout(refs);
       dataRef.current = { commits: [], lanes: [], refs, nextSkip: 0, width: 1 };
       setData(dataRef.current);
@@ -201,6 +230,17 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     } finally { setWorking(false); }
   }, [repository.id, reload, refreshOperation, onConsole, onRepositoryChanged]);
 
+  // Local commit marks never run Git and never touch history, so they update
+  // their own state without a reload.
+  const applyMark = useCallback(async (oid, color, noteText) => {
+    try { setMarks(await window.twig.setMark(repository.id, oid, color, noteText)); }
+    catch { setNote('Could not save the mark.'); onConsole(); }
+  }, [repository.id, onConsole]);
+  const removeMark = useCallback(async (oid) => {
+    try { setMarks(await window.twig.clearMark(repository.id, oid)); }
+    catch { setNote('Could not remove the mark.'); onConsole(); }
+  }, [repository.id, onConsole]);
+
   const headBranch = repository.status?.branch?.name || null;
   const headOid = repository.status?.branch?.oid || null;
   const dirty = (repository.status?.entries || []).some(entry => entry.kind === 'ordinary' || entry.kind === 'renamed');
@@ -252,6 +292,8 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         });
       },
       bisect: step => void performBisect(step, ['start', 'bad', 'good'].includes(step) ? commit.oid : null),
+      mark: () => { choose(commit.oid); setDetail(true); },
+      removeMark: () => void removeMark(commit.oid),
       copy: (text, what) => {
         void window.twig.copyText(text).then(() => setNote(`${what} copied.`)).catch(() => setNote('Could not copy that.'));
       }
@@ -332,7 +374,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     setRange(shift && anchor && anchor !== 'worktree' && oid !== anchor ? { base: anchor, oid } : null);
     if (!shift) selectionAnchor.current = oid;
     setSelected(oid);
-    setDetail(true); setDiff(null); diffRequest.current++;
+    setDetail(true); setDiff(null); setFileHistory(null); diffRequest.current++;
   }, [selected]);
 
   async function jump(oid) {
@@ -347,11 +389,21 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   }
   async function openFile(file) {
     const request = ++diffRequest.current;
+    setFileHistory(null);
     setDiff({ file, loading: true });
     try {
       const result = await window.twig.getFileDiff(repository.id, selected, file, range?.base || null);
       if (request === diffRequest.current) setDiff({ file, ...result, loading: false });
     } catch { if (request === diffRequest.current) setDiff({ file, error: 'Could not read the diff. Show output in the console.', loading: false }); }
+  }
+  async function openFileHistory(path) {
+    const request = ++diffRequest.current;
+    setDiff(null);
+    setFileHistory({ path, loading: true });
+    try {
+      const { commits } = await window.twig.getFileHistory(repository.id, path);
+      if (request === diffRequest.current) setFileHistory({ path, commits, loading: false });
+    } catch { if (request === diffRequest.current) setFileHistory({ path, error: 'Could not read this file’s history. Show output in the console.', loading: false }); }
   }
   const changes = repository.status?.entries || [];
   const screen = SCREENS.includes(selected) ? selected : null;
@@ -366,7 +418,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     || (!hunterCommit ? 'Select a commit with the bug in the history first' : undefined);
   const visibleRefs = data.refs.filter(ref => ref.name.toLowerCase().includes(filter.toLowerCase()));
   const showDetail = detail && !conflict && !screen;
-  return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${width}px` }}>
+  return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
     {active && toolbarSlot && createPortal(
       <Button className="tool bughunter-tool" reason={hunterReason}
         title={hunterCommit ? `Start from ${hunterCommit.oid.slice(0, 7)}: choose a commit where the bug is present` : undefined}
@@ -378,7 +430,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
           <button className={`real-branch ${screen === 'branches' ? 'selected' : ''}`} onClick={() => choose('branches')}>
             <GitBranch /><span>Branches and tags</span><small>{data.refs.length}</small></button>
           <button className={`real-branch ${screen === 'stashes' ? 'selected' : ''}`} onClick={() => choose('stashes')}>
-            <Archive /><span>Stashes</span><small>{stashCount}</small></button>
+            <Archive /><span>Stashes</span><small>{stashes.length}</small></button>
         </nav>
         <div className="sidebar-sections">{[['LOCAL', 'local'], ['REMOTE', 'remote'], ['TAGS', 'tag']].map(([label, type]) => <details key={type} open><summary>{label}<span>{data.refs.filter(ref => ref.type === type).length}</span></summary>
           <BranchTree refs={visibleRefs.filter(ref => ref.type === type).map(ref => ({ ...ref, label: ref.name }))} onSelect={jump} />
@@ -386,6 +438,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         </details>)}</div><div className="sidebar-footer"><span>{repository.status?.branch?.name || 'Detached HEAD'}</span><Button icon={PanelLeftClose} aria-label="Collapse repository sidebar" onClick={() => setCollapsed(true)} /></div>
       </>}
     </aside>
+    {!collapsed && <Splitter side="left" width={sidebarWidth} onWidth={setSidebarWidth} label="Repository sidebar width" />}
     <main className="graph-panel" aria-label="Repository history">
       <header className="graph-heading"><div><GitBranch /><strong>History</strong><span className="count">{data.commits.length} loaded</span></div><div>{!detail && <Button icon={PanelRightOpen} aria-label="Show commit details" onClick={() => setDetail(true)} />}<Button icon={RefreshCw} reason={loading ? 'History is loading' : undefined}
         onClick={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }}>Refresh</Button></div></header>
@@ -397,10 +450,11 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         blockedReason={operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : dirty ? 'Commit or stash your changes before the next test' : undefined}
         selectedCommit={!screen && !range ? data.commits[indexMap.get(selected)] : null}
         onStep={(step, oid = null) => void performBisect(step, oid)} onOpenCommit={jump} />
-      <div hidden={Boolean(diff) || Boolean(conflict) || Boolean(screen)} className="history-slot">
+      <div hidden={Boolean(diff) || Boolean(fileHistory) || Boolean(conflict) || Boolean(screen)} className="history-slot">
         {loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} head={repository.status?.branch?.oid}
-            onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} changes={changes.length} onWorktree={() => choose('worktree')} active={active} commitColors={commitColors} />}
+            onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} changes={changes.length} stashes={stashes} marks={marks}
+            onWorktree={() => choose('worktree')} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} />}
       </div>
       {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}
         onResolved={state => { setConflict(null); setOperation(state); setNote(`${conflict} marked resolved.`); void reload(); onRepositoryChanged?.(); }} />}
@@ -411,12 +465,19 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       {!conflict && screen === 'worktree' && <WorktreeScreen repository={repository} operation={operation} onConsole={onConsole} onChanged={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }}
         onBack={() => choose(data.commits[0]?.oid || null)} />}
       {!conflict && diff && <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} />}
+      {!conflict && !diff && fileHistory && <FileHistory data={fileHistory} onConsole={onConsole}
+        onSelect={oid => { setFileHistory(null); void jump(oid); }} onClose={() => { diffRequest.current++; setFileHistory(null); }} />}
     </main>
     {showDetail && <Splitter width={width} onWidth={setWidth} />}
-    {showDetail && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile} onConsole={onConsole} range={range} commitColors={commitColors} />}
+    {showDetail && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile}
+      onFileMenu={(path, x, y) => setFileMenu({ path, x, y })} onConsole={onConsole} range={range} commitColors={commitColors} remotes={remotes}
+      mark={commitState.commit ? marks[commitState.commit.oid] || null : null} onSetMark={applyMark} onClearMark={removeMark} />}
+    {fileMenu && <Menu x={fileMenu.x} y={fileMenu.y} label={`Actions for ${fileMenu.path}`} onClose={() => setFileMenu(null)}
+      items={[{ key: 'file-history', text: 'File history', hint: 'Every commit that changed this file', icon: History, run: () => void openFileHistory(fileMenu.path) }]} />}
     {menu && <Menu x={menu.x} y={menu.y} label={`Actions for commit ${menu.commit.oid.slice(0, 7)}`} onClose={() => setMenu(null)}
       items={buildCommitMenu({
         commit: menu.commit, refs: refMap.get(menu.commit.oid) || [], operation, bisect, dirty,
+        mark: marks[menu.commit.oid] || null,
         head: { branch: headBranch, oid: headOid, detached: Boolean(repository.status?.branch?.detached) },
         handlers: commitHandlers(menu.commit)
       })} />}

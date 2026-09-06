@@ -90,6 +90,15 @@ try {
   await page.getByRole('button', { name: 'Open repository', exact: true }).click();
   await page.getByRole('listbox', { name: 'Commit history', exact: true }).waitFor();
 
+  // A stash hangs off the commit it was based on, by a dashed link into an
+  // extra lane. Both stashes here share one base, so there is one marker.
+  const stashNode = page.locator('.real-commit-row .stash-node');
+  await stashNode.first().waitFor();
+  assert.equal(await stashNode.count(), 1, 'one marker for the shared base commit');
+  assert.match(await stashNode.first().getAttribute('title'), /newer work/, 'the marker names the stashes it carries');
+  assert.equal(await page.locator('.real-commit-row .stash-link').count() >= 1, true, 'a dashed link reaches the marker');
+  await shot('stash-graph');
+
   // --- branches and tags -----------------------------------------------------
   await page.getByRole('button', { name: /Branches and tags/ }).click();
   await page.getByRole('tab', { name: /Branches/ }).first().waitFor();

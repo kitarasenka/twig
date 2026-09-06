@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { parseHistoryV1, HistoryParseError } from '../../main/git/history-parser.js';
-import { buildHistoryArgv } from '../../main/git/history.js';
+import { buildFileHistoryArgv, buildHistoryArgv } from '../../main/git/history.js';
 
 const SHA1_A = '82df62445b05a04be53291bb36b5db80e46dad77';
 const SHA1_B = 'ebb6e9d3dec115ba8b429d3b143db9d27777a083';
@@ -138,5 +138,20 @@ for (const skip of [-1, 1.5, '0', NaN]) {
 }
 assert.deepEqual(buildHistoryArgv({ limit: 1, skip: 0 }).includes('--max-count=1'), true);
 assert.deepEqual(buildHistoryArgv({ limit: 500, skip: 0 }).includes('--max-count=500'), true);
+
+// --- buildFileHistoryArgv: `git log --follow` on one file, no Git spawned ---
+
+assert.deepEqual(buildFileHistoryArgv('src/app.js'), ['log', '--follow', '--topo-order', '-z',
+  '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=250', '--', ':(literal)src/app.js']);
+assert.deepEqual(buildFileHistoryArgv('a b/c.txt', 10), ['log', '--follow', '--topo-order', '-z',
+  '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=10', '--', ':(literal)a b/c.txt']);
+// The path is the last argv token and sits after `--`, so a flag-like name stays a name.
+assert.equal(buildFileHistoryArgv('--force').at(-1), ':(literal)--force');
+for (const file of ['', 42, '/etc/passwd', '../escape', 'a/../b', 'has\0nul']) {
+  assert.throws(() => buildFileHistoryArgv(file), TypeError, `file ${file} must be rejected`);
+}
+for (const limit of [0, -1, 501, 1.5, '250', NaN, Infinity]) {
+  assert.throws(() => buildFileHistoryArgv('src/app.js', limit), TypeError, `limit ${limit} must be rejected`);
+}
 
 console.log('history: all checks passed');

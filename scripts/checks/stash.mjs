@@ -15,7 +15,7 @@ import {
 
 // --- pure argv and parsing, no Git ---
 
-assert.deepEqual(buildStashListArgv(), ['stash', 'list', '-z', '--format=%gd%x00%H%x00%cI%x00%gs']);
+assert.deepEqual(buildStashListArgv(), ['stash', 'list', '-z', '--format=%gd%x00%H%x00%P%x00%cI%x00%gs']);
 const OID = 'a'.repeat(40);
 assert.deepEqual(buildStashParentsArgv(OID), ['rev-list', '--parents', '-n', '1', OID, '--']);
 assert.deepEqual(buildStashTrackedArgv(OID).slice(-3), [`${OID}^1`, OID, '--']);
@@ -34,18 +34,20 @@ for (const bad of ['-D', '', 'has space', 'a..b', 'x@{1}', null]) {
 }
 
 const listed = parseStashList([
-  'stash@{0}', 'b'.repeat(40), '2026-09-05T23:44:33+04:00', 'On main: keep this',
-  'stash@{1}', 'c'.repeat(40), '2026-09-05T20:00:00+04:00', 'WIP on feat/x: 1234567 subject'
+  'stash@{0}', 'b'.repeat(40), `${'a'.repeat(40)} ${'d'.repeat(40)}`, '2026-09-05T23:44:33+04:00', 'On main: keep this',
+  'stash@{1}', 'c'.repeat(40), 'e'.repeat(40), '2026-09-05T20:00:00+04:00', 'WIP on feat/x: 1234567 subject'
 ].join('\0') + '\0');
 assert.equal(listed.length, 2);
-assert.deepEqual(listed[0], { index: 0, ref: 'stash@{0}', oid: 'b'.repeat(40), date: '2026-09-05T23:44:33+04:00',
+assert.deepEqual(listed[0], { index: 0, ref: 'stash@{0}', oid: 'b'.repeat(40), base: 'a'.repeat(40), date: '2026-09-05T23:44:33+04:00',
   branch: 'main', message: 'keep this', subject: 'On main: keep this' });
+assert.equal(listed[1].base, 'e'.repeat(40));
 assert.equal(listed[1].branch, 'feat/x');
 assert.equal(listed[1].message, '1234567 subject');
 assert.deepEqual(parseStashList(''), []);
 assert.throws(() => parseStashList('stash@{0}\0abc\0'), /Invalid stash list output/);
-assert.throws(() => parseStashList(`stash@{1}\0${'b'.repeat(40)}\0d\0s\0`), /Unexpected stash order/);
-assert.throws(() => parseStashList('stash@{0}\0not-an-oid\0d\0s\0'), /Invalid stash identifier/);
+assert.throws(() => parseStashList(`stash@{1}\0${'b'.repeat(40)}\0\0d\0s\0`), /Unexpected stash order/);
+assert.throws(() => parseStashList(`stash@{0}\0not-an-oid\0\0d\0s\0`), /Invalid stash identifier/);
+assert.throws(() => parseStashList(`stash@{0}\0${'b'.repeat(40)}\0bad-parent\0d\0s\0`), /Invalid stash identifier/);
 
 // --- real repository ---
 
@@ -70,6 +72,7 @@ try {
   await write('b.txt', 'base\n');
   await git(['add', '.']);
   await git(['commit', '-q', '-m', 'base']);
+  const baseSha = (await git(['rev-parse', 'HEAD'])).stdout.trim();
 
   // 1. Two stashes, one of them carrying an untracked file.
   await write('a.txt', 'one\ntwo\n');
@@ -84,6 +87,8 @@ try {
   assert.equal(stashes[0].message, 'second work');
   assert.equal(stashes[1].message, 'first work');
   assert.equal(stashes[0].branch, 'main');
+  assert.equal(stashes[0].base, baseSha, 'a stash records the commit it was based on');
+  assert.equal(stashes[1].base, baseSha);
 
   // 2. Both sides of a stash: the tracked diff and the untracked tree.
   const files = await loadStashFiles({ cwd: repo, log, oid: stashes[1].oid });

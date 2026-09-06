@@ -7,6 +7,7 @@ import { registerProfileIpc } from './profile-ipc.js';
 import { registerRepositoryIpc } from './repository-ipc.js';
 import { registerUndoIpc } from './undo-ipc.js';
 import { registerSshIpc } from './ssh-ipc.js';
+import { registerMarksIpc } from './marks-ipc.js';
 
 function validSender(event, getWindow, entryUrl, args, count) {
   const window = getWindow();
@@ -15,8 +16,9 @@ function validSender(event, getWindow, entryUrl, args, count) {
     && isTrustedPage(event.senderFrame.url, entryUrl) && args.length === count;
 }
 
-export function registerIpc(getWindow, entryUrl, { journal, repositories, git, undo }) {
+export function registerIpc(getWindow, entryUrl, { journal, repositories, git, undo, marks }) {
   registerUndoIpc(getWindow, entryUrl, { repositories, undo });
+  registerMarksIpc(getWindow, entryUrl, { repositories, marks });
   registerSshIpc(getWindow, entryUrl, { journal });
   registerRepositoryIpc(getWindow, entryUrl, { journal, repositories, undo });
   registerProfileIpc(getWindow, entryUrl, { journal, repositories, stateDir: app.getPath('userData') });

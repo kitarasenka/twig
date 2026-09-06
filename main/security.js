@@ -26,6 +26,11 @@ export function isTrustedPage(url, entryUrl) {
 export function isExternalLink(url) {
   try {
     const parsed = new URL(url);
+    if (parsed.protocol === 'mailto:') {
+      // A commit author's email, opened in the system mail client. No query
+      // string: the repository never gets to prefill a subject or body.
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parsed.pathname) && !parsed.search;
+    }
     return ['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password;
   } catch {
     return false;

@@ -35,13 +35,13 @@ try {
   assert.deepEqual(await page.evaluate(() => Object.keys(window.twig).sort()), [
     'applySelection', 'cancelSync', 'checkoutRef', 'cherryPick', 'compareCommits', 'copyText', 'createBranch',
     'createCommit', 'createTag', 'getAppInfo', 'getCommit', 'getCommitFiles', 'getConsoleEntries',
-    'getDivergence', 'getFileDiff', 'getGitProfile', 'getHistoryPage', 'getOperationState', 'getRebaseCandidates', 'getRefs',
+    'getDivergence', 'getFileDiff', 'getFileHistory', 'getGitProfile', 'getHistoryPage', 'getOperationState', 'getRebaseCandidates', 'getRefs',
     'getWorkspace', 'getWorktreeDiff', 'markConflictResolved', 'mergeRevision', 'onConsoleUpdate', 'openRepository',
     'readConflict', 'readWorktree', 'rebaseOnto', 'resetTo', 'revertCommit', 'rewordCommit', 'runSequencer', 'runSync',
     'saveConflict', 'saveGitProfileValue', 'selectRepository', 'stageAll', 'stageFile', 'stashList', 'stashPop', 'stashPush', 'takeConflictSide',
     'trackFile', 'unstageAll', 'unstageFile', 'cancelClone', 'cancelRemote', 'changeRemote', 'chooseCloneDestination',
     'stashFiles', 'stashDiff', 'stashAction', 'pushRef', 'deleteBranch', 'renameBranch', 'setUpstream', 'deleteTag',
-    'getBisectState', 'runBisect',
+    'getBisectState', 'runBisect', 'listMarks', 'setMark', 'clearMark',
     'cloneRepository', 'getRemotes', 'removeRepository', 'getUndoState', 'moveUndo', 'onUndoUpdate',
     'getSshKeys', 'getSshConfig', 'generateSshKey', 'saveSshConfig', 'testSshConnection', 'cancelSshConnection', 'secureSshKey'].sort());
   const security = await app.evaluate(({ BrowserWindow }) => {

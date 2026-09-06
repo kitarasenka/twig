@@ -21,9 +21,12 @@ const DIFF_ARGS = ['--no-ext-diff', '--no-textconv', '--no-color', '--no-renames
 
 export const STASH_ACTIONS = ['apply', 'pop', 'drop', 'branch'];
 
-/** `%gd` is the `stash@{n}` ref, `%H` the stash commit, `%gs` the reflog subject. */
+/**
+ * `%gd` is the `stash@{n}` ref, `%H` the stash commit, `%P` its parent oids
+ * (`^1` is the commit the work was based on), `%gs` the reflog subject.
+ */
 export function buildStashListArgv() {
-  return ['stash', 'list', '-z', '--format=%gd%x00%H%x00%cI%x00%gs'];
+  return ['stash', 'list', '-z', '--format=%gd%x00%H%x00%P%x00%cI%x00%gs'];
 }
 
 export function buildStashParentsArgv(oid) {
@@ -66,17 +69,20 @@ export function buildStashActionArgv(action, index, { name = null } = {}) {
  */
 export function parseStashList(output) {
   if (!output) return [];
+  const oidPattern = /^(?:[a-f\d]{40}|[a-f\d]{64})$/i;
   const tokens = output.split('\0');
-  if (tokens.pop() !== '' || tokens.length % 4 !== 0) throw new Error('Invalid stash list output');
+  if (tokens.pop() !== '' || tokens.length % 5 !== 0) throw new Error('Invalid stash list output');
   const entries = [];
-  for (let i = 0; i < tokens.length; i += 4) {
-    const [ref, oid, date, subject] = tokens.slice(i, i + 4);
+  for (let i = 0; i < tokens.length; i += 5) {
+    const [ref, oid, parentList, date, subject] = tokens.slice(i, i + 5);
     const position = /^stash@\{(\d+)\}$/.exec(ref);
     if (!position || Number(position[1]) !== entries.length) throw new Error('Unexpected stash order');
-    if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(oid)) throw new Error('Invalid stash identifier');
+    if (!oidPattern.test(oid)) throw new Error('Invalid stash identifier');
+    const parents = parentList ? parentList.split(' ').filter(Boolean) : [];
+    if (parents.some(parent => !oidPattern.test(parent))) throw new Error('Invalid stash identifier');
     const described = /^(?:WIP on|On) ([^:]*): ([\s\S]*)$/.exec(subject);
     entries.push({
-      index: entries.length, ref, oid, date,
+      index: entries.length, ref, oid, base: parents[0] ?? null, date,
       branch: described ? described[1] : null,
       message: described ? described[2] : subject,
       subject

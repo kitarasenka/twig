@@ -66,6 +66,15 @@ try {
   await page.getByRole('region', { name: 'File diff' }).waitFor().catch(() => {});
   await page.getByText('+Hello real history', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  // File history: the changed-file context menu lists every commit that touched
+  // it. hello.txt changed twice — once at the root, once at the tip.
+  await page.getByRole('button', { name: 'M hello.txt', exact: true }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'File history' }).click();
+  const fileHistory = page.getByRole('region', { name: 'File history', exact: true });
+  await fileHistory.getByRole('listitem').first().waitFor();
+  assert.equal(await fileHistory.getByRole('listitem').count(), 2);
+  await fileHistory.getByRole('listitem').first().getByRole('button').click();
+  await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
   await list.focus(); await page.keyboard.press('ArrowDown');
   await page.getByRole('heading', { name: 'History fixture 254', exact: true }).waitFor();
   await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
@@ -79,16 +88,40 @@ try {
   await page.getByText('untracked.txt', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
+
+  // Local commit marks: a colour and a note kept in userData, drawn over the
+  // lane/age colour and surviving a reload. No Git runs for any of this.
+  await list.evaluate(node => { node.scrollTop = 0; });
+  await page.locator(`#commit-${tip}`).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Mark this commit…' }).click();
+  await page.getByRole('group', { name: 'Commit mark colour', exact: true }).getByRole('button', { name: 'Red', exact: true }).click();
+  await page.waitForFunction(id => document.getElementById(`commit-${id}`)?.classList.contains('mark-red'), tip);
+  assert.ok(await page.locator(`#commit-${tip}`).evaluate(node => node.classList.contains('marked')));
+  await page.getByLabel('Mark note').fill('regression starts here');
+  await page.getByRole('button', { name: 'Save note', exact: true }).click();
+  await page.waitForFunction(id => document.querySelector(`#commit-${id} .mark-chip`)?.title === 'regression starts here', tip);
+  await page.reload();
+  await list.waitFor();
+  await list.getByRole('option').first().waitFor();
+  await list.evaluate(node => { node.scrollTop = 0; });
+  await page.waitForFunction(id => document.getElementById(`commit-${id}`)?.classList.contains('mark-red'), tip);
+  await page.locator(`#commit-${tip}`).click();
+  await page.getByRole('button', { name: 'Remove mark', exact: true }).click();
+  await page.waitForFunction(id => !document.getElementById(`commit-${id}`)?.classList.contains('marked'), tip);
+
   const rejected = await page.evaluate(async () => {
     const workspace = await window.twig.getWorkspace();
     const id = workspace.activeId;
     const results = await Promise.allSettled([
       window.twig.getHistoryPage(id, -1, 250), window.twig.getHistoryPage('unregistered', 0, 250),
-      window.twig.getCommit(id, '--help'), window.twig.getFileDiff(id, 'a'.repeat(40), '../escape')
+      window.twig.getCommit(id, '--help'), window.twig.getFileDiff(id, 'a'.repeat(40), '../escape'),
+      window.twig.getFileHistory(id, '../escape'), window.twig.getFileHistory(id, '/etc/passwd'),
+      window.twig.setMark(id, 'not-an-oid', 'red', ''), window.twig.setMark(id, 'a'.repeat(40), 'crimson', ''),
+      window.twig.setMark('unregistered', 'a'.repeat(40), 'red', '')
     ]);
     return results.map(result => result.status);
   });
-  assert.deepEqual(rejected, Array(4).fill('rejected'));
+  assert.deepEqual(rejected, Array(9).fill('rejected'));
 
   // Commit age colours: the default ramp, the switch back to branch lanes and
   // the choice surviving a restart. Colour classes are the only honest witness
@@ -138,7 +171,7 @@ try {
   await page.screenshot({ path: 'artifacts/m2-compact.png', animations: 'disabled' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, themes.');
+  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, themes.');
 } finally {
   if (app) await app.close();
   await rm(root, { recursive: true, force: true });

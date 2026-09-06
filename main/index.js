@@ -5,6 +5,7 @@ import { registerIpc } from './ipc.js';
 import { isExternalLink, isLocalAsset, isTrustedPage } from './security.js';
 import { CommandLog } from './command-log.js';
 import { RepositoryStore } from './store.js';
+import { MarksStore } from './marks-store.js';
 import { runGit } from './git/exec.js';
 import { createRepositoryService } from './git/repository.js';
 import { UndoService } from './undo.js';
@@ -78,7 +79,9 @@ app.whenReady().then(async () => {
   });
   const undo = new UndoService({ directory: app.getPath('userData'), log: journal });
   await undo.load();
-  registerIpc(() => window, entryUrl, { journal, repositories, git, undo });
+  const marks = new MarksStore(app.getPath('userData'));
+  await marks.load();
+  registerIpc(() => window, entryUrl, { journal, repositories, git, undo, marks });
   await createWindow();
 }).catch((error) => { console.error('🌱 Twig failed to start:', error.message); app.exit(1); });
 app.on('activate', () => { if (!window) void createWindow(); });

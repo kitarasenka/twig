@@ -4,7 +4,7 @@ import DemoGraph from '../features/graph/DemoGraph.jsx';
 import Button from '../ui/Button.jsx';
 import Splitter from '../ui/Splitter.jsx';
 import { Sidebar, CommitDetails } from './Panels.jsx';
-import { PANEL_DEFAULT } from '../ui/panel-width.js';
+import { PANEL_DEFAULT, SIDEBAR_SIZE } from '../ui/panel-width.js';
 import { commits } from './demo.js';
 
 export default function Workspace({ filterRef, mod, sidebar, onSidebar, searchSignal }) {
@@ -12,9 +12,11 @@ export default function Workspace({ filterRef, mod, sidebar, onSidebar, searchSi
   const [selected, setSelected] = useState(commits[0].id);
   const [detail, setDetail] = useState(true);
   const [width, setWidth] = useState(PANEL_DEFAULT);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_SIZE.defaultWidth);
   const scroll = useRef(0);
-  return <div className={`workspace ${sidebar ? 'sidebar-small' : ''} ${detail ? '' : 'no-detail'}`} style={{ '--detail-width': `${width}px` }}>
+  return <div className={`workspace ${sidebar ? 'sidebar-small' : ''} ${detail ? '' : 'no-detail'}`} style={{ '--detail-width': `${width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
     <Sidebar collapsed={sidebar} onCollapse={onSidebar} filter={filter} onFilter={setFilter} filterRef={filterRef} mod={mod} />
+    {!sidebar && <Splitter side="left" width={sidebarWidth} onWidth={setSidebarWidth} label="Repository sidebar width" />}
     <main className="graph-panel" aria-label="History">
       <header className="graph-heading"><div><GitBranch /><strong>History</strong><span className="count">{commits.length}</span></div>
         <div><span className="muted">All branches</span>{!detail && <Button icon={PanelRightOpen} aria-label="Show commit details" onClick={() => setDetail(true)} />}

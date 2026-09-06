@@ -20,6 +20,10 @@ export function registerHistoryIpc(getWindow, entryUrl, { repositories, journal 
     const { loadHistoryPage } = await import('./git/history.js');
     return loadHistoryPage({ ...options, skip, limit });
   });
+  handler('history:file-log', 2, async (options, file) => {
+    const { loadFileHistory } = await import('./git/history.js');
+    return loadFileHistory({ ...options, file });
+  });
   handler('history:rebase-todo', 2, async (options, oid) => {
     const { loadRebaseCandidates } = await import('./git/history.js');
     return loadRebaseCandidates({ ...options, oid });

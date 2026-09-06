@@ -1,4 +1,4 @@
-import { ClipboardCopy, GitBranch, GitCommitHorizontal, GitMerge, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Undo2 } from 'lucide-react';
+import { Bookmark, BookmarkX, ClipboardCopy, GitBranch, GitCommitHorizontal, GitMerge, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Undo2 } from 'lucide-react';
 
 /**
  * The items of the commit context menu (§8.2), as data.
@@ -14,7 +14,7 @@ import { ClipboardCopy, GitBranch, GitCommitHorizontal, GitMerge, ListOrdered, P
  * two items would leave the user guessing.
  */
 export function buildCommitMenu({ commit, refs = [], head = {}, operation = { kind: 'none' },
-  bisect = { active: false, done: false, terms: { bad: 'bad', good: 'good' } }, dirty = false, handlers }) {
+  bisect = { active: false, done: false, terms: { bad: 'bad', good: 'good' } }, dirty = false, mark = null, handlers }) {
   const short = commit.oid.slice(0, 7);
   const busy = operation.kind !== 'none';
   const reason = busy ? `Finish or abort the ${operation.kind} first` : undefined;
@@ -92,6 +92,14 @@ export function buildCommitMenu({ commit, refs = [], head = {}, operation = { ki
     }
     items.push({ key: 'bisect-reset', icon: Target, text: 'Stop BugHunter and return', reason, run: () => handlers.bisect('reset') });
   }
+
+  // Local marks are userData metadata, not a Git command, so nothing about an
+  // unfinished operation blocks them: the item stays enabled mid-rebase.
+  items.push(
+    { separator: true },
+    { key: 'mark', icon: Bookmark, text: mark ? 'Edit mark and note…' : 'Mark this commit…', run: handlers.mark }
+  );
+  if (mark) items.push({ key: 'unmark', icon: BookmarkX, text: 'Remove mark', run: handlers.removeMark });
 
   items.push(
     { separator: true },

@@ -24,7 +24,10 @@ for (const url of ['file:///etc/passwd', entry + '?other=1', 'https://example.co
 assert.ok(isTrustedPage('http://127.0.0.1:5188/', 'http://127.0.0.1:5188/'));
 assert.equal(isTrustedPage('http://127.0.0.1:5188/elsewhere', 'http://127.0.0.1:5188/'), false);
 assert.ok(isExternalLink('https://example.com/docs'));
-for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'ssh://host', 'https://user:secret@example.com', 'invalid']) {
+// A commit author's plain email opens in the system mail client; nothing more.
+assert.ok(isExternalLink('mailto:dev@example.com'));
+for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'ssh://host', 'https://user:secret@example.com',
+  'mailto:', 'mailto:not-an-email', 'mailto:dev@example.com?subject=Hi&body=x', 'invalid']) {
   assert.equal(isExternalLink(url), false, url);
 }
 
@@ -43,6 +46,13 @@ for (const theme of ['dark', 'light']) {
     'age-fresh', 'age-young', 'age-mature', 'age-old', 'age-root']) {
     for (const background of ['bg', 'surface', 'surface-raised', 'surface-hover', 'accent-bg']) {
       assert.ok(contrast(palette[foreground], palette[background]) >= 4.5, `${theme}: ${foreground} on ${background}`);
+    }
+  }
+  // Commit marks are drawn as strokes, dots and swatches, not text, so they only
+  // need the 3:1 that a UI component needs against the surfaces they sit on.
+  for (const mark of ['mark-red', 'mark-amber', 'mark-green', 'mark-blue', 'mark-violet', 'mark-slate']) {
+    for (const background of ['bg', 'surface', 'surface-raised']) {
+      assert.ok(contrast(palette[mark], palette[background]) >= 3, `${theme}: ${mark} on ${background}`);
     }
   }
 }

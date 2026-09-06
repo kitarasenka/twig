@@ -1,7 +1,8 @@
-import { memo, useLayoutEffect, useRef, useState } from 'react';
-import { Check, GitBranch, Globe, Tag, FilePenLine } from 'lucide-react';
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Check, GitBranch, Globe, Tag, FilePenLine, Archive, Bookmark } from 'lucide-react';
 import { LANE_WIDTH, ROW_HEIGHT, segmentPath, visibleRange } from './layout.js';
 import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
+import { markClass } from './mark-color.js';
 
 export function relativeDate(value) {
   const seconds = Math.round((Date.parse(value) - Date.now()) / 1000);
@@ -12,28 +13,39 @@ export function relativeDate(value) {
   return format.format(Math.round(seconds / 86400), 'day');
 }
 
-const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, head, refs, onSelect, onMenu, dayStart, age }) {
+const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, head, stashes, stashX, onStashes, refs, mark, onSelect, onMenu, dayStart, age }) {
   // In age mode a row paints its own age onto every lane crossing it, so the
   // graph reads as one gradient down the page instead of per-branch colours.
   const stroke = age === null ? null : ageStrokeClass(age);
+  const laneX = 12 + layout.lane * LANE_WIDTH;
   return <div role="option" id={`commit-${commit.oid}`} aria-selected={selected} aria-posinset={index + 1} aria-setsize={total}
-    className={`real-commit-row ${selected ? 'selected' : ''} ${dayStart ? 'new-day' : ''}`}
+    className={`real-commit-row ${selected ? 'selected' : ''} ${dayStart ? 'new-day' : ''} ${mark ? `marked ${markClass(mark.color)}` : ''}`}
     style={{ top: index * ROW_HEIGHT }} onClick={event => onSelect(commit.oid, event.shiftKey)}
     onContextMenu={event => { event.preventDefault(); onSelect(commit.oid); onMenu(commit.oid, event.clientX, event.clientY); }}>
     <span className="ref-cell">{head && <Check aria-label="HEAD" />}{refs?.slice(0, 2).map(ref => <span key={ref.fullName} title={ref.fullName} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''}`}>
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
-    {refs?.length > 2 && <span className="ref-badge ref-more" title={refs.slice(2).map(ref => ref.fullName).join('\n')}>+{refs.length - 2}</span>}</span>
-    <svg className="real-lane" aria-hidden="true" height={ROW_HEIGHT}>
-      {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment)} />)}
-      <circle className={stroke || `graph-color-${layout.color}`} cx={12 + layout.lane * LANE_WIDTH} cy={15} r={4} />
-    </svg>
+    {refs?.length > 2 && <span className="ref-badge ref-more" title={refs.slice(2).map(ref => ref.fullName).join('\n')}>+{refs.length - 2}</span>}
+    {mark && <span className="mark-chip" title={mark.note || 'Marked'}><Bookmark aria-label={mark.note ? `Marked: ${mark.note}` : 'Marked'} /></span>}</span>
+    <span className="lane-cell">
+      <svg className="real-lane" aria-hidden="true" height={ROW_HEIGHT}>
+        {stashes && <path className="stash-link" d={`M${laneX} 15H${stashX}`} />}
+        {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment)} />)}
+        <circle className={stroke || `graph-color-${layout.color}`} cx={laneX} cy={15} r={4} />
+        {mark && <circle className="mark-ring" cx={laneX} cy={15} r={6} />}
+      </svg>
+      {stashes && <button className="stash-node" style={{ '--stash-x': `${stashX}px` }}
+        title={`${stashes.length === 1 ? 'Stash' : `${stashes.length} stashes`} on this commit:\n${stashes.map(item => item.message).join('\n')}`}
+        aria-label={`Open ${stashes.length === 1 ? 'the stash' : 'stashes'} based on this commit`}
+        onClick={event => { event.stopPropagation(); onStashes(); }}>
+        <Archive />{stashes.length > 1 && <span>{stashes.length}</span>}</button>}
+    </span>
     <span className="commit-subject" title={`${commit.subject}\n${commit.body}`}><span>{commit.subject || '(no subject)'}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
     <span className="author-col" title={commit.author.email}>{commit.author.name}</span>
     <span className={`date-cell ${age === null ? '' : ageTextClass(age)}`} title={commit.committedAt}>{relativeDate(commit.committedAt)}</span>
   </div>;
 });
 
-export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, head, onSelect, onMenu, loadMore, hasMore, loading, changes, onWorktree, active, commitColors = 'lanes' }) {
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, head, onSelect, onMenu, loadMore, hasMore, loading, changes, stashes = [], marks = {}, onWorktree, onStashes, active, commitColors = 'lanes' }) {
   const scroller = useRef(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
   const [focusIndex, setFocusIndex] = useState(0);
@@ -85,7 +97,20 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   // One clock reading per render, shared by every visible row: age is a property
   // of the moment the graph is drawn, not of each row on its own.
   const now = commitColors === 'age' ? Date.now() : null;
-  return <div className="history real-history" data-colors={commitColors} style={{ '--graph-width': `${Math.max(72, laneCount * LANE_WIDTH + 24)}px` }}>
+  // A stash is parked work, not a commit: it hangs off the commit it was based
+  // on by a dashed link into an extra lane on the right, keyed by that base oid.
+  const stashesByBase = useMemo(() => {
+    const map = new Map();
+    for (const stash of stashes) {
+      if (!stash.base) continue;
+      const list = map.get(stash.base);
+      if (list) list.push(stash); else map.set(stash.base, [stash]);
+    }
+    return map;
+  }, [stashes]);
+  const stashLane = stashesByBase.size ? 1 : 0;
+  const stashX = 12 + laneCount * LANE_WIDTH;
+  return <div className="history real-history" data-colors={commitColors} style={{ '--graph-width': `${Math.max(72, (laneCount + stashLane) * LANE_WIDTH + 24)}px` }}>
     <div className="real-history-columns"><span>Branch / tag</span><span>Graph</span><span>Commit message</span><span className="author-col">Author</span><span>Date</span></div>
     {changes > 0 && <button className={`worktree-row ${selected === 'worktree' ? 'selected' : ''}`} onClick={onWorktree}><FilePenLine />Uncommitted changes, {changes} files</button>}
     <div className="real-history-scroll" ref={scroller} role="listbox" aria-label="Commit history" tabIndex={0}
@@ -98,6 +123,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
       <div className="virtual-commits" style={{ height: commits.length * ROW_HEIGHT }}>
         {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
           selected={selected === commit.oid} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} age={now === null ? null : ageStop(commit.committedAt, now)}
+          mark={marks[commit.oid] || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes}
           dayStart={start + offset > 0 && commit.committedAt.slice(0, 10) !== commits[start + offset - 1].committedAt.slice(0, 10)} />)}
       </div>
     </div>

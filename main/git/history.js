@@ -1,6 +1,6 @@
 import { runGit } from './exec.js';
 import { parseHistoryV1 } from './history-parser.js';
-import { validateOid } from './commit.js';
+import { validateFile, validateOid } from './commit.js';
 
 const FORMAT = '%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b';
 const MIN_LIMIT = 1;
@@ -44,6 +44,36 @@ export async function loadHistoryPage({ cwd, log, limit = 250, skip = 0 }) {
   if (result.code !== 0) throw new Error('Git could not read commit history.');
   const commits = parseHistoryV1(result.stdout);
   return { commits, nextSkip: commits.length < limit ? null : skip + commits.length };
+}
+
+/**
+ * Builds the argv for `git log --follow` on a single file, in this module's
+ * parser format. `--follow` needs exactly one pathspec; it is passed as
+ * `:(literal)` after `--` so a name that looks like a flag or a glob stays a
+ * name. Exported separately so the self-check can assert on the exact argv
+ * without spawning Git.
+ * @param {string} file
+ * @param {number} [limit]
+ * @returns {string[]}
+ */
+export function buildFileHistoryArgv(file, limit = 250) {
+  validateFile(file);
+  validateLimit(limit);
+  return ['log', '--follow', '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${limit}`, '--', `:(literal)${file}`];
+}
+
+/**
+ * Every commit that touched one file, newest first, with renames followed.
+ * Backs the "File history" item in the changed-files context menu. Refs are
+ * not read here.
+ * @param {{ cwd: string, log: import('../command-log.js').CommandLog, file: string, limit?: number }} options
+ * @returns {Promise<{ commits: import('./history-parser.js').Commit[] }>}
+ */
+export async function loadFileHistory({ cwd, log, file, limit = 250 }) {
+  const argv = buildFileHistoryArgv(file, limit);
+  const result = await runGit({ argv, cwd, log, operation: 'Read file history' });
+  if (result.code !== 0) throw new Error('Git could not read the history for this file.');
+  return { commits: parseHistoryV1(result.stdout) };
 }
 
 /**

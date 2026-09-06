@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Bell, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, Settings, SquareTerminal, Undo2, Upload, UserRound, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, Settings, SquareTerminal, Undo2, Upload, UserRound, X } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
 import Workspace from './Workspace.jsx';
@@ -251,7 +251,7 @@ export default function App() {
         {emptyOpen && <div className={`tab ${active === 'new' ? 'active' : ''}`}><button aria-current={active === 'new' ? 'page' : undefined} onClick={() => setActive('new')}><FolderOpen />New repository</button>{demoOpen && <Button icon={X} aria-label="Close new tab" onClick={() => { setEmptyOpen(false); setActive('demo'); }} />}</div>}
         <Button icon={Plus} aria-label="New repository tab" title={`${mod}+T`} onClick={openEmpty} />
       </nav>
-      <div className="account-actions"><Button icon={Bell} aria-label="Notifications" title="Notifications" onClick={() => setDialog('Notifications')} /><Button icon={Settings} aria-label="Settings" title={`Settings · ${mod}+,`} onClick={() => setDialog('Settings')} /><Button icon={UserRound} aria-label="Git profile" title="Git profile" onClick={() => setDialog('Git profile')} /></div>
+      <div className="account-actions"><Button icon={Settings} aria-label="Settings" title={`Settings · ${mod}+,`} onClick={() => setDialog('Settings')} /><Button icon={UserRound} aria-label="Git profile" title="Git profile" onClick={() => setDialog('Git profile')} /></div>
     </header>
     <section className="toolbar" aria-label="Git actions">
       <div className="repo-select"><label htmlFor="repository-select">REPOSITORY</label><select id="repository-select" value={active} onChange={(e) => { const { value } = e.target; if (value === 'demo') openDemo(); else if (value === 'new') openEmpty(); else void selectRepository(value.slice(11)); }}><option value="demo">workspace-demo</option>{workspace?.repositories.map(item => <option key={item.id} value={`repository:${item.id}`}>{item.name}</option>)}<option value="new">Open repository…</option></select></div>
@@ -299,7 +299,6 @@ export default function App() {
       {dialog === 'Settings' && <div className="manager-actions"><Button icon={FolderOpen} onClick={() => setDialog('Repositories')}>Manage repositories</Button><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : 'Open a repository first'} onClick={() => setDialog('Remotes')}>Manage remotes</Button></div>}
       {dialog === 'Settings' && <Button onClick={() => setDialog('SSH')}>SSH keys and config</Button>}
       {dialog === 'SSH' && <SshSettings entries={entries} onBusyChange={setDialogBusy} onConsole={showManagerOutput} />}
-      {dialog === 'Notifications' && <div className="dialog-empty"><Bell /><h3>You’re all caught up.</h3><p>Git checks and repository activity appear in the command console.</p></div>}
       {dialog === 'Git profile' && <GitProfile repository={repositoryActive ? repository : null} onConsole={() => { setDialog(null); setConsoleOpen(true); }} />}
       {dialog === 'Repositories' && <Repositories workspace={workspace} onWorkspace={acceptWorkspace} onBusyChange={setDialogBusy} onConsole={showManagerOutput} onOpen={async () => { await openRepository(); setDialog(null); }} onClone={() => setDialog('Clone repository')} />}
       {dialog === 'Clone repository' && <CloneRepository entries={entries} onWorkspace={acceptWorkspace} onBusyChange={setDialogBusy} onConsole={showManagerOutput} />}
