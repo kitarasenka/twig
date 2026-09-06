@@ -8,6 +8,7 @@ import App from './app/App.jsx';
 import './ui/tokens.css';
 import './ui/layout.css';
 import './ui/history.css';
+import './ui/automations.css';
 import './ui/worktree.css';
 import './ui/refs.css';
 import './ui/ops.css';

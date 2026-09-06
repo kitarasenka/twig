@@ -57,7 +57,7 @@ export class UndoService {
       try { result = await action(); } catch (error) { failure = error; }
       const after = await captureState({ cwd, log: this.log });
       const changed = before.digest !== after.digest;
-      const irreversibleAttempt = ['sync:run', 'sync:push-ref', 'ops:rebase'].includes(kind) && !(failure instanceof TypeError) && !result?.notStarted;
+      const irreversibleAttempt = ['sync:run', 'sync:push-ref', 'sync:drop', 'ops:rebase'].includes(kind) && !(failure instanceof TypeError) && !result?.notStarted;
       if (changed || irreversibleAttempt) {
         let reason = inverseReason(kind, before, after, args);
         if (failure || result?.ok === false) reason = 'The operation did not finish normally. Continue or abort it explicitly.';

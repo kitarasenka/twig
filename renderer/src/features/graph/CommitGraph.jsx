@@ -1,8 +1,9 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Check, GitBranch, Globe, Tag, FilePenLine, Archive, Bookmark } from 'lucide-react';
-import { LANE_WIDTH, ROW_HEIGHT, segmentPath, visibleRange } from './layout.js';
+import { LANE_WIDTH, ROW_HEIGHT, authorInitials, segmentPath, visibleRange } from './layout.js';
 import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
 import { markClass } from './mark-color.js';
+import { refEndpoint, rowEndpoint } from './useGitDrag.js';
 
 export function relativeDate(value) {
   const seconds = Math.round((Date.parse(value) - Date.now()) / 1000);
@@ -13,26 +14,30 @@ export function relativeDate(value) {
   return format.format(Math.round(seconds / 86400), 'day');
 }
 
-const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, head, stashes, stashX, onStashes, refs, mark, onSelect, onMenu, dayStart, age }) {
+const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, head, stashes, stashX, onStashes, refs, mark, onSelect, onMenu, dayStart, age, drag, headBranch }) {
   // In age mode a row paints its own age onto every lane crossing it, so the
   // graph reads as one gradient down the page instead of per-branch colours.
   const stroke = age === null ? null : ageStrokeClass(age);
   const laneX = 12 + layout.lane * LANE_WIDTH;
+  const endpoint = rowEndpoint(commit, refs, headBranch);
   return <div role="option" id={`commit-${commit.oid}`} aria-selected={selected} aria-posinset={index + 1} aria-setsize={total}
-    className={`real-commit-row ${selected ? 'selected' : ''} ${dayStart ? 'new-day' : ''} ${mark ? `marked ${markClass(mark.color)}` : ''}`}
+    {...drag?.bind(endpoint)}
+    className={`real-commit-row ${selected ? 'selected' : ''} ${dayStart ? 'new-day' : ''} ${mark ? `marked ${markClass(mark.color)}` : ''} ${drag?.className(endpoint) || ''} ${drag?.state?.source.oid === commit.oid ? 'drag-source-row' : ''} ${drag?.state?.target?.oid === commit.oid ? 'drag-target-row' : ''}`}
     style={{ top: index * ROW_HEIGHT }} onClick={event => onSelect(commit.oid, event.shiftKey)}
     onContextMenu={event => { event.preventDefault(); onSelect(commit.oid); onMenu(commit.oid, event.clientX, event.clientY); }}>
     <span className="ref-cell">
       {mark && <span className="mark-chip" title={mark.note || 'Marked'}><Bookmark aria-label={mark.note ? `Marked: ${mark.note}` : 'Marked'} /></span>}
-      {head && <Check aria-label="HEAD" />}{refs?.slice(0, 2).map(ref => <span key={ref.fullName} title={ref.fullName} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''}`}>
+      {head && <Check aria-label="HEAD" />}{refs?.slice(0, 2).map(ref => <span key={ref.fullName} title={`${ref.fullName} · Drag or Alt+D, then Alt+Enter on a target`} tabIndex={0}
+        {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
     {refs?.length > 2 && <span className="ref-badge ref-more" title={refs.slice(2).map(ref => ref.fullName).join('\n')}>+{refs.length - 2}</span>}</span>
     <span className="lane-cell">
       <svg className="real-lane" aria-hidden="true" height={ROW_HEIGHT}>
         {stashes && <path className="stash-link" d={`M${laneX} 15H${stashX}`} />}
         {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment)} />)}
-        <circle className={stroke || `graph-color-${layout.color}`} cx={laneX} cy={15} r={4} />
-        {mark && <circle className="mark-node" cx={laneX} cy={15} r={5} />}
+        <circle className={stroke || `graph-color-${layout.color}`} cx={laneX} cy={15} r={8} />
+        {mark && <circle className="mark-node" cx={laneX} cy={15} r={8} />}
+        <text className="commit-initials" x={laneX} y={15}>{authorInitials(commit.author.name)}</text>
       </svg>
       {stashes && <button className="stash-node" style={{ '--stash-x': `${stashX}px` }}
         title={`${stashes.length === 1 ? 'Stash' : `${stashes.length} stashes`} on this commit:\n${stashes.map(item => item.message).join('\n')}`}
@@ -46,11 +51,32 @@ const CommitRow = memo(function CommitRow({ commit, layout, index, total, select
   </div>;
 });
 
-export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, head, onSelect, onMenu, loadMore, hasMore, loading, changes, stashes = [], marks = {}, onWorktree, onStashes, active, commitColors = 'lanes' }) {
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, head, onSelect, onMenu, loadMore, hasMore, loading, changes, stashes = [], marks = {}, onWorktree, onStashes, active, commitColors = 'lanes', drag, headBranch }) {
   const scroller = useRef(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
   const [focusIndex, setFocusIndex] = useState(0);
   const previousSelection = useRef(null);
+  const dragY = useRef(null);
+  const dragging = drag?.state?.phase === 'drag' && !drag.state.keyboard;
+  useEffect(() => {
+    if (!dragging) { dragY.current = null; return; }
+    let frame;
+    let previous = 0;
+    const scroll = time => {
+      const node = scroller.current;
+      const bounds = node.getBoundingClientRect();
+      const y = dragY.current;
+      const elapsed = Math.min(32, time - (previous || time));
+      previous = time;
+      if (y !== null && y >= bounds.top && y <= bounds.bottom) {
+        const speed = y < bounds.top + 40 ? -1 : y > bounds.bottom - 40 ? 1 : 0;
+        node.scrollTop += speed * elapsed * 0.45;
+      }
+      frame = requestAnimationFrame(scroll);
+    };
+    frame = requestAnimationFrame(scroll);
+    return () => cancelAnimationFrame(frame);
+  }, [dragging]);
   useLayoutEffect(() => {
     const node = scroller.current;
     const observer = new ResizeObserver(() => {
@@ -72,6 +98,11 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   const { start, end } = visibleRange(commits.length, viewport.top, viewport.height);
   const focused = focusIndex >= start && focusIndex < end ? commits[focusIndex]?.oid : null;
   function keyboard(event) {
+    if (event.altKey && (event.code === 'KeyD' || event.key === 'Enter')) {
+      const commit = commits[focusIndex];
+      if (commit) drag?.keydown(rowEndpoint(commit, refMap.get(commit.oid), headBranch), event);
+      return;
+    }
     // Shift+F10 and the Menu key are how a keyboard reaches a context menu;
     // the menu opens over the focused row rather than at the pointer.
     if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
@@ -115,6 +146,8 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
     <div className="real-history-columns"><span>Branch / tag</span><span>Graph</span><span>Commit message</span><span className="author-col">Author</span><span>Date</span></div>
     {changes > 0 && <button className={`worktree-row ${selected === 'worktree' ? 'selected' : ''}`} onClick={onWorktree}><FilePenLine />Uncommitted changes, {changes} files</button>}
     <div className="real-history-scroll" ref={scroller} role="listbox" aria-label="Commit history" tabIndex={0}
+      onDragOverCapture={event => { if (dragging) dragY.current = event.clientY; }}
+      onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) dragY.current = null; }}
       aria-busy={loading} aria-activedescendant={focused && active ? `commit-${focused}` : undefined}
       onKeyDown={keyboard} onScroll={event => {
         const node = event.currentTarget;
@@ -124,7 +157,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
       <div className="virtual-commits" style={{ height: commits.length * ROW_HEIGHT }}>
         {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
           selected={selected === commit.oid} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} age={now === null ? null : ageStop(commit.committedAt, now)}
-          mark={marks[commit.oid] || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes}
+          mark={marks[commit.oid] || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch}
           dayStart={start + offset > 0 && commit.committedAt.slice(0, 10) !== commits[start + offset - 1].committedAt.slice(0, 10)} />)}
       </div>
     </div>

@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
  * Focus moves into the menu on open and returns to whatever opened it on
  * close, so a keyboard user is never dropped back at the top of the document.
  */
-export default function Menu({ x, y, label, items, onClose }) {
+export default function Menu({ x, y, label, items, onClose, className = '' }) {
   const list = useRef(null);
   const [position, setPosition] = useState({ left: x, top: y, ready: false });
   // Same convention as Button: an item that carries a reason is disabled, and
@@ -69,7 +69,7 @@ export default function Menu({ x, y, label, items, onClose }) {
   }
 
   return <div className="menu-layer" style={{ left: position.left, top: position.top, visibility: position.ready ? 'visible' : 'hidden' }}>
-    <div className="menu" role="menu" aria-label={label} ref={list} onKeyDown={keydown}>
+    <div className={`menu ${className}`} role="menu" aria-label={label} ref={list} onKeyDown={keydown}>
       {items.map((item, index) => item.separator
         ? <hr key={`separator-${index}`} role="separator" />
         : <button key={item.key} role="menuitem" type="button" disabled={Boolean(item.reason)} className={item.danger ? 'destructive' : undefined}

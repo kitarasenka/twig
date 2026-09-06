@@ -5,6 +5,7 @@ import { applySelection, intentToAdd, stageAll, stageFile, unstageAll, unstageFi
 import { createCommit, stashPop, stashPush } from './git/commit-ops.js';
 import { loadStashDiff, loadStashes, loadStashFiles, runStashAction } from './git/stash.js';
 import { loadDivergence, pushRef, runSync } from './git/sync.js';
+import { runDrop, validateDropRequest } from './git/drop.js';
 
 /**
  * Working-tree and synchronisation channels.
@@ -29,7 +30,7 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
       const run = () => read({ cwd: repo.path, log: journal }, ...args.slice(1));
       const kind = channel === 'stash:action' && ['apply', 'pop'].includes(args[1]) ? `stash:${args[1]}` : channel;
       const parameters = kind !== channel ? [args[2]] : args.slice(1);
-      return ['worktree:read', 'worktree:diff', 'stash:list', 'stash:files', 'stash:diff', 'sync:divergence', 'sync:cancel', 'sync:run', 'sync:push-ref'].includes(channel)
+      return ['worktree:read', 'worktree:diff', 'stash:list', 'stash:files', 'stash:diff', 'sync:divergence', 'sync:cancel', 'sync:run', 'sync:push-ref', 'sync:drop'].includes(channel)
         ? run() : undo.perform(repo.path, kind, parameters, run);
     });
   }
@@ -144,6 +145,21 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
       return await undo.perform(options.cwd, 'sync:push-ref', [], () => controller.signal.aborted
         ? { ok: false, cancelled: true, notStarted: true, message: 'Cancelled before Git started.' }
         : pushRef({ ...options, remote, ref, remove, signal: controller.signal }));
+    } finally {
+      if (running.get(key) === controller) running.delete(key);
+    }
+  });
+
+  handler('sync:drop', 2, async (options, request) => {
+    validateDropRequest(request);
+    const key = options.cwd;
+    if (running.has(key)) return { ok: false, notStarted: true, message: 'Another sync operation is running.' };
+    const controller = new AbortController();
+    running.set(key, controller);
+    try {
+      return await undo.perform(key, 'sync:drop', [], () => controller.signal.aborted
+        ? { ok: false, cancelled: true, notStarted: true, message: 'Cancelled before Git started.' }
+        : runDrop({ ...options, request, signal: controller.signal }));
     } finally {
       if (running.get(key) === controller) running.delete(key);
     }

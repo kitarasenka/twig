@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { parseHistoryV1, HistoryParseError } from '../../main/git/history-parser.js';
+import { parseFileHistory, parseHistoryV1, HistoryParseError } from '../../main/git/history-parser.js';
 import { buildFileHistoryArgv, buildHistoryArgv } from '../../main/git/history.js';
 
 const SHA1_A = '82df62445b05a04be53291bb36b5db80e46dad77';
@@ -141,9 +141,9 @@ assert.deepEqual(buildHistoryArgv({ limit: 500, skip: 0 }).includes('--max-count
 
 // --- buildFileHistoryArgv: `git log --follow` on one file, no Git spawned ---
 
-assert.deepEqual(buildFileHistoryArgv('src/app.js'), ['log', '--follow', '--topo-order', '-z',
+assert.deepEqual(buildFileHistoryArgv('src/app.js'), ['log', '--follow', '--name-status', '--topo-order', '-z',
   '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=250', '--', ':(literal)src/app.js']);
-assert.deepEqual(buildFileHistoryArgv('a b/c.txt', 10), ['log', '--follow', '--topo-order', '-z',
+assert.deepEqual(buildFileHistoryArgv('a b/c.txt', 10), ['log', '--follow', '--name-status', '--topo-order', '-z',
   '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=10', '--', ':(literal)a b/c.txt']);
 // The path is the last argv token and sits after `--`, so a flag-like name stays a name.
 assert.equal(buildFileHistoryArgv('--force').at(-1), ':(literal)--force');
@@ -152,6 +152,17 @@ for (const file of ['', 42, '/etc/passwd', '../escape', 'a/../b', 'has\0nul']) {
 }
 for (const limit of [0, -1, 501, 1.5, '250', NaN, Infinity]) {
   assert.throws(() => buildFileHistoryArgv('src/app.js', limit), TypeError, `limit ${limit} must be rejected`);
+}
+
+const fileRecord = oid => record(oid, '', 'Fixture', 'f@example.invalid',
+  '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'File change', '');
+const renamed = fileRecord(SHA1_A) + '\nR100\0old\n[1].txt\0new.txt\0'
+  + fileRecord(SHA1_B) + '\nM\0old\n[1].txt\0';
+assert.deepEqual(parseFileHistory(renamed, 'new.txt').map(commit => commit.path), ['new.txt', 'old\n[1].txt']);
+assert.deepEqual(parseFileHistory('', 'new.txt'), []);
+assert.equal(parseFileHistory(fileRecord(SHA1_A) + '\nD\0new.txt\0', 'new.txt')[0].path, 'new.txt');
+for (const raw of [renamed.slice(0, -1), fileRecord(SHA1_A) + '\nR100\0old.txt\0', fileRecord(SHA1_A) + '\nBAD\0new.txt\0']) {
+  assert.throws(() => parseFileHistory(raw, 'new.txt'), HistoryParseError);
 }
 
 console.log('history: all checks passed');

@@ -1,5 +1,5 @@
 import { runGit } from './exec.js';
-import { parseHistoryV1 } from './history-parser.js';
+import { parseFileHistory, parseHistoryV1 } from './history-parser.js';
 import { validateFile, validateOid } from './commit.js';
 
 const FORMAT = '%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b';
@@ -59,7 +59,7 @@ export async function loadHistoryPage({ cwd, log, limit = 250, skip = 0 }) {
 export function buildFileHistoryArgv(file, limit = 250) {
   validateFile(file);
   validateLimit(limit);
-  return ['log', '--follow', '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${limit}`, '--', `:(literal)${file}`];
+  return ['log', '--follow', '--name-status', '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${limit}`, '--', `:(literal)${file}`];
 }
 
 /**
@@ -73,7 +73,7 @@ export async function loadFileHistory({ cwd, log, file, limit = 250 }) {
   const argv = buildFileHistoryArgv(file, limit);
   const result = await runGit({ argv, cwd, log, operation: 'Read file history' });
   if (result.code !== 0) throw new Error('Git could not read the history for this file.');
-  return { commits: parseHistoryV1(result.stdout) };
+  return { commits: parseFileHistory(result.stdout, file) };
 }
 
 /**

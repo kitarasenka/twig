@@ -14,7 +14,7 @@ function FileRow({ entry, active, onOpen, onPrimary, primaryIcon: Icon, primaryL
   </div>;
 }
 
-export default function WorktreeScreen({ repository, operation = null, onConsole, onChanged, onBack }) {
+export default function WorktreeScreen({ repository, operation = null, runAutomation = null, onConsole, onChanged, onBack }) {
   const [tree, setTree] = useState(EMPTY);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -107,12 +107,17 @@ export default function WorktreeScreen({ repository, operation = null, onConsole
   }, open?.staged ? 'Unstaged the selected lines.' : 'Staged the selected lines.');
 
   async function commit() {
+    if (runAutomation) {
+      if (!await runAutomation('pre-commit', {})) return;
+      if (!await runAutomation('commit-msg', { message })) return;
+    }
     await guard(async () => {
       const warnings = await window.twig.createCommit(repository.id, message, false);
       setMessage('');
       setOpen(null);
       setDiff(null);
       if (warnings.length) setNotice(warnings.join(' '));
+      if (runAutomation) void runAutomation('post-commit', {});
     }, 'Commit created.', false);
   }
 

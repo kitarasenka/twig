@@ -27,7 +27,8 @@ try {
   await git(['config', 'user.name', 'Twig Fixture']);
   await git(['config', 'user.email', 'fixture@example.invalid']);
   await writeFile(path.join(cwd, 'hello.txt'), 'Hello Twig\r\n');
-  await git(['add', '--', 'hello.txt']);
+  await writeFile(path.join(cwd, 'old [name].txt'), 'Rename history content\n');
+  await git(['add', '--', 'hello.txt', 'old [name].txt']);
   await git(['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', 'commit', '-m', 'Root fixture'], ancient);
   const initial = await git(['rev-parse', 'HEAD']);
   const tree = await git(['rev-parse', 'HEAD^{tree}']);
@@ -37,6 +38,7 @@ try {
   for (let i = 0; i < 255; i++) parent = await git(['commit-tree', tree, '-p', parent, '-m', `History fixture ${i}`], recent);
   await git(['update-ref', 'refs/heads/main', parent]);
   await writeFile(path.join(cwd, 'hello.txt'), 'Hello real history\r\n');
+  await git(['mv', '--', 'old [name].txt', 'renamed.txt']);
   await git(['add', '--', 'hello.txt']);
   await git(['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', 'commit', '-m', 'Real history 🌱', '-m', 'Full body\nWith another line.']);
   const tip = await git(['rev-parse', 'HEAD']);
@@ -74,7 +76,46 @@ try {
   await fileHistory.getByRole('listitem').first().waitFor();
   assert.equal(await fileHistory.getByRole('listitem').count(), 2);
   await fileHistory.getByRole('listitem').first().getByRole('button').click();
+  const fileDiff = page.getByRole('region', { name: 'File diff', exact: true });
+  await fileDiff.getByText('+Hello real history', { exact: true }).waitFor();
+  assert.ok(await fileHistory.isVisible());
+  assert.equal(await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).count(), 0);
+  await fileHistory.getByRole('listitem').last().getByRole('button').focus();
+  await page.keyboard.press('Enter');
+  await fileDiff.getByText('+Hello Twig', { exact: true }).waitFor();
+  assert.equal(await fileDiff.getByText('+Hello real history', { exact: true }).count(), 0);
+  assert.equal(await fileDiff.getByText('+Rename history content', { exact: true }).count(), 0);
+  assert.equal(await fileHistory.getByRole('button', { pressed: true }).count(), 1);
+  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  assert.ok(await fileHistory.isVisible());
+  await fileHistory.getByRole('listitem').first().getByRole('button').click();
+  await fileDiff.getByText('+Hello real history', { exact: true }).waitFor();
+  await fileDiff.getByRole('button', { name: 'Go to commit', exact: true }).click();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
+  assert.equal(await fileHistory.count(), 0);
+
+  await page.getByRole('button', { name: 'A renamed.txt', exact: true }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'File history' }).click();
+  await fileHistory.getByRole('listitem').last().getByRole('button').click();
+  await fileDiff.getByText('+Rename history content', { exact: true }).waitFor();
+  assert.equal(await fileDiff.locator('header code').textContent(), 'old [name].txt');
+  assert.equal(await fileDiff.getByText('+Hello Twig', { exact: true }).count(), 0);
+  await mkdir('artifacts', { recursive: true });
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 640));
+  for (const theme of ['dark', 'light']) {
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByLabel('Appearance').selectOption(theme); await page.keyboard.press('Escape');
+    await page.screenshot({ path: `artifacts/file-history-${theme}.png`, animations: 'disabled' });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    const historyBox = await fileHistory.boundingBox();
+    const diffBox = await fileDiff.boundingBox();
+    assert.ok(diffBox.x >= historyBox.x + historyBox.width, 'File changes stay beside the history');
+  }
+  await fileDiff.getByRole('button', { name: 'Go to commit', exact: true }).click();
+  await page.getByRole('heading', { name: 'Root fixture', exact: true }).waitFor();
+  await page.locator('.real-branch[title^="refs/heads/main"]').click();
+  await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 920));
   await list.focus(); await page.keyboard.press('ArrowDown');
   await page.getByRole('heading', { name: 'History fixture 254', exact: true }).waitFor();
   await page.getByRole('button', { name: 'New repository tab', exact: true }).click();

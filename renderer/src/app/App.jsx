@@ -10,6 +10,7 @@ import Repositories from '../features/settings/Repositories.jsx';
 import CloneRepository from '../features/settings/CloneRepository.jsx';
 import Remotes from '../features/settings/Remotes.jsx';
 import SshSettings from '../features/settings/SshSettings.jsx';
+import ExecutionPanel from '../features/automations/ExecutionPanel.jsx';
 import { AGE_STOPS, ageTextClass } from '../features/graph/age-color.js';
 
 const unavailable = 'Connect a repository to use this action';
@@ -53,6 +54,8 @@ export default function App() {
   const [divergence, setDivergence] = useState({ ahead: 0, behind: 0, upstream: null });
   const [syncing, setSyncing] = useState(null);
   const [syncNote, setSyncNote] = useState('');
+  const [pushGate, setPushGate] = useState(null);
+  const pushGateResolve = useRef(null);
   const [worktreeVersion, setWorktreeVersion] = useState(0);
   const [remoteRevisions, setRemoteRevisions] = useState({});
   const [closedTabs, setClosedTabs] = useState(() => new Set());
@@ -100,8 +103,30 @@ export default function App() {
       .catch(() => { if (request === divergenceRequest.current) setDivergence({ ahead: 0, behind: 0, upstream: null }); });
   }, [repositoryActive, repository?.id, repository?.available, branchName, worktreeVersion]);
 
+  function runPushGate() {
+    return new Promise(resolve => {
+      pushGateResolve.current = resolve;
+      setPushGate({ steps: [], result: null, blocked: false });
+      window.twig.runAutomation(repository.id, 'pre-push', { remote: divergence.upstream ? divergence.upstream.split('/')[0] : 'origin' })
+        .then(result => {
+          if (result.ran === false) { setPushGate(null); pushGateResolve.current = null; resolve(true); return; }
+          setPushGate({ steps: result.steps, result: result.blocked ? 'blocked' : result.ok ? 'passed' : 'failed', blocked: result.blocked });
+          if (!result.blocked) setTimeout(() => { setPushGate(null); pushGateResolve.current = null; resolve(true); }, result.ok ? 900 : 1600);
+        })
+        .catch(() => { setPushGate(null); pushGateResolve.current = null; setConsoleOpen(true); resolve(true); });
+    });
+  }
+  function closePushGate(proceed, bypass = false) {
+    const resolve = pushGateResolve.current;
+    pushGateResolve.current = null;
+    if (bypass) void window.twig.runAutomation(repository.id, 'pre-push', { bypass: true }).catch(() => {});
+    setPushGate(null);
+    resolve?.(proceed || bypass);
+  }
+
   async function runSync(mode) {
     if (!repository) return;
+    if ((mode === 'push' || mode === 'push-upstream') && !await runPushGate()) return;
     setSyncing(mode); setSyncNote('');
     try {
       const result = await window.twig.runSync(repository.id, mode, branchName);
@@ -307,6 +332,9 @@ export default function App() {
         setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
       }} />}
     </Dialog>}
+    {pushGate && <ExecutionPanel event="pre-push" label="Before Push" phase="pre" steps={pushGate.steps} result={pushGate.result}
+      blocked={pushGate.blocked} onClose={() => closePushGate(false)} onRetry={() => closePushGate(false)}
+      onRunAgain={() => runPushGate()} onBypass={() => closePushGate(false, true)} />}
   </div>;
 }
 

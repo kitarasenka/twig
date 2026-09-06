@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Archive, GitBranch, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag } from 'lucide-react';
+import { Archive, GitBranch, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
@@ -13,19 +13,25 @@ import OperationBanner from '../ops/OperationBanner.jsx';
 import BisectBanner from '../ops/BisectBanner.jsx';
 import RefsScreen from '../refs/RefsScreen.jsx';
 import StashScreen from '../stash/StashScreen.jsx';
+import AutomationsScreen from '../automations/AutomationsScreen.jsx';
+import ExecutionPanel from '../automations/ExecutionPanel.jsx';
+import { eventLabel, eventPhase } from '../automations/event-labels.js';
 import RebaseDialog from '../rebase/RebaseDialog.jsx';
 import { ConfirmDialog, MessageDialog, NameDialog } from '../ops/dialogs.jsx';
 import { buildCommitMenu } from '../ops/commit-menu.js';
 import { buildRewordPlan } from '../ops/reword-plan.js';
 import { createLaneLayout } from './layout.js';
+import useGitDrag, { refEndpoint } from './useGitDrag.js';
+import DropDialog from './DropDialog.jsx';
+import { dropActions, endpointLabel, sameEndpoint } from '../../../../main/git/drop-plan.js';
 
 const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
 const NO_BISECT = { active: false, terms: { bad: 'bad', good: 'good' }, start: null, bad: null, goods: [],
   skipped: [], expected: null, remaining: null, steps: null, done: false, firstBad: null };
 /** The three centre-pane screens that replace the graph instead of selecting a commit. */
-const SCREENS = ['worktree', 'branches', 'stashes'];
+const SCREENS = ['worktree', 'branches', 'stashes', 'automations'];
 
-function BranchTree({ refs, onSelect }) {
+function BranchTree({ refs, onSelect, drag, headBranch }) {
   const folders = new Map();
   const leaves = [];
   for (const ref of refs) {
@@ -37,21 +43,22 @@ function BranchTree({ refs, onSelect }) {
       folders.get(folder).push({ ...ref, label: ref.label.slice(slash + 1) });
     }
   }
-  return <>{[...folders].map(([name, children]) => <details className="branch-folder" key={name} open><summary>{name}</summary><BranchTree refs={children} onSelect={onSelect} /></details>)}
-    {leaves.map(ref => <button className="real-branch" key={ref.fullName} title={ref.fullName} onClick={() => onSelect(ref.target)}>
+  return <>{[...folders].map(([name, children]) => <details className="branch-folder" key={name} open><summary>{name}</summary><BranchTree refs={children} onSelect={onSelect} drag={drag} headBranch={headBranch} /></details>)}
+    {leaves.map(ref => <button {...drag.bind(refEndpoint(ref))} className={`real-branch ${ref.type === 'local' && ref.name === headBranch ? 'current-branch' : ''} ${drag.className(refEndpoint(ref))}`} key={ref.fullName}
+      title={`${ref.fullName} · Drag or Alt+D, then Alt+Enter on a target`} onClick={() => onSelect(ref.target)}>
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.label}</span>{(ref.ahead > 0 || ref.behind > 0) && <small>↑{ref.ahead} ↓{ref.behind}</small>}</button>)}</>;
 }
 
-function Diff({ diff, onClose }) {
+function Diff({ diff, onClose, onCommit }) {
   return <section className="diff-view" aria-label="File diff"><header className="panel-heading"><code>{diff.file}</code><Button icon={X} aria-label="Close diff" onClick={onClose} /></header>
+    {onCommit && <div className="file-history-diff-heading"><code>{diff.oid.slice(0, 8)}</code><Button icon={GitBranch} onClick={onCommit}>Go to commit</Button></div>}
     {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : <div className="diff-lines" tabIndex={0} aria-label="Diff lines">
       {diff.patch ? diff.patch.split('\n').map((line, index) => <div key={index} className={line.startsWith('+') ? 'diff-added' : line.startsWith('-') ? 'diff-deleted' : line.startsWith('@@') ? 'diff-hunk' : ''}><span>{line || ' '}</span></div>) : <p className="empty-inline">No changes for this file in this comparison.</p>}
     </div>}
   </section>;
 }
 
-/** Every commit that touched one file, newest first; a click jumps to it in the graph. */
-function FileHistory({ data, onSelect, onClose, onConsole }) {
+function FileHistory({ data, selected, onSelect, onClose, onConsole }) {
   return <section className="diff-view file-history" aria-label="File history">
     <header className="panel-heading"><span>HISTORY <code>{data.path}</code>{data.commits ? <small> · {data.commits.length}</small> : null}</span>
       <Button icon={X} aria-label="Close file history" onClick={onClose} /></header>
@@ -60,7 +67,7 @@ function FileHistory({ data, onSelect, onClose, onConsole }) {
       : !data.commits.length ? <p className="empty-inline">Git has no recorded history for this file.</p>
         : <ul className="file-history-list">
           {data.commits.map(commit => <li key={commit.oid}>
-            <button className="file-history-entry" onClick={() => onSelect(commit.oid)} title={commit.subject}>
+            <button className="file-history-entry" aria-pressed={selected === commit.oid} onClick={() => onSelect(commit)} title={commit.subject}>
               <code>{commit.oid.slice(0, 8)}</code>
               <span className="file-history-subject">{commit.subject || '(no subject)'}</span>
               <span className="file-history-meta">{commit.author.name} · {new Date(commit.committedAt).toLocaleDateString('en-GB')}</span>
@@ -100,6 +107,22 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const [conflict, setConflict] = useState(null);
   const [note, setNote] = useState('');
   const [working, setWorking] = useState(false);
+  const [execution, setExecution] = useState(null);
+  const [automationRefresh, setAutomationRefresh] = useState(0);
+  const gateResolver = useRef(null);
+  const [dropMenu, setDropMenu] = useState(null);
+  const [dropDialog, setDropDialog] = useState(null);
+  const [dropRunning, setDropRunning] = useState(false);
+  const drag = useGitDrag({ active: active && !working && !toolbarBusyReason && !dropDialog, revision: data.refs,
+    onStart: () => {
+      setMenu(null); setFileMenu(null);
+      if (!conflict) {
+        setDiff(null); setFileHistory(null); diffRequest.current++;
+        setSelected(value => SCREENS.includes(value) ? data.commits[0]?.oid || null : value);
+      }
+    },
+    onDrop: (source, target, x, y) => { setMenu(null); setDropMenu({ source, target, x, y }); } });
+  useEffect(() => { if (!drag.state) setDropMenu(null); }, [drag.state]);
   const diffRequest = useRef(0);
   const jumpRequest = useRef(0);
   const selectionAnchor = useRef(null);
@@ -230,6 +253,58 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     } finally { setWorking(false); }
   }, [repository.id, reload, refreshOperation, onConsole, onRepositoryChanged]);
 
+  /**
+   * Runs the automation pipelines bound to a Git event. For a `pre-*` event the
+   * caller awaits this before touching Git: it resolves `true` when the
+   * operation may proceed (nothing matched, everything passed, or the user chose
+   * to bypass) and `false` when a pipeline blocked it. A `post-*` event is fired
+   * and forgotten. An engine error never hard-blocks Git — it is surfaced in the
+   * console and the operation continues.
+   */
+  const fireAutomation = useCallback(async (event, options, onDone) => {
+    const phase = eventPhase(event);
+    setExecution({ event, label: eventLabel(event), phase, steps: [], result: null, blocked: false, bypassed: false, options });
+    try {
+      const result = await window.twig.runAutomation(repository.id, event, options);
+      setAutomationRefresh(value => value + 1);
+      if (phase === 'post' || result.ran === false) { setExecution(null); onDone(true); return; }
+      setExecution(current => current && { ...current, steps: result.steps, result: result.blocked ? 'blocked' : result.ok ? 'passed' : 'failed', blocked: result.blocked });
+      if (result.blocked) return; // wait for a button
+      setTimeout(() => { setExecution(null); onDone(true); }, result.ok ? 900 : 1600);
+    } catch { setExecution(null); onConsole(); onDone(true); }
+  }, [repository.id, onConsole]);
+
+  const runAutomation = useCallback((event, options = {}) => new Promise(resolve => {
+    gateResolver.current = resolve;
+    void fireAutomation(event, options, proceed => { gateResolver.current = null; resolve(proceed); });
+  }), [fireAutomation]);
+
+  /** Wraps a history mutation with a pre-gate and a post-hook. */
+  const performGated = useCallback(async (pre, post, run, success) => {
+    if (pre && !(await runAutomation(pre, {}))) return null;
+    const result = await perform(run, success);
+    if (post && result?.ok !== false) void window.twig.runAutomation(repository.id, post, {}).then(() => setAutomationRefresh(value => value + 1)).catch(() => {});
+    return result;
+  }, [runAutomation, perform, repository.id]);
+
+  const resolveGate = useCallback((proceed, bypass = false) => {
+    const resolve = gateResolver.current;
+    gateResolver.current = null;
+    const current = execution;
+    setExecution(null);
+    if (bypass && current?.event) void window.twig.runAutomation(repository.id, current.event, { ...current.options, bypass: true }).then(() => setAutomationRefresh(value => value + 1)).catch(() => {});
+    resolve?.(proceed || bypass);
+  }, [execution, repository.id]);
+
+  const rerunGate = useCallback(() => {
+    if (!execution) return;
+    void fireAutomation(execution.event, execution.options, proceed => {
+      const resolve = gateResolver.current;
+      gateResolver.current = null;
+      resolve?.(proceed);
+    });
+  }, [execution, fireAutomation]);
+
   // Local commit marks never run Git and never touch history, so they update
   // their own state without a reload.
   const applyMark = useCallback(async (oid, color, noteText) => {
@@ -268,18 +343,18 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         title: `Check out ${name}`, command: ['checkout', name, '--'],
         consequence: 'Your uncommitted changes stay in the working tree, and Git will refuse the checkout if they conflict with that branch.',
         confirmLabel: 'Check out',
-        run: () => perform(() => window.twig.checkoutRef(repository.id, name, false), `Checked out ${name}.`)
+        run: () => performGated(null, 'post-checkout', () => window.twig.checkoutRef(repository.id, name, false), `Checked out ${name}.`)
       }),
       checkoutCommit: () => confirmIfDirty({
         title: `Check out ${short}`, command: ['checkout', '--detach', commit.oid, '--'],
         consequence: 'HEAD will be detached: new commits will belong to no branch until you create one.',
         confirmLabel: 'Check out',
-        run: () => perform(() => window.twig.checkoutRef(repository.id, commit.oid, true), `Checked out ${short} with a detached HEAD.`)
+        run: () => performGated(null, 'post-checkout', () => window.twig.checkoutRef(repository.id, commit.oid, true), `Checked out ${short} with a detached HEAD.`)
       }),
-      merge: (name, noFf) => perform(() => window.twig.mergeRevision(repository.id, name, noFf), `Merged ${name} into ${target}.`),
+      merge: (name, noFf) => performGated('pre-merge-commit', 'post-merge', () => window.twig.mergeRevision(repository.id, name, noFf), `Merged ${name} into ${target}.`),
       cherryPick: () => perform(() => window.twig.cherryPick(repository.id, commit.oid), `Cherry-picked ${short}.`),
       revert: () => perform(() => window.twig.revertCommit(repository.id, commit.oid, commit.parents.length > 1 ? 1 : null), `Reverted ${short}.`),
-      rebase: () => perform(() => window.twig.rebaseOnto(repository.id, commit.oid, null), `Rebased ${target} onto ${short}.`),
+      rebase: () => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, commit.oid, null), `Rebased ${target} onto ${short}.`),
       interactiveRebase: () => void openRebase(commit.oid),
       reword: () => void openReword(commit),
       reset: mode => {
@@ -324,7 +399,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       dialogFor(['commit', '--amend', '--only', '--file=-'],
         `${short} gets a new object id. Its changes stay exactly as they are, and whatever is staged is left out of it. If the commit is already pushed, the remote will only accept it after a force push.`,
         'Rewrite the message',
-        text => perform(() => window.twig.rewordCommit(repository.id, commit.oid, text), 'Message rewritten.'));
+        text => performGated(null, 'post-rewrite', () => window.twig.rewordCommit(repository.id, commit.oid, text), 'Message rewritten.'));
       return;
     }
     setWorking(true); setNote('');
@@ -338,7 +413,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       dialogFor(['rebase', '--interactive', parent],
         `${short} and ${replayed === 1 ? 'the one commit' : `the ${replayed} commits`} after it get new object ids; their changes are replayed unchanged. If any of them is already pushed, the remote will only accept them after a force push.`,
         'Rewrite and replay',
-        text => perform(() => window.twig.rebaseOnto(repository.id, parent, buildRewordPlan(commits, commit.oid, text)), 'Message rewritten.'));
+        text => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, parent, buildRewordPlan(commits, commit.oid, text)), 'Message rewritten.'));
     } catch (failure) {
       setNote(failure.message || 'Could not read the commits to replay.');
       onConsole();
@@ -405,7 +480,39 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       if (request === diffRequest.current) setFileHistory({ path, commits, loading: false });
     } catch { if (request === diffRequest.current) setFileHistory({ path, error: 'Could not read this file’s history. Show output in the console.', loading: false }); }
   }
+  async function openHistoryDiff(commit) {
+    const request = ++diffRequest.current;
+    const file = commit.path || fileHistory.path;
+    const oid = commit.oid;
+    setDetail(true);
+    setDiff({ file, oid, loading: true });
+    try {
+      const result = await window.twig.getFileDiff(repository.id, oid, file, null);
+      if (request === diffRequest.current) setDiff({ file, oid, ...result, loading: false });
+    } catch { if (request === diffRequest.current) setDiff({ file, oid, error: 'Could not read the diff. Show output in the console.', loading: false }); }
+  }
   const changes = repository.status?.entries || [];
+  const dropReason = toolbarBusyReason || (working ? 'Git is working' : undefined)
+    || (!operationReady ? 'Repository state is not verified yet. Refresh first.' : undefined)
+    || (operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : undefined)
+    || (bisect.active ? 'Finish BugHunter first' : undefined)
+    || (changes.length ? 'Commit or stash your changes first' : undefined);
+  async function selectDropAction(action, source, target) {
+    if (action.key === 'compare') {
+      selectionAnchor.current = source.oid; jumpRequest.current++;
+      setSelected(source.oid); setRange({ base: target.oid, oid: source.oid });
+      setDetail(true); setDiff(null); setFileHistory(null); diffRequest.current++;
+      return;
+    }
+    if (dropReason) return;
+    setWorking(true);
+    try {
+      const commit = ['cherry-pick', 'revert'].includes(action.key) ? await window.twig.getCommit(repository.id, source.oid) : null;
+      setDropDialog({ title: action.text, parents: commit?.parents || [],
+        request: { action: action.key, source, target, head: { oid: headOid, branch: headBranch || null }, mainline: null } });
+    } catch { setNote('Could not read the dragged commit. Refresh and try again.'); }
+    finally { setWorking(false); }
+  }
   const screen = SCREENS.includes(selected) ? selected : null;
   const hunterCommit = !screen && !range ? data.commits[indexMap.get(selected)] : null;
   const hunterReason = toolbarBusyReason || (working ? 'Git is working' : undefined)
@@ -431,9 +538,11 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
             <GitBranch /><span>Branches and tags</span><small>{data.refs.length}</small></button>
           <button className={`real-branch ${screen === 'stashes' ? 'selected' : ''}`} onClick={() => choose('stashes')}>
             <Archive /><span>Stashes</span><small>{stashes.length}</small></button>
+          <button className={`real-branch ${screen === 'automations' ? 'selected' : ''}`} onClick={() => choose('automations')}>
+            <Workflow /><span>Automations</span></button>
         </nav>
         <div className="sidebar-sections">{[['LOCAL', 'local'], ['REMOTE', 'remote'], ['TAGS', 'tag']].map(([label, type]) => <details key={type} open><summary>{label}<span>{data.refs.filter(ref => ref.type === type).length}</span></summary>
-          <BranchTree refs={visibleRefs.filter(ref => ref.type === type).map(ref => ({ ...ref, label: ref.name }))} onSelect={jump} />
+          <BranchTree refs={visibleRefs.filter(ref => ref.type === type).map(ref => ({ ...ref, label: ref.name }))} onSelect={jump} drag={drag} headBranch={headBranch} />
           {!visibleRefs.some(ref => ref.type === type) && <p className="section-empty">No matching {label.toLowerCase()} refs</p>}
         </details>)}</div><div className="sidebar-footer"><span>{repository.status?.branch?.name || 'Detached HEAD'}</span><Button icon={PanelLeftClose} aria-label="Collapse repository sidebar" onClick={() => setCollapsed(true)} /></div>
       </>}
@@ -443,6 +552,12 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       <header className="graph-heading"><div><GitBranch /><strong>History</strong><span className="count">{data.commits.length} loaded</span></div><div>{!detail && <Button icon={PanelRightOpen} aria-label="Show commit details" onClick={() => setDetail(true)} />}<Button icon={RefreshCw} reason={loading ? 'History is loading' : undefined}
         onClick={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }}>Refresh</Button></div></header>
       {error && <div className="history-error" role="alert">{error}<button onClick={onConsole}>Show output</button></div>}
+      {drag.state && <div className="git-drag-status" role="status">
+        <span>Source <strong>{endpointLabel(drag.state.source)}</strong> → Target <strong>{drag.state.target ? endpointLabel(drag.state.target) : 'Choose a branch or commit'}</strong></span>
+        <small>{sameEndpoint(drag.state.source, drag.state.target) ? 'Choose a different target' : drag.state.phase === 'menu' ? 'Choose an action below' : 'Drop for actions · Alt+D to pick up · Alt+Enter to drop · Esc to cancel'}</small>
+        <Button onClick={drag.cancel}>Cancel</Button>
+      </div>}
+      {dropRunning && <div className="git-drag-status" role="status">Running Git action… <Button onClick={() => void window.twig.cancelSync(repository.id)}>Cancel operation</Button></div>}
       {note && <div className="operation-note" role="status"><span>{note}</span><button onClick={() => setNote('')} aria-label="Dismiss">×</button></div>}
       <OperationBanner state={operation} busy={working} onOpenConflict={setConflict}
         onStep={step => perform(() => window.twig.runSequencer(repository.id, operation.kind, step), `${operation.kind} ${step === 'abort' ? 'aborted' : step === 'skip' ? 'skipped a commit' : 'finished'}.`)} />
@@ -454,7 +569,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         {loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} head={repository.status?.branch?.oid}
             onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} changes={changes.length} stashes={stashes} marks={marks}
-            onWorktree={() => choose('worktree')} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} />}
+            onWorktree={() => choose('worktree')} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
       </div>
       {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}
         onResolved={state => { setConflict(null); setOperation(state); setNote(`${conflict} marked resolved.`); void reload(); onRepositoryChanged?.(); }} />}
@@ -463,13 +578,20 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       {!conflict && screen === 'stashes' && <StashScreen repository={repository} busy={working}
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} />}
       {!conflict && screen === 'worktree' && <WorktreeScreen repository={repository} operation={operation} onConsole={onConsole} onChanged={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }}
-        onBack={() => choose(data.commits[0]?.oid || null)} />}
-      {!conflict && diff && <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} />}
-      {!conflict && !diff && fileHistory && <FileHistory data={fileHistory} onConsole={onConsole}
-        onSelect={oid => { setFileHistory(null); void jump(oid); }} onClose={() => { diffRequest.current++; setFileHistory(null); }} />}
+        runAutomation={runAutomation} onBack={() => choose(data.commits[0]?.oid || null)} />}
+      {!conflict && screen === 'automations' && <AutomationsScreen repository={repository} refreshKey={automationRefresh} busy={working || Boolean(execution)}
+        onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onChanged={() => setAutomationRefresh(value => value + 1)}
+        onRunEvent={(event, options) => void runAutomation(event, options)} />}
+      {!conflict && diff && !fileHistory && <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} />}
+      {!conflict && fileHistory && <FileHistory data={fileHistory} selected={diff?.oid} onConsole={onConsole}
+        onSelect={openHistoryDiff} onClose={() => { diffRequest.current++; setFileHistory(null); setDiff(null); }} />}
     </main>
     {showDetail && <Splitter width={width} onWidth={setWidth} />}
-    {showDetail && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile}
+    {showDetail && fileHistory && <aside className="file-history-detail" aria-label="File history changes">
+      {diff ? <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} onCommit={() => void jump(diff.oid)} />
+        : <p className="empty-inline">Select a commit to view this file’s changes.</p>}
+    </aside>}
+    {showDetail && !fileHistory && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile}
       onFileMenu={(path, x, y) => setFileMenu({ path, x, y })} onConsole={onConsole} range={range} commitColors={commitColors} remotes={remotes}
       mark={commitState.commit ? marks[commitState.commit.oid] || null : null} onSetMark={applyMark} onClearMark={removeMark} />}
     {fileMenu && <Menu x={fileMenu.x} y={fileMenu.y} label={`Actions for ${fileMenu.path}`} onClose={() => setFileMenu(null)}
@@ -481,10 +603,22 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         head: { branch: headBranch, oid: headOid, detached: Boolean(repository.status?.branch?.detached) },
         handlers: commitHandlers(menu.commit)
       })} />}
+    {dropMenu && <Menu x={dropMenu.x} y={dropMenu.y} label="Drag and drop actions" className="drop-action-menu" onClose={() => { setDropMenu(null); drag.cancel(); }}
+      items={dropActions(dropMenu.source, dropMenu.target, remotes.map(remote => remote.name)).map(action => ({ ...action,
+        reason: action.key === 'compare' ? undefined : dropReason,
+        hint: action.key !== 'compare' && dropReason ? dropReason : action.hint,
+        run: () => void selectDropAction(action, dropMenu.source, dropMenu.target) }))} />}
+    {dropDialog && <DropDialog {...dropDialog} remoteNames={remotes.map(remote => remote.name)} onClose={() => setDropDialog(null)}
+      onRun={request => { setDropDialog(null); setDropRunning(true);
+        void perform(() => window.twig.runDrop(repository.id, request), 'Drag and drop action finished.').finally(() => setDropRunning(false)); }} />}
     {dialog?.type === 'confirm' && <ConfirmDialog {...dialog} onClose={() => setDialog(null)} />}
     {dialog?.type === 'name' && <NameDialog {...dialog} onClose={() => setDialog(null)} />}
     {dialog?.type === 'message' && <MessageDialog {...dialog} onClose={() => setDialog(null)} />}
     {dialog?.type === 'rebase' && <RebaseDialog commits={dialog.commits} onClose={() => setDialog(null)}
-      onRun={entries => perform(() => window.twig.rebaseOnto(repository.id, dialog.oid, entries), 'Rebase finished.')} />}
+      onRun={entries => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, dialog.oid, entries), 'Rebase finished.')} />}
+    {execution && <ExecutionPanel event={execution.event} label={execution.label} phase={execution.phase}
+      steps={execution.steps} result={execution.result} blocked={execution.blocked} bypassed={execution.bypassed}
+      onClose={() => resolveGate(false)} onRetry={() => resolveGate(false)} onBypass={() => resolveGate(false, true)}
+      onRunAgain={rerunGate} />}
   </div>;
 }

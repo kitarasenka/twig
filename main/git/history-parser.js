@@ -78,3 +78,33 @@ export function parseHistoryV1(output) {
   }
   return commits;
 }
+
+/** Read NUL-delimited name-status records after each eight-field commit header. */
+export function parseFileHistory(output, file) {
+  if (typeof output !== 'string') fail('output must be a string');
+  if (!output) return [];
+  if (!output.endsWith('\0')) fail('truncated file history');
+  const tokens = output.split('\0');
+  tokens.pop();
+  const commits = [];
+  let trackedPath = file;
+  let i = 0;
+  while (i < tokens.length) {
+    const [commit] = parseHistoryV1(tokens.slice(i, i + FIELD_COUNT).join('\0') + '\0');
+    i += FIELD_COUNT;
+    const changes = [];
+    while (i < tokens.length && !OID_PATTERN.test(tokens[i])) {
+      const status = tokens[i++].replace(/^\n/, '');
+      if (!/^(?:[AMDTUXB]|[RC]\d{1,3})$/.test(status)) fail('invalid file history status');
+      const oldPath = tokens[i++];
+      const path = /^[RC]/.test(status) ? tokens[i++] : oldPath;
+      if (!oldPath || !path) fail('invalid file history path');
+      changes.push({ status, oldPath, path });
+    }
+    const change = changes.find(item => item.path === trackedPath) || (changes.length === 1 ? changes[0] : null);
+    if (changes.length && !change) fail('ambiguous file history path');
+    commits.push({ ...commit, path: change?.path || trackedPath });
+    if (change) trackedPath = /^[RC]/.test(change.status) ? change.oldPath : change.path;
+  }
+  return commits;
+}

@@ -53,7 +53,7 @@ try {
   await backup.getByRole('button', { name: 'Fetch and prune', exact: true }).click();
   await remotes.getByText('backup: fetch finished.', { exact: true }).waitFor();
   assert.equal(await git(['rev-parse', 'refs/remotes/backup/main'], clonedPath), await git(['rev-parse', 'HEAD']));
-  await page.locator('.real-branch[title="refs/remotes/backup/main"]').waitFor();
+  await page.locator('.real-branch[title^="refs/remotes/backup/main"]').waitFor();
   await backup.getByRole('textbox', { name: 'Primary fetch URL', exact: true }).fill(cwd);
   await backup.getByRole('button', { name: 'Save URL', exact: true }).click();
   await remotes.getByText('backup: set-url finished.', { exact: true }).waitFor();

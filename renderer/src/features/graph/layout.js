@@ -50,6 +50,15 @@ export function createLaneLayout(refs = []) {
   };
 }
 
+/** Up to two uppercase letters for a commit-node badge: initials of the first
+ * two name parts, or the first two letters of a single-word name. */
+export function authorInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  const raw = parts.length > 1 ? parts[0][0] + parts[1][0] : parts[0].slice(0, 2);
+  return raw.toUpperCase();
+}
+
 export function segmentPath({ from, to, half }) {
   const x1 = 12 + from * LANE_WIDTH;
   const x2 = 12 + to * LANE_WIDTH;

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { Check, GitBranch, Globe, Tag } from 'lucide-react';
 import { commits } from '../../app/demo.js';
+import { authorInitials } from './layout.js';
 
 function Lane({ commit, index, filtered }) {
   return <svg className="lane" viewBox="0 0 88 30" aria-hidden="true">
@@ -14,7 +15,8 @@ function Lane({ commit, index, filtered }) {
       {index === 7 && <path className="lane-2" d="M18 15 C18 25 66 20 66 30" />}
       {index === 13 && <path className="lane-2" d="M66 0 C66 10 18 5 18 15" />}
     </>}
-    <circle className={`node lane-${commit.lane}`} cx={18 + commit.lane * 24} cy="15" r="4" />
+    <circle className={`node lane-${commit.lane}`} cx={18 + commit.lane * 24} cy="15" r="8" />
+    <text className="commit-initials" x={18 + commit.lane * 24} y="15">{authorInitials(commit.author)}</text>
   </svg>;
 }
 

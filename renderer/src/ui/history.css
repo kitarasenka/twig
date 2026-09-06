@@ -18,6 +18,7 @@
 .real-lane { width: var(--graph-width); height: var(--row-height); overflow: visible; }
 .real-lane path { fill: none; stroke-width: 2; }
 .real-lane circle { fill: var(--bg); stroke-width: 2.5; }
+.commit-initials { fill: var(--text); font: 600 8px var(--font-ui); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 /* A stash: parked work hanging off its base commit by a dashed link. */
 .stash-link { stroke: var(--muted); stroke-dasharray: 2.5 3; stroke-linecap: round; }
 .stash-node { position: absolute; top: 50%; left: var(--stash-x); transform: translate(-50%, -50%);
@@ -54,7 +55,7 @@
 .real-commit-row.marked:hover { background: color-mix(in srgb, var(--mark-color) 26%, var(--surface-hover)); }
 .real-commit-row.marked.selected { background: color-mix(in srgb, var(--mark-color) 24%, var(--accent-bg)); }
 .real-commit-row.marked::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--mark-color); }
-.real-lane circle.mark-node { fill: var(--mark-color); stroke: var(--bg); stroke-width: 2; }
+.real-lane circle.mark-node { fill: none; stroke: var(--mark-color); stroke-width: 2.5; }
 .mark-chip { display: inline-flex; align-items: center; flex: none; margin-right: var(--space-1); color: var(--mark-color); }
 .mark-chip svg { width: 14px; height: 14px; }
 .mark-editor { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
@@ -71,6 +72,32 @@
 .real-branch { display: flex; width: 100%; justify-content: flex-start; min-height: var(--row-height); border-radius: 0; padding-inline: var(--space-3); font-size: var(--text-sm); }
 .real-branch span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .real-branch small { color: var(--muted); margin-left: auto; }
+.real-branch.current-branch { color: var(--accent); background: var(--accent-bg); }
+.real-branch[draggable='true'], .real-commit-row[draggable='true'], .ref-badge[draggable='true'] { cursor: grab; }
+.real-commit-row.drag-source-row { background: var(--accent-bg); outline: 1px dashed var(--accent); outline-offset: -2px; }
+.real-commit-row.drag-target-row { background: var(--surface-hover); outline: 2px solid var(--accent); outline-offset: -2px; }
+.real-commit-row.drag-source-row .real-lane circle { stroke-dasharray: 2 2; stroke-width: 3; }
+.real-commit-row.drag-target-row .real-lane circle { stroke: var(--accent); stroke-width: 4; }
+.ref-badge.drag-source, .real-branch.drag-source { background: var(--accent-bg); outline: 1px dashed var(--accent); outline-offset: -2px; }
+.ref-badge.drag-target, .real-branch.drag-target { background: var(--accent-bg); outline: 2px solid var(--accent); outline-offset: -2px; }
+.ref-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.real-workspace .graph-panel { position: relative; }
+.git-drag-status { position: absolute; bottom: 38px; left: var(--space-3); right: var(--space-3); z-index: 5;
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--accent); border-radius: var(--radius-md); background: var(--surface); font-size: var(--text-sm); overflow-wrap: anywhere; pointer-events: none; }
+.git-drag-status button { pointer-events: auto; }
+.git-drag-status > span { flex: 1; min-width: 0; }
+.git-drag-status small { color: var(--muted); font-size: var(--text-xs); }
+.git-drag-status strong { color: var(--accent); }
+.drop-dialog { display: flex; flex-direction: column; gap: var(--space-3); overflow-wrap: anywhere; }
+.drop-dialog p { margin: 0; }
+.drop-dialog label { display: flex; flex-direction: column; gap: var(--space-2); }
+.drop-pair { display: flex; gap: var(--space-3); align-items: center; }
+.drop-pair > span { min-width: 0; }
+.drop-pair strong { display: block; color: var(--accent); }
+.menu.drop-action-menu { width: min(440px, calc(100vw - 16px)); max-width: none; }
+.menu.drop-action-menu button { flex-direction: column; align-items: flex-start; gap: var(--space-1); text-align: left; }
+.menu.drop-action-menu button span, .menu.drop-action-menu button small { white-space: normal; overflow-wrap: anywhere; }
 .branch-folder, .file-folder { margin: 0; padding-left: var(--space-3); }
 .branch-folder summary, .file-folder summary { text-transform: none; letter-spacing: 0; }
 .commit-file { display: flex; width: 100%; justify-content: flex-start; min-height: var(--row-height); font-size: var(--text-xs); padding-inline: 0; }
@@ -93,6 +120,9 @@
   width: 100%; justify-content: flex-start; text-align: left; padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm); font-size: var(--text-sm); }
 .file-history-entry:hover { background: var(--surface-hover); }
+.file-history-entry[aria-pressed='true'] { background: var(--accent-bg); box-shadow: inset 3px 0 var(--accent); }
+.file-history-detail { display: flex; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); }
+.file-history-diff-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
 .file-history-entry > code { color: var(--accent); font-size: var(--text-xs); }
 .file-history-subject { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .file-history-meta { color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }

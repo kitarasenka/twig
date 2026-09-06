@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   getDivergence: (id, branch = null) => ipcRenderer.invoke('sync:divergence', id, branch),
   runSync: (id, mode, branch = null) => ipcRenderer.invoke('sync:run', id, mode, branch),
   cancelSync: (id) => ipcRenderer.invoke('sync:cancel', id),
+  runDrop: (id, request) => ipcRenderer.invoke('sync:drop', id, request),
   pushRef: (id, remote, ref, remove = false) => ipcRenderer.invoke('sync:push-ref', id, remote, ref, remove),
   getOperationState: (id) => ipcRenderer.invoke('ops:state', id),
   mergeRevision: (id, revision, noFf = false) => ipcRenderer.invoke('ops:merge', id, revision, noFf),
@@ -81,6 +82,19 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   saveConflict: (id, path, content, mtimeMs, size) => ipcRenderer.invoke('conflict:save', id, path, content, mtimeMs, size),
   takeConflictSide: (id, path, side) => ipcRenderer.invoke('conflict:take', id, path, side),
   markConflictResolved: (id, path) => ipcRenderer.invoke('conflict:resolve', id, path),
+  getAutomationConfig: (id) => ipcRenderer.invoke('automation:config', id),
+  saveAutomationConfig: (id, config) => ipcRenderer.invoke('automation:save', id, config),
+  trustAutomations: (id, trust) => ipcRenderer.invoke('automation:trust', id, trust),
+  runAutomation: (id, event, options = null) => ipcRenderer.invoke('automation:run', id, event, options),
+  cancelAutomation: (id) => ipcRenderer.invoke('automation:cancel', id),
+  getAutomationRuns: (id) => ipcRenderer.invoke('automation:runs', id),
+  getAutomationRun: (id, executionId) => ipcRenderer.invoke('automation:run-detail', id, executionId),
+  onAutomationStep: (listener) => {
+    if (typeof listener !== 'function') throw new TypeError('Automation listener must be a function');
+    const callback = (_event, step) => listener(step);
+    ipcRenderer.on('automation:step', callback);
+    return () => ipcRenderer.removeListener('automation:step', callback);
+  },
   getConsoleEntries: () => ipcRenderer.invoke('console:entries'),
   onConsoleUpdate: (listener) => {
     if (typeof listener !== 'function') throw new TypeError('Console listener must be a function');

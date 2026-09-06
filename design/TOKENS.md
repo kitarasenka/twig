@@ -78,6 +78,31 @@ the real repository sidebar has no STASHES/REMOTES sections (the demo panel
 does). Full M5 UI review is complete; these are functional gaps listed in
 CLAUDE.md.
 
+M6 automations (increment 1), 2026-09-06: ran the skill with `--domain ux`
+(`step progress execution status pass fail list keyboard`, `destructive
+confirmation dangerous action trust permission`) and `--domain web` over the new
+screens (Automations list, pipeline editor, execution overlay, run log, trust
+prompt).
+
+Adopted: a step indicator with a pass/fail count on the execution panel; a
+spinner for each running step and a skeleton while the config loads; icon **and**
+word for every status (`Check`/`X`/`Loader`/`Minus`), never colour alone — pass
+reuses `--mark-green`, fail `--danger`, running/skipped `--muted`, so no new
+tokens and `foundation.mjs` parity is untouched; the `RebaseDialog` reorder
+pattern for the action list (drag plus Move up/down plus Alt+Arrow); visible
+focus rings via the existing `:focus-visible` rule; explicit confirmation for
+every trust and bypass action, with the exact command shown verbatim in the
+editor, the execution panel, the console and the trust prompt; `prefers-reduced-
+motion` disables the spinner animation.
+
+Rejected, with reasons: deep linking / "URL reflects state" — a single-window
+Electron app has no router, and screen state is in-memory like every other Twig
+screen; list virtualisation for pipelines and the run log — a repo has a handful
+of pipelines and the log is capped at 100; mobile keyboard / `inputmode` / 44px
+targets / 375px breakpoints — pointer-first desktop tool, min window 1000×640,
+rows match the app's 30px density; design-system regeneration (palette, type,
+style) — locked by this file, reuse only.
+
 Read `.claude/skills/ui-ux-pro-max/SKILL.md`; ran `--design-system -p "Git Desk"`
 with `desktop git client developer tool dense dark dashboard`, then searched
 `style: dense data dashboard dark IDE`, `ux: keyboard focus contrast dense table`,
@@ -195,6 +220,13 @@ coarse pointers get 44px targets. System theme by default; explicit theme persis
 ```
 
 ## M0 review
+
+File history review, 2026-09-06: ran the design-system for a dense desktop Git
+history and React async-effect guidelines. Kept the existing palette, typography
+and resizable right panel. Selecting a history row highlights it with both an
+inset marker and aria-pressed and displays its file diff alongside the list;
+Go to commit is a separate labeled action. Reviewed dark/light Electron shots
+at 1000×640: independent scrolling, visible selection, no window overflow.
 
 Re-ran UX focus/keyboard/contrast and React effect-cleanup searches. Reviewed
 actual Electron screenshots in both themes at 1440×920 and 1000×640; focus stays
