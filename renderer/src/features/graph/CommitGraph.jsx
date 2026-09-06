@@ -22,16 +22,17 @@ const CommitRow = memo(function CommitRow({ commit, layout, index, total, select
     className={`real-commit-row ${selected ? 'selected' : ''} ${dayStart ? 'new-day' : ''} ${mark ? `marked ${markClass(mark.color)}` : ''}`}
     style={{ top: index * ROW_HEIGHT }} onClick={event => onSelect(commit.oid, event.shiftKey)}
     onContextMenu={event => { event.preventDefault(); onSelect(commit.oid); onMenu(commit.oid, event.clientX, event.clientY); }}>
-    <span className="ref-cell">{head && <Check aria-label="HEAD" />}{refs?.slice(0, 2).map(ref => <span key={ref.fullName} title={ref.fullName} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''}`}>
+    <span className="ref-cell">
+      {mark && <span className="mark-chip" title={mark.note || 'Marked'}><Bookmark aria-label={mark.note ? `Marked: ${mark.note}` : 'Marked'} /></span>}
+      {head && <Check aria-label="HEAD" />}{refs?.slice(0, 2).map(ref => <span key={ref.fullName} title={ref.fullName} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''}`}>
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
-    {refs?.length > 2 && <span className="ref-badge ref-more" title={refs.slice(2).map(ref => ref.fullName).join('\n')}>+{refs.length - 2}</span>}
-    {mark && <span className="mark-chip" title={mark.note || 'Marked'}><Bookmark aria-label={mark.note ? `Marked: ${mark.note}` : 'Marked'} /></span>}</span>
+    {refs?.length > 2 && <span className="ref-badge ref-more" title={refs.slice(2).map(ref => ref.fullName).join('\n')}>+{refs.length - 2}</span>}</span>
     <span className="lane-cell">
       <svg className="real-lane" aria-hidden="true" height={ROW_HEIGHT}>
         {stashes && <path className="stash-link" d={`M${laneX} 15H${stashX}`} />}
         {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment)} />)}
         <circle className={stroke || `graph-color-${layout.color}`} cx={laneX} cy={15} r={4} />
-        {mark && <circle className="mark-ring" cx={laneX} cy={15} r={6} />}
+        {mark && <circle className="mark-node" cx={laneX} cy={15} r={5} />}
       </svg>
       {stashes && <button className="stash-node" style={{ '--stash-x': `${stashX}px` }}
         title={`${stashes.length === 1 ? 'Stash' : `${stashes.length} stashes`} on this commit:\n${stashes.map(item => item.message).join('\n')}`}

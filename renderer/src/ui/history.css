@@ -50,12 +50,13 @@
 .mark-blue { --mark-color: var(--mark-blue); }
 .mark-violet { --mark-color: var(--mark-violet); }
 .mark-slate { --mark-color: var(--mark-slate); }
-.real-commit-row.marked { background: color-mix(in srgb, var(--mark-color) 12%, transparent); }
-.real-commit-row.marked:hover { background: color-mix(in srgb, var(--mark-color) 20%, var(--surface-hover)); }
-.real-commit-row.marked::after { content: ''; position: absolute; inset: 0 0 0 auto; width: 3px; background: var(--mark-color); }
-.real-lane circle.mark-ring { fill: none; stroke: var(--mark-color); stroke-width: 2; }
-.mark-chip { display: inline-flex; align-items: center; color: var(--mark-color); }
-.mark-chip svg { width: 13px; height: 13px; }
+.real-commit-row.marked { background: color-mix(in srgb, var(--mark-color) 16%, var(--bg)); }
+.real-commit-row.marked:hover { background: color-mix(in srgb, var(--mark-color) 26%, var(--surface-hover)); }
+.real-commit-row.marked.selected { background: color-mix(in srgb, var(--mark-color) 24%, var(--accent-bg)); }
+.real-commit-row.marked::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--mark-color); }
+.real-lane circle.mark-node { fill: var(--mark-color); stroke: var(--bg); stroke-width: 2; }
+.mark-chip { display: inline-flex; align-items: center; flex: none; margin-right: var(--space-1); color: var(--mark-color); }
+.mark-chip svg { width: 14px; height: 14px; }
 .mark-editor { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
 .mark-label { margin: 0; color: var(--muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
 .mark-swatches { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
