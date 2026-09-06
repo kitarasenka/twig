@@ -142,6 +142,31 @@ try {
   await expect('push finished.', 'pushing');
   assert.equal(await git(['rev-parse', 'HEAD']), await git(['rev-parse', 'origin/main']), 'the commit reached the remote');
 
+  // Amend: fold a newly staged file into the last commit, keeping its message.
+  await page.getByRole('button', { name: 'Stage fresh.txt', exact: true }).click();
+  await expect('Working tree · 1 staged, 0 not staged', 'staging for the amend');
+  await page.getByRole('checkbox', { name: /Amend last commit/ }).click();
+  await page.getByRole('textbox', { name: 'Amend message' }).waitFor();
+  await page.waitForFunction(() => document.getElementById('commit-message')?.value === 'feat: stage from the working tree screen');
+  // The tip is already on origin/main, so amending it is flagged as a shared-history rewrite.
+  await page.getByText(/already on origin\/main/).waitFor();
+  const amendedParent = await git(['rev-parse', 'HEAD^']);
+  await page.getByRole('button', { name: 'Amend last commit', exact: true }).click();
+  await expect('Amended the last commit.', 'amending');
+  assert.equal(await git(['log', '-1', '--format=%s']), 'feat: stage from the working tree screen', 'the amend kept the subject');
+  assert.equal(await git(['rev-parse', 'HEAD^']), amendedParent, 'the amend left the parent alone');
+  assert.ok((await git(['show', '--stat', '--format=', 'HEAD'])).includes('fresh.txt'), 'the staged file is in the amended commit');
+  assert.notEqual(await git(['rev-parse', 'HEAD']), await git(['rev-parse', 'origin/main']), 'the amend diverged from the remote');
+  await expect('Working tree · 0 staged, 0 not staged', 'the working tree is clean after the amend');
+
+  // A stale expected head refuses the amend instead of rewriting the wrong commit.
+  const staleAmend = await page.evaluate(async () => {
+    const { activeId } = await window.twig.getWorkspace();
+    const result = await Promise.allSettled([window.twig.createCommit(activeId, 'x', true, 'a'.repeat(40))]);
+    return result[0].status;
+  });
+  assert.equal(staleAmend, 'rejected');
+
   // Rejected IPC input: a stale digest and a traversal path must both fail.
   const rejected = await page.evaluate(async () => {
     const workspace = await window.twig.getWorkspace();
@@ -162,7 +187,7 @@ try {
   }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  console.log('M3 Electron passed: line staging, per-section bulk staging, unstaging, commit, push badge, IPC validation, themes.');
+  console.log('M3 Electron passed: line staging, per-section bulk staging, unstaging, commit, amend last commit, push badge, IPC validation, themes.');
 } finally {
   if (app) await app.close();
   await rm(root, { recursive: true, force: true });

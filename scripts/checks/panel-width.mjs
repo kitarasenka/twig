@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { PANEL_DEFAULT, PANEL_MAX, PANEL_MIN, clampPanelWidth, dragPanelWidth, panelWidthLimits }
+import { FILE_HISTORY_PANEL_SIZE, PANEL_DEFAULT, PANEL_MAX, PANEL_MIN, clampPanelWidth, dragPanelWidth, panelWidthLimits }
   from '../../renderer/src/ui/panel-width.js';
 
 // The panel sits on the right, so the divider moving left has to widen it.
@@ -27,5 +27,13 @@ assert.deepEqual(panelWidthLimits(Infinity), { min: PANEL_MIN, max: PANEL_MAX })
 assert.deepEqual(panelWidthLimits(undefined), { min: PANEL_MIN, max: PANEL_MAX });
 assert.equal(clampPanelWidth(Number.NaN, 1200), PANEL_DEFAULT);
 assert.ok(PANEL_MIN <= PANEL_DEFAULT && PANEL_DEFAULT <= PANEL_MAX);
+
+// The file-history diff panel may grow to twice the normal maximum, but the
+// graph floor still applies and the shared clamps carry the wider size through.
+assert.equal(FILE_HISTORY_PANEL_SIZE.max, PANEL_MAX * 2);
+assert.deepEqual(panelWidthLimits(Infinity, FILE_HISTORY_PANEL_SIZE), { min: PANEL_MIN, max: PANEL_MAX * 2 });
+assert.equal(dragPanelWidth(560, -5000, 4000, 'right', FILE_HISTORY_PANEL_SIZE), PANEL_MAX * 2);
+assert.equal(clampPanelWidth(PANEL_MAX * 2, 900, FILE_HISTORY_PANEL_SIZE), 660);
+assert.ok(PANEL_MIN <= FILE_HISTORY_PANEL_SIZE.defaultWidth && FILE_HISTORY_PANEL_SIZE.defaultWidth <= FILE_HISTORY_PANEL_SIZE.max);
 
 console.log('panel-width check passed');

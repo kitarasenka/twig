@@ -9,6 +9,7 @@
 .real-commit-row { position: absolute; width: 100%; height: var(--row-height); font-size: var(--text-sm); cursor: pointer; }
 .real-commit-row:hover { background: var(--surface-hover); }
 .real-commit-row.selected, .worktree-row.selected { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); }
+.real-commit-row.multi-selected { background: color-mix(in srgb, var(--accent-bg) 60%, transparent); box-shadow: inset 2px 0 color-mix(in srgb, var(--accent) 45%, transparent); }
 .real-commit-row.new-day { box-shadow: inset 0 1px var(--border); }
 .real-commit-row .ref-cell { gap: var(--space-1); }
 .real-commit-row .ref-cell > svg { color: var(--accent); }

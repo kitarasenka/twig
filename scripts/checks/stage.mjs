@@ -97,6 +97,23 @@ try {
     const stored = (await git(['log', '-1', '--format=%B'])).stdout;
     assert.equal(stored.trimEnd(), message, 'the message reached Git unchanged');
     await assert.rejects(() => createCommit({ cwd: repo, log, message: '  ' }), /A commit needs a message/);
+
+    // Amend folds a newly staged file into the tip when the expected head matches.
+    await writeFile(path.join(repo, 'second.txt'), 'second\n', 'utf8');
+    await stageFile({ cwd: repo, log, path: 'second.txt' });
+    await createCommit({ cwd: repo, log, message: 'second commit' });
+    const tip = (await git(['rev-parse', 'HEAD'])).stdout.trim();
+    const parent = (await git(['rev-parse', 'HEAD^'])).stdout.trim();
+    await writeFile(path.join(repo, 'amended.txt'), 'folded in\n', 'utf8');
+    await stageFile({ cwd: repo, log, path: 'amended.txt' });
+    await assert.rejects(() => createCommit({ cwd: repo, log, message: 'second commit', amend: true, expectedHead: 'a'.repeat(40) }),
+      /branch moved|Refresh/, 'a stale head refuses the amend');
+    await createCommit({ cwd: repo, log, message: 'second commit', amend: true, expectedHead: tip });
+    assert.notEqual((await git(['rev-parse', 'HEAD'])).stdout.trim(), tip, 'the tip commit was rewritten');
+    assert.equal((await git(['rev-parse', 'HEAD^'])).stdout.trim(), parent, 'the parent is unchanged');
+    assert.ok((await git(['show', '--stat', 'HEAD'])).stdout.includes('amended.txt'), 'the staged file is in the amended commit');
+    await assert.rejects(() => createCommit({ cwd: repo, log, message: 'x', amend: true, expectedHead: null }), /Invalid commit identifier/,
+      'amend without an expected head is refused');
   }
 
   // 3. Staging and unstaging a line selection end to end through git apply.

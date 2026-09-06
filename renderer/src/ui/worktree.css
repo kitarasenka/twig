@@ -48,6 +48,12 @@
 .commit-box textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .commit-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); }
 .commit-actions .warn { color: var(--danger); }
+.amend-toggle { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs);
+  text-transform: none; letter-spacing: 0; color: var(--text); cursor: pointer; }
+.amend-toggle input { cursor: pointer; flex: none; }
+.amend-toggle:has(input:disabled) { color: var(--muted); cursor: not-allowed; }
+.amend-toggle:has(input:disabled) input { cursor: not-allowed; }
+.commit-box .amend-warn { padding-inline: 0; color: var(--danger); }
 
 .badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px;
   margin-left: var(--space-1); border-radius: 999px; background: var(--accent); color: var(--bg); font-size: 10px; font-weight: 600; }

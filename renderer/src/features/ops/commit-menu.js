@@ -1,4 +1,5 @@
-import { Bookmark, BookmarkX, ClipboardCopy, GitBranch, GitCommitHorizontal, GitMerge, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Undo2 } from 'lucide-react';
+import { Bookmark, BookmarkX, ClipboardCopy, Combine, GitBranch, GitCommitHorizontal, GitMerge, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Undo2 } from 'lucide-react';
+import { squashable } from './squash-plan.js';
 
 /**
  * The items of the commit context menu (§8.2), as data.
@@ -106,5 +107,34 @@ export function buildCommitMenu({ commit, refs = [], head = {}, operation = { ki
     { key: 'copy-sha', icon: ClipboardCopy, text: 'Copy full SHA', run: () => handlers.copy(commit.oid, 'SHA') },
     { key: 'copy-message', icon: ClipboardCopy, text: 'Copy message', run: () => handlers.copy([commit.subject, commit.body].filter(Boolean).join('\n\n'), 'Message') }
   );
+  return items;
+}
+
+/**
+ * The context menu shown when two or more commits are selected and the pointer
+ * is on one of them. The brief's rule for the single-commit menu holds here
+ * too: Squash is offered only when it can actually run — the selection is an
+ * adjacent run of non-merge commits on the current branch — and when it cannot
+ * because the tree is dirty or another operation is open, the item stays but
+ * says why, since a menu that had quietly dropped it would read as a missing
+ * feature. A selection that is out of order or off the branch simply has no
+ * Squash item, exactly as asked.
+ *
+ * @param {{ oid: string, parents: string[] }[]} commits newest-first, as the graph lists them
+ */
+export function buildMultiCommitMenu({ commits, operation = { kind: 'none' }, dirty = false, onCurrentBranch = true, handlers }) {
+  const busy = operation.kind !== 'none';
+  const check = squashable(commits);
+  const items = [];
+  if (check.ok && onCurrentBranch) {
+    items.push({
+      key: 'squash', icon: Combine, text: `Squash ${commits.length} commits into one…`,
+      hint: 'replays them as a single commit',
+      reason: busy ? `Finish or abort the ${operation.kind} first` : dirty ? 'Commit or stash your changes first' : undefined,
+      run: handlers.squash
+    });
+    items.push({ separator: true });
+  }
+  items.push({ key: 'copy-shas', icon: ClipboardCopy, text: `Copy ${commits.length} SHAs`, run: handlers.copyShas });
   return items;
 }

@@ -79,9 +79,10 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     });
   });
 
-  handler('worktree:commit', 3, (options, message, amend) => {
+  handler('worktree:commit', 4, (options, message, amend, expectedHead) => {
     if (typeof message !== 'string' || message.length > 1_000_000 || typeof amend !== 'boolean') throw new Error('Invalid commit request');
-    return createCommit({ ...options, message, amend });
+    if (amend ? typeof expectedHead !== 'string' : expectedHead !== null) throw new Error('Invalid commit request');
+    return createCommit({ ...options, message, amend, expectedHead });
   });
 
   handler('stash:push', 3, (options, includeUntracked, message) => {

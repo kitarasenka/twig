@@ -5,7 +5,7 @@ import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
 import Splitter from '../../ui/Splitter.jsx';
-import { PANEL_DEFAULT, SIDEBAR_SIZE } from '../../ui/panel-width.js';
+import { PANEL_DEFAULT, SIDEBAR_SIZE, FILE_HISTORY_PANEL_SIZE } from '../../ui/panel-width.js';
 import CommitGraph from './CommitGraph.jsx';
 import WorktreeScreen from '../worktree/WorktreeScreen.jsx';
 import ConflictEditor from '../conflicts/ConflictEditor.jsx';
@@ -18,8 +18,9 @@ import ExecutionPanel from '../automations/ExecutionPanel.jsx';
 import { eventLabel, eventPhase } from '../automations/event-labels.js';
 import RebaseDialog from '../rebase/RebaseDialog.jsx';
 import { ConfirmDialog, MessageDialog, NameDialog } from '../ops/dialogs.jsx';
-import { buildCommitMenu } from '../ops/commit-menu.js';
+import { buildCommitMenu, buildMultiCommitMenu } from '../ops/commit-menu.js';
 import { buildRewordPlan } from '../ops/reword-plan.js';
+import { buildSquashPlan } from '../ops/squash-plan.js';
 import { createLaneLayout } from './layout.js';
 import useGitDrag, { refEndpoint } from './useGitDrag.js';
 import DropDialog from './DropDialog.jsx';
@@ -86,10 +87,12 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(null);
+  const [selection, setSelection] = useState([]);
   const [range, setRange] = useState(null);
   const [commitState, setCommitState] = useState({ commit: null, loading: false, error: '' });
   const [detail, setDetail] = useState(true);
   const [width, setWidth] = useState(PANEL_DEFAULT);
+  const [fileHistoryWidth, setFileHistoryWidth] = useState(PANEL_DEFAULT);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_SIZE.defaultWidth);
   const [collapsed, setCollapsed] = useState(false);
   const [filter, setFilter] = useState('');
@@ -115,7 +118,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const [dropRunning, setDropRunning] = useState(false);
   const drag = useGitDrag({ active: active && !working && !toolbarBusyReason && !dropDialog, revision: data.refs,
     onStart: () => {
-      setMenu(null); setFileMenu(null);
+      setMenu(null); setFileMenu(null); setSelection([]);
       if (!conflict) {
         setDiff(null); setFileHistory(null); diffRequest.current++;
         setSelected(value => SCREENS.includes(value) ? data.commits[0]?.oid || null : value);
@@ -127,6 +130,25 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const jumpRequest = useRef(0);
   const selectionAnchor = useRef(null);
   const indexMap = useMemo(() => new Map(data.commits.map((commit, index) => [commit.oid, index])), [data.commits]);
+  const selectionSet = useMemo(() => new Set(selection), [selection]);
+  // Which loaded commits the current branch tip can reach: the cheap, in-memory
+  // half of "are these commits on this branch?" that the Squash item needs
+  // before it offers itself. The authoritative check is a `git log` run when
+  // the item is chosen, exactly as rewording an older commit does.
+  const headAncestors = useMemo(() => {
+    const seen = new Set();
+    const start = repository.status?.branch?.oid;
+    if (!start || indexMap.get(start) === undefined) return seen;
+    const stack = [start];
+    while (stack.length) {
+      const oid = stack.pop();
+      if (seen.has(oid)) continue;
+      seen.add(oid);
+      const commit = data.commits[indexMap.get(oid)];
+      if (commit) for (const parent of commit.parents) if (!seen.has(parent)) stack.push(parent);
+    }
+    return seen;
+  }, [repository.status?.branch?.oid, data.commits, indexMap]);
   const refMap = useMemo(() => {
     const result = new Map();
     for (const ref of data.refs) result.set(ref.target, [...result.get(ref.target) || [], ref]);
@@ -160,7 +182,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     // screen: staging refreshes history, and the screen lives in `selected`.
     busy.current = true; setLoading(true); setError('');
     setSelected(current => (SCREENS.includes(current) ? current : null));
-    setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
+    setSelection([]); setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
     try {
       const [refs, stashList, remoteList, markMap] = await Promise.all([
         window.twig.getRefs(repository.id),
@@ -322,7 +344,17 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
 
   function openMenu(oid, x, y) {
     const commit = dataRef.current.commits.find(item => item.oid === oid);
-    if (commit) setMenu({ commit, x, y });
+    if (!commit) return;
+    // Right-clicking a commit that is part of a multi-selection keeps that
+    // selection and offers the actions that act on all of it; right-clicking
+    // anything else falls back to selecting just that commit.
+    if (selectionSet.has(oid) && selection.length >= 2) {
+      const commits = dataRef.current.commits.filter(item => selectionSet.has(item.oid));
+      setMenu({ commit, x, y, multi: commits, onBranch: commits.every(item => headAncestors.has(item.oid)) });
+    } else {
+      choose(oid);
+      setMenu({ commit, x, y, multi: null });
+    }
   }
 
   function commitHandlers(commit) {
@@ -420,6 +452,44 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     } finally { setWorking(false); }
   }
 
+  /**
+   * Squashing a run of adjacent commits is an interactive rebase: the range
+   * Git would replay is read first so the dialog can name the exact base, and
+   * a selection that turns out not to be on the current branch is refused
+   * before the user writes a message for nothing — the same shape as rewording
+   * an older commit.
+   */
+  async function openSquash(selectedCommits) {
+    const ordered = [...selectedCommits].reverse(); // oldest first, the order Git replays
+    const base = ordered[0].parents[0];
+    const count = selectedCommits.length;
+    const combined = ordered.map(commit => [commit.subject, commit.body].filter(Boolean).join('\n\n')).filter(Boolean).join('\n\n');
+    setWorking(true); setNote('');
+    try {
+      const commits = await window.twig.getRebaseCandidates(repository.id, base);
+      const oids = ordered.map(commit => commit.oid);
+      if (!oids.every(oid => commits.some(item => item.oid === oid))) {
+        throw new Error(`These commits are not all on ${headBranch || 'the current HEAD'}. Check out the branch that contains them first.`);
+      }
+      const after = commits.length - count;
+      setDialog({
+        type: 'message', title: `Squash ${count} commits into one`, label: 'Message for the squashed commit',
+        initial: combined, allowUnchanged: true,
+        command: ['rebase', '--interactive', base.slice(0, 7)],
+        consequence: `The ${count} selected commits melt into one new commit with a new object id`
+          + `${after > 0 ? `; the ${after === 1 ? 'commit' : `${after} commits`} after them are replayed unchanged` : ''}. `
+          + 'If any of them is already pushed, the remote will only accept the result after a force push.',
+        confirmLabel: 'Squash and replay',
+        onConfirm: text => performGated('pre-rebase', 'post-rewrite',
+          () => window.twig.rebaseOnto(repository.id, base, buildSquashPlan(commits, oids, text)),
+          `Squashed ${count} commits into one.`)
+      });
+    } catch (failure) {
+      setNote(failure.message || 'Could not read the commits to squash.');
+      onConsole();
+    } finally { setWorking(false); }
+  }
+
   async function openRebase(oid) {
     setWorking(true); setNote('');
     try {
@@ -443,14 +513,42 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     return () => { alive = false; clearTimeout(timer); };
   }, [selected, repository.id, range]);
 
-  const choose = useCallback((oid, shift = false) => {
+  const choose = useCallback((oid, mods = {}) => {
+    const { shift = false, toggle = false } = typeof mods === 'boolean' ? { shift: mods } : mods;
     jumpRequest.current++;
-    const anchor = selectionAnchor.current || selected;
-    setRange(shift && anchor && anchor !== 'worktree' && oid !== anchor ? { base: anchor, oid } : null);
-    if (!shift) selectionAnchor.current = oid;
-    setSelected(oid);
+    const commits = dataRef.current.commits;
+    const known = new Map(commits.map((commit, index) => [commit.oid, index]));
+    const isCommit = Boolean(oid) && !SCREENS.includes(oid) && known.has(oid);
+
+    if (isCommit && toggle) {
+      // Cmd/Ctrl-click adds or removes one commit from the selection.
+      const base = selection.length ? selection : (known.has(selected) ? [selected] : []);
+      const next = new Set(base);
+      if (next.has(oid)) next.delete(oid); else next.add(oid);
+      const ordered = commits.filter(commit => next.has(commit.oid)).map(commit => commit.oid);
+      setSelection(ordered.length > 1 ? ordered : []);
+      setRange(null);
+      selectionAnchor.current = oid;
+      setSelected(oid);
+    } else if (isCommit && shift) {
+      // Shift-click sweeps a contiguous run from the anchor.
+      const anchorOid = known.has(selectionAnchor.current) ? selectionAnchor.current : (known.has(selected) ? selected : oid);
+      const a = known.get(anchorOid);
+      const b = known.get(oid);
+      const [lo, hi] = a <= b ? [a, b] : [b, a];
+      const ordered = commits.slice(lo, hi + 1).map(commit => commit.oid);
+      setSelection(ordered.length > 1 ? ordered : []);
+      // Exactly two commits keep the side-by-side compare the panel has always shown.
+      setRange(ordered.length === 2 ? { base: anchorOid, oid } : null);
+      setSelected(oid);
+    } else {
+      setSelection([]);
+      setRange(null);
+      selectionAnchor.current = isCommit ? oid : null;
+      setSelected(oid);
+    }
     setDetail(true); setDiff(null); setFileHistory(null); diffRequest.current++;
-  }, [selected]);
+  }, [selected, selection]);
 
   async function jump(oid) {
     const request = ++jumpRequest.current;
@@ -525,7 +623,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     || (!hunterCommit ? 'Select a commit with the bug in the history first' : undefined);
   const visibleRefs = data.refs.filter(ref => ref.name.toLowerCase().includes(filter.toLowerCase()));
   const showDetail = detail && !conflict && !screen;
-  return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
+  return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${fileHistory ? fileHistoryWidth : width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
     {active && toolbarSlot && createPortal(
       <Button className="tool bughunter-tool" reason={hunterReason}
         title={hunterCommit ? `Start from ${hunterCommit.oid.slice(0, 7)}: choose a commit where the bug is present` : undefined}
@@ -567,7 +665,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         onStep={(step, oid = null) => void performBisect(step, oid)} onOpenCommit={jump} />
       <div hidden={Boolean(diff) || Boolean(fileHistory) || Boolean(conflict) || Boolean(screen)} className="history-slot">
         {loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
-          : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} head={repository.status?.branch?.oid}
+          : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
             onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} changes={changes.length} stashes={stashes} marks={marks}
             onWorktree={() => choose('worktree')} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
       </div>
@@ -586,7 +684,9 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       {!conflict && fileHistory && <FileHistory data={fileHistory} selected={diff?.oid} onConsole={onConsole}
         onSelect={openHistoryDiff} onClose={() => { diffRequest.current++; setFileHistory(null); setDiff(null); }} />}
     </main>
-    {showDetail && <Splitter width={width} onWidth={setWidth} />}
+    {showDetail && (fileHistory
+      ? <Splitter width={fileHistoryWidth} onWidth={setFileHistoryWidth} size={FILE_HISTORY_PANEL_SIZE} label="File history changes width" />
+      : <Splitter width={width} onWidth={setWidth} />)}
     {showDetail && fileHistory && <aside className="file-history-detail" aria-label="File history changes">
       {diff ? <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} onCommit={() => void jump(diff.oid)} />
         : <p className="empty-inline">Select a commit to view this file’s changes.</p>}
@@ -596,13 +696,23 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       mark={commitState.commit ? marks[commitState.commit.oid] || null : null} onSetMark={applyMark} onClearMark={removeMark} />}
     {fileMenu && <Menu x={fileMenu.x} y={fileMenu.y} label={`Actions for ${fileMenu.path}`} onClose={() => setFileMenu(null)}
       items={[{ key: 'file-history', text: 'File history', hint: 'Every commit that changed this file', icon: History, run: () => void openFileHistory(fileMenu.path) }]} />}
-    {menu && <Menu x={menu.x} y={menu.y} label={`Actions for commit ${menu.commit.oid.slice(0, 7)}`} onClose={() => setMenu(null)}
-      items={buildCommitMenu({
-        commit: menu.commit, refs: refMap.get(menu.commit.oid) || [], operation, bisect, dirty,
-        mark: marks[menu.commit.oid] || null,
-        head: { branch: headBranch, oid: headOid, detached: Boolean(repository.status?.branch?.detached) },
-        handlers: commitHandlers(menu.commit)
-      })} />}
+    {menu && <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)}
+      label={menu.multi ? `Actions for ${menu.multi.length} selected commits` : `Actions for commit ${menu.commit.oid.slice(0, 7)}`}
+      items={menu.multi
+        ? buildMultiCommitMenu({
+          commits: menu.multi, operation, dirty, onCurrentBranch: menu.onBranch,
+          handlers: {
+            squash: () => void openSquash(menu.multi),
+            copyShas: () => void window.twig.copyText(menu.multi.map(commit => commit.oid).join('\n'))
+              .then(() => setNote(`${menu.multi.length} SHAs copied.`)).catch(() => setNote('Could not copy that.'))
+          }
+        })
+        : buildCommitMenu({
+          commit: menu.commit, refs: refMap.get(menu.commit.oid) || [], operation, bisect, dirty,
+          mark: marks[menu.commit.oid] || null,
+          head: { branch: headBranch, oid: headOid, detached: Boolean(repository.status?.branch?.detached) },
+          handlers: commitHandlers(menu.commit)
+        })} />}
     {dropMenu && <Menu x={dropMenu.x} y={dropMenu.y} label="Drag and drop actions" className="drop-action-menu" onClose={() => { setDropMenu(null); drag.cancel(); }}
       items={dropActions(dropMenu.source, dropMenu.target, remotes.map(remote => remote.name)).map(action => ({ ...action,
         reason: action.key === 'compare' ? undefined : dropReason,

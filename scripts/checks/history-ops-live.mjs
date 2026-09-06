@@ -13,6 +13,7 @@ import { buildUndoPlan, inverseReason } from '../../main/git/undo-plan.js';
 import { loadConflict, saveResolution, takeSide } from '../../main/git/conflicts.js';
 import { rewordHead } from '../../main/git/commit-ops.js';
 import { buildRewordPlan } from '../../renderer/src/features/ops/reword-plan.js';
+import { buildSquashPlan } from '../../renderer/src/features/ops/squash-plan.js';
 import { parseConflictFile } from '../../renderer/src/features/conflicts/conflict-parser.js';
 
 /**
@@ -184,6 +185,34 @@ try {
 
   // The plan lives outside the repository and is cleared once it is over.
   assert.ok(!planDirectory(stateDir, cwd).startsWith(cwd));
+  await clearPlan({ stateDir, cwd });
+
+  // --- squashing a run of adjacent commits --------------------------------
+  // Three commits in the middle of a branch fold into one; the commit after
+  // them must survive untouched, and the run's own messages must all be gone
+  // except the combined one the plan carries.
+  await git(['checkout', '-b', 'squash-run', beforeAbort, '--']);
+  const runOids = [];
+  for (const name of ['s1', 's2', 's3', 'keep']) {
+    await write(`${name}.txt`, `${name}\n`);
+    await git(['add', '--', `:(literal)${name}.txt`]);
+    await git(['commit', '--message', `add ${name}`]);
+    runOids.push(await git(['rev-parse', 'HEAD']));
+  }
+  const [s1, s2, s3] = runOids;
+  const squashRange = await loadRebaseCandidates({ cwd, log, oid: beforeAbort });
+  assert.deepEqual(squashRange.map(entry => entry.subject), ['add s1', 'add s2', 'add s3', 'add keep']);
+  const squashed = await startRebase({
+    ...options, stateDir, oid: beforeAbort,
+    entries: buildSquashPlan(squashRange, [s1, s2, s3], 'the three s commits, squashed')
+  });
+  assert.equal(squashed.ok, true, `the squash replay finished: ${squashed.message || ''}`);
+  assert.equal((await loadOperationState(options)).kind, 'none');
+  assert.deepEqual(await subjects(`${beforeAbort}..HEAD`), ['add keep', 'the three s commits, squashed'],
+    'the run became one commit and the commit after it kept its own message');
+  assert.deepEqual((await git(['show', '--stat', '--format=', 'HEAD~1'])).match(/s\d\.txt/g).sort(),
+    ['s1.txt', 's2.txt', 's3.txt'], 'every change from the run is folded into the single commit');
+  assert.equal(await readFile(path.join(cwd, 'keep.txt'), 'utf8'), 'keep\n');
   await clearPlan({ stateDir, cwd });
 
   // --- a rebase that conflicts, then continues ------------------------------

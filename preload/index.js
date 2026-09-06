@@ -49,7 +49,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   stageAll: (id, scope) => ipcRenderer.invoke('worktree:stage-all', id, scope),
   unstageAll: (id) => ipcRenderer.invoke('worktree:unstage-all', id),
   applySelection: (id, path, staged, digest, selection) => ipcRenderer.invoke('worktree:apply', id, path, staged, digest, selection),
-  createCommit: (id, message, amend = false) => ipcRenderer.invoke('worktree:commit', id, message, amend),
+  createCommit: (id, message, amend = false, expectedHead = null) => ipcRenderer.invoke('worktree:commit', id, message, amend, amend ? expectedHead : null),
   stashPush: (id, includeUntracked = false, message = '') => ipcRenderer.invoke('stash:push', id, includeUntracked, message),
   stashPop: (id) => ipcRenderer.invoke('stash:pop', id),
   stashList: (id) => ipcRenderer.invoke('stash:list', id),

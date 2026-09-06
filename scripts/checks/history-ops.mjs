@@ -15,7 +15,8 @@ import { buildRebaseTodoArgv } from '../../main/git/history.js';
 import { buildMarkResolvedArgv, buildStageContentArgv, buildTakeSideArgv } from '../../main/git/conflicts.js';
 import { buildRewordArgv } from '../../main/git/commit-ops.js';
 import { buildRewordPlan } from '../../renderer/src/features/ops/reword-plan.js';
-import { buildCommitMenu } from '../../renderer/src/features/ops/commit-menu.js';
+import { buildSquashPlan, squashable } from '../../renderer/src/features/ops/squash-plan.js';
+import { buildCommitMenu, buildMultiCommitMenu } from '../../renderer/src/features/ops/commit-menu.js';
 
 const A = '82df62445b05a04be53291bb36b5db80e46dad77';
 const B = 'ebb6e9d3dec115ba8b429d3b143db9d27777a083';
@@ -293,6 +294,65 @@ assert.deepEqual(buildRewordArgv(), ['commit', '--amend', '--only', '--file=-', 
 
   const busy = buildCommitMenu({ commit, refs: [], head: { branch: 'main', oid: A }, operation: { kind: 'merge' }, handlers });
   assert.ok(!enabledOf(busy).includes('reword'), 'mid-merge HEAD is not the commit on screen');
+}
+
+// --- squashing a run of adjacent commits -----------------------------------
+// newest-first, as the graph lists them: each commit's first parent is the
+// next one down.
+{
+  const D = 'd'.repeat(40);
+  const chain = [
+    { oid: C, parents: [B] },
+    { oid: B, parents: [A] },
+    { oid: A, parents: [D] }
+  ];
+  assert.equal(squashable(chain).ok, true);
+  assert.equal(squashable([chain[0]]).ok, false, 'one commit is not a squash');
+  assert.match(squashable([chain[0], chain[2]]).reason, /one after another/, 'a gap breaks the run');
+  assert.match(squashable([{ oid: C, parents: [B, A] }, { oid: B, parents: [A] }]).reason, /merge/);
+  assert.match(squashable([{ oid: A, parents: [] }, { oid: B, parents: [A] }]).reason, /first commit/);
+
+  // The replay range Git returns is oldest first, base excluded.
+  const range = [{ oid: A }, { oid: B }, { oid: C }];
+  assert.deepEqual(buildSquashPlan(range, [B, C], 'one message'), [
+    { action: 'pick', oid: A },
+    { action: 'reword', oid: B, message: 'one message' },
+    { action: 'fixup', oid: C }
+  ]);
+  // The oldest of the run carries the message as a reword; the message map
+  // then delivers it without a second editor prompt, and the todo Git runs
+  // keeps exactly one non-melting line for the run.
+  assert.deepEqual(buildTodo(buildSquashPlan(range, [A, B, C], 'x')), `reword ${A}\nfixup ${B}\nfixup ${C}\n`);
+  assert.deepEqual(buildMessageMap(buildSquashPlan(range, [A, B], 'combined')), { [A]: 'combined' });
+  assert.throws(() => buildSquashPlan(range, [A, C], 'x'), /one after another/, 'a non-adjacent selection is refused');
+  assert.throws(() => buildSquashPlan(range, [A], 'x'), /at least two/);
+  assert.throws(() => buildSquashPlan(range, [A, B], '  '), /needs a message/);
+  assert.throws(() => buildSquashPlan(range, [A, SHA256], 'x'), /not among/);
+}
+
+// --- the multi-selection context menu -------------------------------------
+{
+  const D = 'd'.repeat(40);
+  const run = [{ oid: C, parents: [B] }, { oid: B, parents: [A] }, { oid: A, parents: [D] }];
+  const gap = [{ oid: C, parents: [B] }, { oid: A, parents: [D] }];
+  const multiHandlers = { squash: () => {}, copyShas: () => {} };
+  const keys = menu => menu.map(item => item.key).filter(Boolean);
+
+  const clean = buildMultiCommitMenu({ commits: run, handlers: multiHandlers });
+  assert.ok(keys(clean).includes('squash'), 'an adjacent run on the branch offers Squash');
+  assert.ok(keys(clean).includes('copy-shas'));
+
+  const offBranch = buildMultiCommitMenu({ commits: run, onCurrentBranch: false, handlers: multiHandlers });
+  assert.ok(!keys(offBranch).includes('squash'), 'commits off the current branch get no Squash item at all');
+
+  const notAdjacent = buildMultiCommitMenu({ commits: gap, handlers: multiHandlers });
+  assert.ok(!keys(notAdjacent).includes('squash'), 'a gap in the selection hides Squash entirely');
+
+  const dirty = buildMultiCommitMenu({ commits: run, dirty: true, handlers: multiHandlers });
+  assert.match(dirty.find(item => item.key === 'squash').reason, /stash/, 'a dirty tree keeps Squash but disabled with the reason');
+
+  const busy = buildMultiCommitMenu({ commits: run, operation: { kind: 'rebase' }, handlers: multiHandlers });
+  assert.match(busy.find(item => item.key === 'squash').reason, /rebase/);
 }
 
 console.log('history-ops: all checks passed');

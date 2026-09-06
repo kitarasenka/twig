@@ -23,6 +23,8 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
   const [selection, setSelection] = useState({});
   const [message, setMessage] = useState('');
   const [notice, setNotice] = useState('');
+  const [amend, setAmend] = useState(false);
+  const amendBase = useRef(null);
   const generation = useRef(0);
   const diffRequest = useRef(0);
 
@@ -106,25 +108,67 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
     await window.twig.applySelection(repository.id, open.path, open.staged, diff.digest, payload);
   }, open?.staged ? 'Unstaged the selected lines.' : 'Staged the selected lines.');
 
-  async function commit() {
+  const busyOp = operation && operation.kind !== 'none' ? operation.kind : null;
+  const amendToggleReason = busy ? 'Git is working'
+    : unborn ? 'There is no commit to amend yet'
+      : busyOp ? `Finish or abort the ${busyOp} first` : undefined;
+
+  /** Turning amend on prefills the message from the last commit so it can be kept or tweaked. */
+  async function toggleAmend(next) {
+    setAmend(next);
+    if (!next) {
+      if (amendBase.current && message === amendBase.current.message) setMessage('');
+      amendBase.current = null;
+      return;
+    }
+    const oid = tree.branch?.oid;
+    if (!oid) { setAmend(false); return; }
+    try {
+      const head = await window.twig.getCommit(repository.id, oid);
+      const full = head.body ? `${head.subject}\n${head.body}` : head.subject;
+      amendBase.current = { oid, message: full };
+      setMessage(current => (current.trim().length === 0 ? full : current));
+      setError('');
+    } catch (failure) {
+      setAmend(false);
+      setError(failure.message || 'Could not read the last commit.');
+    }
+  }
+
+  async function submitCommit(amendMode) {
     if (runAutomation) {
       if (!await runAutomation('pre-commit', {})) return;
       if (!await runAutomation('commit-msg', { message })) return;
     }
+    const head = amendMode ? amendBase.current?.oid ?? tree.branch?.oid ?? null : null;
     await guard(async () => {
-      const warnings = await window.twig.createCommit(repository.id, message, false);
+      const warnings = await window.twig.createCommit(repository.id, message, amendMode, head);
       setMessage('');
+      setAmend(false);
+      amendBase.current = null;
       setOpen(null);
       setDiff(null);
       if (warnings.length) setNotice(warnings.join(' '));
-      if (runAutomation) void runAutomation('post-commit', {});
-    }, 'Commit created.', false);
+      if (runAutomation) {
+        void runAutomation('post-commit', {});
+        if (amendMode) void runAutomation('post-rewrite', {});
+      }
+    }, amendMode ? 'Amended the last commit.' : 'Commit created.', false);
   }
 
   const subject = message.split('\n')[0];
+  const amendUntouched = amend && amendBase.current
+    && tree.staged.length === 0 && message === amendBase.current.message;
   const commitReason = busy ? 'Git is working'
-    : tree.staged.length === 0 ? 'Stage something to commit'
-      : message.trim().length === 0 ? 'Write a commit message' : undefined;
+    : amend
+      ? (amendToggleReason
+        || (message.trim().length === 0 ? 'Write a commit message'
+          : amendUntouched ? 'Stage a file or edit the message to amend' : undefined))
+      : tree.staged.length === 0 ? 'Stage something to commit'
+        : message.trim().length === 0 ? 'Write a commit message' : undefined;
+  const amendSharedWarning = amend && tree.branch?.upstream && (tree.branch.ahead || 0) === 0
+    ? `The last commit is already on ${tree.branch.upstream}. Amending rewrites shared history and needs a force push.`
+    : '';
 
   return <div className="worktree-screen">
     <header className="panel-heading worktree-heading">
@@ -177,13 +221,20 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
         {!open && <p className="muted stage-empty">Pick a file to stage or unstage individual lines. Selecting an untracked file starts tracking it so its lines can be picked.</p>}
       </div>
     </div>
-    <form className="commit-box" onSubmit={event => { event.preventDefault(); void commit(); }}>
-      <label htmlFor="commit-message">Commit message</label>
+    <form className="commit-box" onSubmit={event => { event.preventDefault(); void submitCommit(amend); }}>
+      <label htmlFor="commit-message">{amend ? 'Amend message' : 'Commit message'}</label>
       <textarea id="commit-message" rows={3} value={message} placeholder="Subject line, blank line, then the details"
         onChange={event => setMessage(event.target.value)} />
+      {amendSharedWarning && <p className="worktree-notice amend-warn" role="alert">{amendSharedWarning}</p>}
+      <label className="amend-toggle" title={amendToggleReason || undefined}>
+        <input type="checkbox" checked={amend} disabled={Boolean(amendToggleReason)}
+          onChange={event => void toggleAmend(event.target.checked)} />
+        <span>Amend last commit — add every staged file to it{amendToggleReason ? ` (${amendToggleReason})` : ''}</span>
+      </label>
       <div className="commit-actions">
         <span className={subject.length > 72 ? 'warn' : 'muted'}>{subject.length}/72 in the subject</span>
-        <Button className="primary" type="submit" reason={commitReason}>{`Commit ${tree.staged.length} file${tree.staged.length === 1 ? '' : 's'}`}</Button>
+        <Button className="primary" type="submit" reason={commitReason}>
+          {amend ? 'Amend last commit' : `Commit ${tree.staged.length} file${tree.staged.length === 1 ? '' : 's'}`}</Button>
       </div>
     </form>
   </div>;

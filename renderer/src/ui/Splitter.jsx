@@ -4,8 +4,8 @@ import { PANEL_DEFAULT, SIDEBAR_SIZE, clampPanelWidth, dragPanelWidth, panelWidt
 const STEP = 16;
 const PAGE = 64;
 
-export default function Splitter({ width, onWidth, side = 'right', label = 'Commit panel width' }) {
-  const size = side === 'left' ? SIDEBAR_SIZE : undefined;
+export default function Splitter({ width, onWidth, side = 'right', label = 'Commit panel width', size: sizeProp }) {
+  const size = sizeProp ?? (side === 'left' ? SIDEBAR_SIZE : undefined);
   const defaultWidth = size?.defaultWidth ?? PANEL_DEFAULT;
   const limits = panelWidthLimits(Infinity, size);
   const [dragging, setDragging] = useState(false);

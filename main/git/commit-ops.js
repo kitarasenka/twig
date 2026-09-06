@@ -56,12 +56,26 @@ async function mutate({ cwd, log, argv, operation, stdin = null }) {
 /**
  * Writes the commit message over stdin instead of `-m`, so a message with
  * newlines, quotes or a leading dash reaches Git unchanged.
- * @param {{ cwd: string, log: object, message: string, amend?: boolean }} options
+ *
+ * `amend` folds whatever is staged into the tip commit. The caller says which
+ * commit it was showing (`expectedHead`); HEAD is re-read here and a mismatch
+ * is refused, because the staged changes were meant for that commit and a bare
+ * `--amend` would rewrite whatever HEAD has become in the meantime — the same
+ * guard `rewordHead` applies.
+ * @param {{ cwd: string, log: object, message: string, amend?: boolean, expectedHead?: ?string }} options
  */
-export async function createCommit({ cwd, log, message, amend = false }) {
+export async function createCommit({ cwd, log, message, amend = false, expectedHead = null }) {
   const check = validateCommitMessage(message);
   if (!check.valid) throw new Error(check.error);
-  await mutate({ cwd, log, argv: buildCommitArgv({ amend }), stdin: message, operation: 'Commit' });
+  if (amend) {
+    validateOid(expectedHead);
+    const head = await runGit({ argv: ['rev-parse', '--verify', 'HEAD'], cwd, log, operation: 'Read the commit being amended' });
+    if (head.code !== 0) throw new Error('There is no commit to amend yet.');
+    if (head.stdout.trim().toLowerCase() !== expectedHead.toLowerCase()) {
+      throw new Error('The branch moved since the last commit was read. Refresh and try again.');
+    }
+  }
+  await mutate({ cwd, log, argv: buildCommitArgv({ amend }), stdin: message, operation: amend ? 'Amend the last commit' : 'Commit' });
   return check.warnings;
 }
 

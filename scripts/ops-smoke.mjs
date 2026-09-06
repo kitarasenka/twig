@@ -19,7 +19,16 @@ try {
   const log = new CommandLog(root);
   await log.load();
   const git = async (argv, at = cwd) => {
-    const result = await runGit({ argv, cwd: at, log });
+    // The running app reads the repository on its own (history, refs, the
+    // automation engine's context gathering), and a concurrent `git status`
+    // there can briefly hold `.git/index.lock`. A shell mutation racing it is
+    // retried rather than treated as a real failure.
+    let result;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      result = await runGit({ argv, cwd: at, log });
+      if (result.code === 0 || !/index\.lock/.test(result.stderr)) break;
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
     assert.equal(result.code, 0, `${argv.join(' ')}: ${result.stderr}`);
     return result.stdout.replace(/\n$/, '');
   };
@@ -242,6 +251,42 @@ try {
     'only the targeted message changed; the commit after it was replayed as it was');
   assert.equal(await readFile(path.join(cwd, 'alpha.txt'), 'utf8'), 'alpha\n', 'the replayed content is untouched');
 
+  // --- squashing a run of selected commits --------------------------------
+  // Three adjacent commits, two of them picked with Cmd/Ctrl-click; the
+  // context menu on the selection folds them into one and leaves the third.
+  await git(['checkout', '-b', 'squash-demo', '--']);
+  for (const name of ['sq1', 'sq2', 'sq3']) {
+    await writeFile(path.join(cwd, `${name}.txt`), `${name}\n`, 'utf8');
+    await git(['add', '--', `:(literal)${name}.txt`]);
+    await git(['commit', '--message', `add ${name}`]);
+  }
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  // A non-adjacent pair (sq1 and sq3, skipping sq2) offers no Squash item.
+  await page.getByRole('option', { name: /add sq1/ }).click();
+  await page.getByRole('option', { name: /add sq3/ }).click({ modifiers: ['ControlOrMeta'] });
+  assert.equal(await page.locator('.real-commit-row.multi-selected, .real-commit-row.selected').count(), 2,
+    'both commits show as selected');
+  await page.getByRole('option', { name: /add sq3/ }).click({ button: 'right' });
+  await menu.waitFor();
+  assert.equal(await menu.getByRole('menuitem', { name: /Squash/ }).count(), 0,
+    'a gap in the selection hides Squash');
+  await page.keyboard.press('Escape');
+  // An adjacent pair (sq1 then sq2) does offer it.
+  await page.getByRole('option', { name: /add sq1/ }).click();
+  await page.getByRole('option', { name: /add sq2/ }).click({ modifiers: ['ControlOrMeta'] });
+  await page.getByRole('option', { name: /add sq2/ }).click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: /Squash 2 commits into one/ }).click();
+  const squash = page.getByRole('dialog');
+  await squash.waitFor();
+  assert.match(await squash.locator('.confirm-command').innerText(), /^\$ git rebase --interactive [0-9a-f]{7}$/);
+  await squash.getByRole('textbox', { name: 'Message for the squashed commit' }).fill('sq1 and sq2, squashed');
+  await squash.getByRole('button', { name: 'Squash and replay', exact: true }).click();
+  await expect('Squashed 2 commits into one.', 'the selected run folds into one commit');
+  assert.deepEqual((await git(['log', '--format=%s', '-2'])).split('\n'),
+    ['add sq3', 'sq1 and sq2, squashed'], 'the run became one commit and sq3 was replayed untouched');
+  assert.deepEqual((await git(['show', '--stat', '--format=', 'HEAD~1'])).match(/sq\d\.txt/g).sort(),
+    ['sq1.txt', 'sq2.txt'], 'both changes are inside the single squashed commit');
+
   // --- rejected IPC input ---------------------------------------------------
   const rejected = await page.evaluate(async () => {
     const workspace = await window.twig.getWorkspace();
@@ -253,11 +298,12 @@ try {
       window.twig.readConflict(id, '../escape'),
       window.twig.rebaseOnto(id, 'not-an-oid', null),
       window.twig.rewordCommit(id, 'not-an-oid', 'a message'),
-      window.twig.rewordCommit(id, '0'.repeat(40), '')
+      window.twig.rewordCommit(id, '0'.repeat(40), ''),
+      window.twig.rebaseOnto(id, '0'.repeat(40), [{ action: 'fixup', oid: '0'.repeat(40) }])
     ]);
     return results.map(result => result.status);
   });
-  assert.deepEqual(rejected, Array(7).fill('rejected'));
+  assert.deepEqual(rejected, Array(8).fill('rejected'));
 
   // The commit panel finishes loading before the theme shots, so the review
   // images show the real thing rather than skeleton placeholders.
@@ -282,7 +328,7 @@ try {
   }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  console.log('M4 Electron passed: context menu, merge conflict, conflict editor, banner, confirmation, interactive rebase, reword on the tip and inside history, IPC validation.');
+  console.log('M4 Electron passed: context menu, merge conflict, conflict editor, banner, confirmation, interactive rebase, reword on the tip and inside history, multi-select squash, IPC validation.');
 } finally {
   if (app) await app.close();
   await rm(root, { recursive: true, force: true });

@@ -61,14 +61,14 @@ export function NameDialog({ title, label, placeholder, confirmLabel, extra, wit
  * A message identical to the one on screen is refused rather than run: it
  * would still mint a new id, which is all cost and no change.
  */
-export function MessageDialog({ title, label, initial, confirmLabel, command, consequence, onConfirm, onClose }) {
+export function MessageDialog({ title, label, initial, confirmLabel, command, consequence, allowUnchanged = false, onConfirm, onClose }) {
   const [text, setText] = useState(initial);
   const field = useRef(null);
   // showModal() focuses the textarea; the caret belongs after the text, not before it.
   useEffect(() => { field.current?.setSelectionRange(initial.length, initial.length); }, [initial]);
   const subject = text.split('\n')[0];
   const reason = text.trim().length === 0 ? 'Write a message first'
-    : text === initial ? 'This is the message it already has' : undefined;
+    : !allowUnchanged && text === initial ? 'This is the message it already has' : undefined;
   return <Dialog title={title} onClose={onClose}>
     <form className="name-dialog message-dialog" onSubmit={event => { event.preventDefault(); onClose(); onConfirm(text); }}>
       <label htmlFor="reword-message">{label}</label>

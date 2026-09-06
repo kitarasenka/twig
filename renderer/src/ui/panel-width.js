@@ -14,6 +14,13 @@ export const PANEL_MAX = 560;
 export const PANEL_DEFAULT = 306;
 export const SIDEBAR_SIZE = { min: 160, max: 400, defaultWidth: 212 };
 const PANEL_SIZE = { min: PANEL_MIN, max: PANEL_MAX, defaultWidth: PANEL_DEFAULT };
+/**
+ * The file-history diff panel may grow to twice the normal maximum: it shows a
+ * full file diff on its own, with no graph row to read alongside it, so the
+ * extra width is useful there and nowhere else. The graph floor in
+ * `panelWidthLimits` still stops it before the graph collapses.
+ */
+export const FILE_HISTORY_PANEL_SIZE = { min: PANEL_MIN, max: PANEL_MAX * 2, defaultWidth: PANEL_DEFAULT };
 const GRAPH_MIN = 240;
 
 /** `available` is the combined width of the graph and the panel being resized. */
