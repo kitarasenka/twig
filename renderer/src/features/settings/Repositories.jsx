@@ -26,7 +26,7 @@ export default function Repositories({ workspace, onWorkspace, onOpen, onClone, 
       <div className="manager-item-heading"><strong>{item.name}</strong><small>{item.available ? 'Available' : 'Unavailable'}{workspace.activeId === item.id ? ' · Current' : ''}</small></div>
       <code className="manager-path">{item.path}</code>
       <div className="manager-actions"><Button icon={FolderOpen} reason={busy ? 'Wait for the current action' : undefined} onClick={() => act('select', item.id)}>Open {item.name}</Button><Button icon={Trash2} reason={busy ? 'Wait for the current action' : undefined} onClick={() => setRemoving(item.id)}>Remove from list</Button></div>
-      {removing === item.id && <div className="manager-confirm"><p>Remove {item.name} from Twig? Its folder and files will stay on disk.</p><Button reason={busy ? 'Removing…' : undefined} onClick={() => act('remove', item.id)}>Confirm removal</Button><Button reason={busy ? 'Removing…' : undefined} onClick={() => setRemoving(null)}>Keep repository</Button></div>}
+      {removing === item.id && <div className="manager-confirm"><p>Remove {item.name} from 🌱 Twig? Its folder and files will stay on disk.</p><Button reason={busy ? 'Removing…' : undefined} onClick={() => act('remove', item.id)}>Confirm removal</Button><Button reason={busy ? 'Removing…' : undefined} onClick={() => setRemoving(null)}>Keep repository</Button></div>}
     </li>)}</ul>
     {!items.length && <p className="empty-inline">{workspace?.repositories.length ? 'No repositories match this filter.' : 'No connected repositories. Open a folder or clone a repository to begin.'}</p>}
   </section>;

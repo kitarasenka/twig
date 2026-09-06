@@ -4,7 +4,7 @@ A standalone desktop Git client for macOS, Windows and Linux. Its workspace puts
 commit history in the center, repository navigation on the left, details on the
 right, and the command console below.
 
-**Current version: 0.2.0 — M4.** Twig now rewrites history as well as recording
+**Current version: 0.2.0 — M4.** 🌱 Twig now rewrites history as well as recording
 it: a context menu on every commit, merge, cherry-pick, revert, reset,
 interactive rebase driven by Git itself, a three-way conflict editor, and a
 banner for an operation Git stopped in the middle of. Destructive commands ask
@@ -75,7 +75,7 @@ The app does not require the monorepo server, a token, or an `.env` file.
   message. Only what applies to that commit is offered.
 - An interactive rebase editor: reorder by dragging, by buttons or by
   Alt+Arrow, and choose pick, reword, edit, squash, fixup or drop per commit.
-  Git performs the rebase — Twig supplies the plan as its sequence editor.
+  Git performs the rebase — 🌱 Twig supplies the plan as its sequence editor.
 - A three-way conflict editor: ours, base and theirs beside an editable
   result, taking whole sides or individual lines in either order, with its own
   undo and redo and a warning if conflict markers are left behind.
@@ -128,6 +128,18 @@ and disk preservation. `repositories-smoke.mjs` exercises the corresponding UI,
 history after clone/fetch, both themes and persistence after an Electron restart.
 
 ## Next milestones and packaging
+
+The 🌱 Twig landing page now lives in `site/`. Run `npm run build:site`, then
+`npm run preview:site` to open it at `http://127.0.0.1:5190`. Upload `site/dist/`
+to a static host and place installer files in its `downloads/` directory.
+See [site/README.md](site/README.md) for deployment and download filenames.
+
+Packaging commands are now available: `npm run pack:mac`, `npm run pack:win`,
+and `npm run pack:linux` on the respective platforms. They build the app and
+write installers into `release/` without publishing. Installer names and site
+links share the `package.json` electron-builder configuration. Native installer
+builds and execution still need platform validation; configuration alone does
+not establish that the packages work.
 
 M5 has profile and repository management. SSH, Undo/Redo and packaging
 remain. `PROMPT.md` is the full specification;

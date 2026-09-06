@@ -8,6 +8,7 @@ import { runGit } from '../main/git/exec.js';
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'twig-drop-smoke-'));
 let app;
+let page;
 try {
   const cwd = path.join(root, 'drag-fixture'); await mkdir(cwd);
   const log = new CommandLog(root); await log.load();
@@ -31,7 +32,7 @@ try {
   await git(['push', 'origin', 'main']);
   const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'profile')}`], env });
-  const page = await app.firstWindow(); page.setDefaultTimeout(15000);
+  page = await app.firstWindow(); page.setDefaultTimeout(15000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await app.evaluate(({ dialog }, directory) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] }); }, cwd);
   await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
@@ -127,6 +128,7 @@ try {
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await page.mouse.down();
   await page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2, { steps: 3 });
   await page.mouse.move(historyBox.x + 100, historyBox.y + historyBox.height - 12, { steps: 6 });
+  await page.mouse.move(historyBox.x + 102, historyBox.y + historyBox.height - 12);
   await page.waitForFunction(() => document.querySelector('.real-history-scroll').scrollTop > 20);
   await page.mouse.move(historyBox.x + 100, historyBox.y - 60, { steps: 3 }); await page.mouse.up();
   await page.keyboard.press('Escape');
@@ -139,5 +141,11 @@ try {
   }, { id: cwd, oid: feature });
   assert.deepEqual(refused, [true, true]);
   assert.deepEqual(errors, []);
-  console.log('Drop Electron passed: native sidebar/graph drags, highlights, remote direction, keyboard, cancellation, cherry-pick, non-current merge, themes, compact layout and IPC refusals.');
+  console.log('Drop Electron passed: native sidebar/graph drags, highlights, remote direction, keyboard, cancellation, cherry-pick, non-current merge, comparison, autoscroll, themes, compact layout and IPC refusals.');
+} catch (error) {
+  if (page) {
+    console.error(await page.locator('.menu, .git-drag-status, .operation-note, .history-error').allInnerTexts());
+    await page.screenshot({ path: 'artifacts/drag-failure.png', animations: 'disabled' });
+  }
+  throw error;
 } finally { if (app) await app.close(); await rm(root, { recursive: true, force: true }); }

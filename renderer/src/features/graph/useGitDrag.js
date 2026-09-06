@@ -16,7 +16,8 @@ export default function useGitDrag({ active, revision, onDrop, onStart }) {
   const current = useRef(null);
   const update = useCallback(value => { current.current = value; setState(value); }, []);
   const cancel = useCallback(() => update(null), [update]);
-  useEffect(() => { cancel(); }, [active, revision, cancel]);
+  useEffect(() => { if (!active) cancel(); }, [active, cancel]);
+  useEffect(() => { cancel(); }, [revision, cancel]);
   useEffect(() => {
     const escape = event => { if (event.key === 'Escape' && current.current?.phase === 'drag') cancel(); };
     const end = () => { if (current.current?.phase === 'drag') cancel(); };

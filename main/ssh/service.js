@@ -118,7 +118,7 @@ export function createSshService({ home, log }) {
     if (typeof content !== 'string' || Buffer.byteLength(content) > 1024 * 1024 || content.includes('\0') || typeof expected !== 'string') throw new TypeError('Invalid SSH configuration.');
     await ensureDirectory();
     const before = await readConfig();
-    if (before.digest !== expected) throw new Error('SSH config changed outside Twig. Reload before saving.');
+    if (before.digest !== expected) throw new Error('SSH config changed outside 🌱 Twig. Reload before saving.');
     const temporary = await mkdtemp(path.join(directory, '.twig-config-'));
     try {
       const check = path.join(temporary, 'check'); await writeFile(check, validationCopy(content), { mode: 0o600 });

@@ -1,4 +1,4 @@
-# Twig brand assets
+# 🌱 Twig brand assets
 
 The user supplied `twig-logo.png` in this conversation. This is the original
 1254×1254 PNG, preserved byte for byte. No generated replacement, tracing,

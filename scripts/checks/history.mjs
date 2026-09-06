@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { parseFileHistory, parseHistoryV1, HistoryParseError } from '../../main/git/history-parser.js';
-import { buildFileHistoryArgv, buildHistoryArgv } from '../../main/git/history.js';
+import { buildFileHistoryArgv, buildHistoryArgv, buildSearchArgv } from '../../main/git/history.js';
 
 const SHA1_A = '82df62445b05a04be53291bb36b5db80e46dad77';
 const SHA1_B = 'ebb6e9d3dec115ba8b429d3b143db9d27777a083';
@@ -152,6 +152,21 @@ for (const file of ['', 42, '/etc/passwd', '../escape', 'a/../b', 'has\0nul']) {
 }
 for (const limit of [0, -1, 501, 1.5, '250', NaN, Infinity]) {
   assert.throws(() => buildFileHistoryArgv('src/app.js', limit), TypeError, `limit ${limit} must be rejected`);
+}
+
+// --- buildSearchArgv: literal, case-insensitive `git log --grep` over all refs ---
+
+assert.deepEqual(buildSearchArgv('fix login'), ['log', '--all', '--topo-order', '-z', '-i', '--fixed-strings',
+  '--grep=fix login', '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=200']);
+// The query is trimmed and stays one argv token after `--grep=`, so a regex- or
+// flag-looking search string is matched literally, never interpreted.
+assert.equal(buildSearchArgv('  --oops (a|b)  ').find(part => part.startsWith('--grep=')), '--grep=--oops (a|b)');
+assert.deepEqual(buildSearchArgv('x', 500).includes('--max-count=500'), true);
+for (const query of ['', '   ', 42, null, undefined, 'x'.repeat(201), 'has\0nul']) {
+  assert.throws(() => buildSearchArgv(query), TypeError, `query ${query} must be rejected`);
+}
+for (const limit of [0, -1, 501, 1.5, '250', NaN]) {
+  assert.throws(() => buildSearchArgv('x', limit), TypeError, `limit ${limit} must be rejected`);
 }
 
 const fileRecord = oid => record(oid, '', 'Fixture', 'f@example.invalid',

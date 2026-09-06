@@ -20,6 +20,11 @@ export function registerHistoryIpc(getWindow, entryUrl, { repositories, journal 
     const { loadHistoryPage } = await import('./git/history.js');
     return loadHistoryPage({ ...options, skip, limit });
   });
+  handler('history:search', 2, async (options, query) => {
+    if (typeof query !== 'string' || query.trim().length === 0 || query.length > 200) throw new Error('Invalid history search');
+    const { searchHistory } = await import('./git/history.js');
+    return searchHistory({ ...options, query });
+  });
   handler('history:file-log', 2, async (options, file) => {
     const { loadFileHistory } = await import('./git/history.js');
     return loadFileHistory({ ...options, file });

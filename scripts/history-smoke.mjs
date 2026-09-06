@@ -150,6 +150,22 @@ try {
   await page.getByRole('button', { name: 'Remove mark', exact: true }).click();
   await page.waitForFunction(id => !document.getElementById(`commit-${id}`)?.classList.contains('marked'), tip);
 
+  // Global search: one box searches every commit message and hash across all
+  // refs — not just the loaded page — and collapses the graph to the matches.
+  const search = page.getByRole('textbox', { name: 'Search commits and references' });
+  await search.fill('Feature branch');
+  await page.getByText(/2 commits match/).waitFor();
+  await list.getByRole('option').first().waitFor();
+  assert.equal(await list.getByRole('option').count(), 2);
+  // A hash prefix resolves to its own commit even though no message holds it.
+  await search.fill(tip.slice(0, 12));
+  await page.getByText(/1 commit matches/).waitFor();
+  await list.getByRole('option').first().click();
+  await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Clear search results', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('.search-results'));
+  assert.equal(await search.inputValue(), '');
+
   const rejected = await page.evaluate(async () => {
     const workspace = await window.twig.getWorkspace();
     const id = workspace.activeId;
@@ -158,11 +174,12 @@ try {
       window.twig.getCommit(id, '--help'), window.twig.getFileDiff(id, 'a'.repeat(40), '../escape'),
       window.twig.getFileHistory(id, '../escape'), window.twig.getFileHistory(id, '/etc/passwd'),
       window.twig.setMark(id, 'not-an-oid', 'red', ''), window.twig.setMark(id, 'a'.repeat(40), 'crimson', ''),
-      window.twig.setMark('unregistered', 'a'.repeat(40), 'red', '')
+      window.twig.setMark('unregistered', 'a'.repeat(40), 'red', ''),
+      window.twig.searchHistory(id, '   '), window.twig.searchHistory(id, 'x'.repeat(201))
     ]);
     return results.map(result => result.status);
   });
-  assert.deepEqual(rejected, Array(9).fill('rejected'));
+  assert.deepEqual(rejected, Array(11).fill('rejected'));
 
   // Commit age colours: the default ramp, the switch back to branch lanes and
   // the choice surviving a restart. Colour classes are the only honest witness

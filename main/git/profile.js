@@ -50,7 +50,7 @@ export async function saveProfileValue(options) {
     if (checked.code !== 0) throw new TypeError('Invalid default branch name.');
   }
   const previous = await readValues(options, scope);
-  if (previous[key] !== expected) throw new Error('This setting changed outside Twig. Reload the profile before saving.');
+  if (previous[key] !== expected) throw new Error('This setting changed outside 🌱 Twig. Reload the profile before saving.');
   if (previous[key] !== value) {
     const argv = ['config', `--${scope}`, value === null ? '--unset-all' : '--replace-all', '--', key];
     if (value !== null) argv.push(value);

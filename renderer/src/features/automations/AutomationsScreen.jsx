@@ -122,17 +122,17 @@ export default function AutomationsScreen({ repository, refreshKey, busy, onBack
 
       {foreignHooks.length > 0 && <p className="automations-notice">
         <FileWarning aria-hidden="true" />
-        <span>Existing Git {foreignHooks.length === 1 ? 'hook' : 'hooks'} detected: {foreignHooks.map(eventLabel).join(', ')}. Twig runs its own pipelines alongside them and never edits or removes them.</span>
+        <span>Existing Git {foreignHooks.length === 1 ? 'hook' : 'hooks'} detected: {foreignHooks.map(eventLabel).join(', ')}. 🌱 Twig runs its own pipelines alongside them and never edits or removes them.</span>
         <Button onClick={onConsole}>Details in console</Button>
       </p>}
 
       {untrustedRepo && <p className="automations-notice trust">
         <ShieldAlert aria-hidden="true" />
-        <span>This repository contains Twig automations. {data.repo.commands.length} command{data.repo.commands.length === 1 ? '' : 's'} want permission to run.</span>
+        <span>This repository contains 🌱 Twig automations. {data.repo.commands.length} command{data.repo.commands.length === 1 ? '' : 's'} want permission to run.</span>
         <Button className="primary" onClick={() => setTrustOpen(true)}>Review &amp; Enable</Button>
       </p>}
 
-      {pipelines.length === 0 && <p className="automations-empty">No pipelines yet. Start from a template or build one from scratch — Twig will run it when the matching Git event happens inside the app.</p>}
+      {pipelines.length === 0 && <p className="automations-empty">No pipelines yet. Start from a template or build one from scratch — 🌱 Twig will run it when the matching Git event happens inside the app.</p>}
 
       {HOOK_EVENTS.filter(ev => pipelines.some(p => p.event === ev.hook)).map(ev => <div className="automations-group" key={ev.hook}>
         <h3>{ev.label} <code>{ev.hook}</code></h3>

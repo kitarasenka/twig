@@ -75,7 +75,7 @@ export async function changeRemote({ cwd, log, action, name, url = null, expecte
   const remotes = await loadRemotes({ cwd, log });
   const previous = remotes.find(remote => remote.name === name);
   if (action === 'add' ? Boolean(previous) : !previous) throw new Error(action === 'add' ? 'A remote with this name already exists.' : 'This remote no longer exists. Reload the list.');
-  if (action !== 'add' && JSON.stringify(previous) !== expected) throw new Error('This remote changed outside Twig. Reload the list before continuing.');
+  if (action !== 'add' && JSON.stringify(previous) !== expected) throw new Error('This remote changed outside 🌱 Twig. Reload the list before continuing.');
   if (action === 'fetch') for (const address of previous.urls) validateRepositoryUrl(address);
   if (signal?.aborted) return { ok: false, cancelled: true };
   const argv = action === 'fetch' ? ['fetch', '--progress', '--prune', '--', name]

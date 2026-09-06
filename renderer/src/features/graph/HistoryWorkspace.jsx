@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Archive, GitBranch, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow } from 'lucide-react';
+import { AlignLeft, Archive, GitBranch, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
@@ -24,8 +24,11 @@ import { buildSquashPlan } from '../ops/squash-plan.js';
 import { createLaneLayout } from './layout.js';
 import useGitDrag, { refEndpoint } from './useGitDrag.js';
 import DropDialog from './DropDialog.jsx';
+import BlameView from '../blame/BlameView.jsx';
+import BlameDetail from '../blame/BlameDetail.jsx';
 import { dropActions, endpointLabel, sameEndpoint } from '../../../../main/git/drop-plan.js';
 
+const NOOP = () => {};
 const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
 const NO_BISECT = { active: false, terms: { bad: 'bad', good: 'good' }, start: null, bad: null, goods: [],
   skipped: [], expected: null, remaining: null, steps: null, done: false, firstBad: null };
@@ -50,8 +53,10 @@ function BranchTree({ refs, onSelect, drag, headBranch }) {
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.label}</span>{(ref.ahead > 0 || ref.behind > 0) && <small>↑{ref.ahead} ↓{ref.behind}</small>}</button>)}</>;
 }
 
-function Diff({ diff, onClose, onCommit }) {
-  return <section className="diff-view" aria-label="File diff"><header className="panel-heading"><code>{diff.file}</code><Button icon={X} aria-label="Close diff" onClick={onClose} /></header>
+function Diff({ diff, onClose, onCommit, onBlame }) {
+  return <section className="diff-view" aria-label="File diff"><header className="panel-heading"><code>{diff.file}</code>
+    {onBlame && <Button icon={AlignLeft} onClick={onBlame}>Blame</Button>}
+    <Button icon={X} aria-label="Close diff" onClick={onClose} /></header>
     {onCommit && <div className="file-history-diff-heading"><code>{diff.oid.slice(0, 8)}</code><Button icon={GitBranch} onClick={onCommit}>Go to commit</Button></div>}
     {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : <div className="diff-lines" tabIndex={0} aria-label="Diff lines">
       {diff.patch ? diff.patch.split('\n').map((line, index) => <div key={index} className={line.startsWith('+') ? 'diff-added' : line.startsWith('-') ? 'diff-deleted' : line.startsWith('@@') ? 'diff-hunk' : ''}><span>{line || ' '}</span></div>) : <p className="empty-inline">No changes for this file in this comparison.</p>}
@@ -96,8 +101,11 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_SIZE.defaultWidth);
   const [collapsed, setCollapsed] = useState(false);
   const [filter, setFilter] = useState('');
+  const [search, setSearch] = useState(null);
   const [diff, setDiff] = useState(null);
   const [fileHistory, setFileHistory] = useState(null);
+  const [blame, setBlame] = useState(null);
+  const [blameSel, setBlameSel] = useState(null);
   const [fileMenu, setFileMenu] = useState(null);
   const [operation, setOperation] = useState(IDLE);
   const [bisect, setBisect] = useState(NO_BISECT);
@@ -221,6 +229,30 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     return () => { for (const token of tokens) token.current++; };
   }, [reload, refreshOperation, referencesRevision]);
 
+  // One search box drives both panes: the sidebar keeps filtering refs by name
+  // (below), and a query of two or more characters also searches every commit
+  // message and hash across all refs through `git log --grep`, collapsing the
+  // graph to the matches. Debounced so a fast typist runs one search, not ten.
+  const searchQuery = filter.trim();
+  useEffect(() => {
+    if (searchQuery.length < 2) { setSearch(null); return; }
+    let alive = true;
+    setSearch(current => ({ query: searchQuery, commits: current?.query === searchQuery ? current.commits : [],
+      lanes: current?.query === searchQuery ? current.lanes : [], truncated: false, loading: true, error: '' }));
+    const timer = setTimeout(async () => {
+      try {
+        const { commits, truncated } = await window.twig.searchHistory(repository.id, searchQuery);
+        if (!alive) return;
+        setSearch({ query: searchQuery, commits, truncated, loading: false, error: '',
+          lanes: commits.map(commit => ({ oid: commit.oid, lane: 0, color: 0, segments: [] })) });
+      } catch {
+        if (alive) setSearch({ query: searchQuery, commits: [], lanes: [], truncated: false, loading: false, error: 'Could not search this repository’s history.' });
+      }
+    }, 250);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [searchQuery, repository.id, referencesRevision]);
+  const searchIndexMap = useMemo(() => new Map((search?.commits || []).map((commit, index) => [commit.oid, index])), [search]);
+
   /**
    * Runs one history-mutating command. A non-zero exit is not assumed to be a
    * failure: main answers with the operation state that followed, and a merge
@@ -343,7 +375,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const dirty = (repository.status?.entries || []).some(entry => entry.kind === 'ordinary' || entry.kind === 'renamed');
 
   function openMenu(oid, x, y) {
-    const commit = dataRef.current.commits.find(item => item.oid === oid);
+    const commit = dataRef.current.commits.find(item => item.oid === oid) || search?.commits.find(item => item.oid === oid);
     if (!commit) return;
     // Right-clicking a commit that is part of a multi-selection keeps that
     // selection and offers the actions that act on all of it; right-clicking
@@ -578,6 +610,19 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       if (request === diffRequest.current) setFileHistory({ path, commits, loading: false });
     } catch { if (request === diffRequest.current) setFileHistory({ path, error: 'Could not read this file’s history. Show output in the console.', loading: false }); }
   }
+  /**
+   * Opens blame for a committed version of a file. `oid` is always a real
+   * commit id (the one the panel or the file-history row was showing), so the
+   * blamed content is that commit's, never the working tree's.
+   */
+  function openBlame(path, oid) {
+    if (!path || typeof oid !== 'string' || !/^[0-9a-f]{7,64}$/i.test(oid)) return;
+    diffRequest.current++;
+    setDiff(null); setFileHistory(null); setDetail(true);
+    setBlameSel(null);
+    setBlame({ path, oid, line: 1 });
+  }
+  function closeBlame() { setBlame(null); setBlameSel(null); }
   async function openHistoryDiff(commit) {
     const request = ++diffRequest.current;
     const file = commit.path || fileHistory.path;
@@ -623,14 +668,15 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     || (!hunterCommit ? 'Select a commit with the bug in the history first' : undefined);
   const visibleRefs = data.refs.filter(ref => ref.name.toLowerCase().includes(filter.toLowerCase()));
   const showDetail = detail && !conflict && !screen;
-  return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${fileHistory ? fileHistoryWidth : width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
+  return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${fileHistory || blame ? fileHistoryWidth : width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
     {active && toolbarSlot && createPortal(
       <Button className="tool bughunter-tool" reason={hunterReason}
         title={hunterCommit ? `Start from ${hunterCommit.oid.slice(0, 7)}: choose a commit where the bug is present` : undefined}
         onClick={() => { if (!hunterReason) void performBisect('start', hunterCommit.oid); }}>🌱 BugHunter (bisect)</Button>, toolbarSlot)}
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} aria-label="Repository navigation">
       {collapsed ? <Button icon={PanelLeftOpen} aria-label="Expand repository sidebar" onClick={() => setCollapsed(false)} /> : <>
-        <div className="sidebar-filter"><Search /><input ref={filterRef} aria-label="Filter repository references" placeholder={`Filter refs · ${mod}+F`} value={filter} onChange={event => setFilter(event.target.value)} /></div>
+        <div className="sidebar-filter"><Search /><input ref={filterRef} aria-label="Search commits and references" placeholder={`Search commits & refs · ${mod}+F`} value={filter} onChange={event => setFilter(event.target.value)} />
+          {filter && <button className="sidebar-filter-clear" aria-label="Clear search" onClick={() => setFilter('')}><X /></button>}</div>
         <nav className="sidebar-nav" aria-label="Repository screens">
           <button className={`real-branch ${screen === 'branches' ? 'selected' : ''}`} onClick={() => choose('branches')}>
             <GitBranch /><span>Branches and tags</span><small>{data.refs.length}</small></button>
@@ -663,8 +709,22 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         blockedReason={operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : dirty ? 'Commit or stash your changes before the next test' : undefined}
         selectedCommit={!screen && !range ? data.commits[indexMap.get(selected)] : null}
         onStep={(step, oid = null) => void performBisect(step, oid)} onOpenCommit={jump} />
-      <div hidden={Boolean(diff) || Boolean(fileHistory) || Boolean(conflict) || Boolean(screen)} className="history-slot">
-        {loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
+      <div hidden={Boolean(diff) || Boolean(fileHistory) || Boolean(blame) || Boolean(conflict) || Boolean(screen)} className="history-slot">
+        {search ? <div className="search-results">
+          <div className="search-results-heading" role="status">
+            <span>{search.loading ? `Searching for “${search.query}”…`
+              : search.error ? search.error
+              : `${search.commits.length}${search.truncated ? '+' : ''} ${search.commits.length === 1 ? 'commit matches' : 'commits match'} “${search.query}”`}</span>
+            <Button onClick={() => setFilter('')}>Clear search results</Button>
+          </div>
+          {search.loading ? <div className="loading-shell" aria-label="Searching history">{Array.from({ length: 6 }, (_, i) => <div className="skeleton" key={i} />)}</div>
+            : search.error ? <p className="empty-inline">{search.error} <button onClick={onConsole}>Show output</button></p>
+            : search.commits.length ? <CommitGraph commits={search.commits} lanes={search.lanes} laneCount={1} refMap={refMap} indexMap={searchIndexMap} selected={selected} head={repository.status?.branch?.oid}
+                onSelect={oid => choose(oid)} onMenu={openMenu} loadMore={NOOP} hasMore={false} loading={false} changes={0} stashes={[]} marks={marks}
+                onWorktree={NOOP} onStashes={NOOP} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />
+              : <p className="empty-inline">No commit message or hash matches “{search.query}”. The sidebar still shows matching branches and tags.</p>}
+        </div>
+        : loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
             onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} changes={changes.length} stashes={stashes} marks={marks}
             onWorktree={() => choose('worktree')} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
@@ -680,22 +740,33 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       {!conflict && screen === 'automations' && <AutomationsScreen repository={repository} refreshKey={automationRefresh} busy={working || Boolean(execution)}
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onChanged={() => setAutomationRefresh(value => value + 1)}
         onRunEvent={(event, options) => void runAutomation(event, options)} />}
-      {!conflict && diff && !fileHistory && <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} />}
-      {!conflict && fileHistory && <FileHistory data={fileHistory} selected={diff?.oid} onConsole={onConsole}
+      {!conflict && blame && <BlameView repository={repository} seed={blame} onConsole={onConsole}
+        onClose={closeBlame} onJump={oid => { closeBlame(); void jump(oid); }} onSelect={setBlameSel} />}
+      {!conflict && !blame && diff && !fileHistory && <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }}
+        onBlame={diff.file && (diff.oid || indexMap.has(selected)) ? () => openBlame(diff.file, diff.oid || selected) : undefined} />}
+      {!conflict && !blame && fileHistory && <FileHistory data={fileHistory} selected={diff?.oid} onConsole={onConsole}
         onSelect={openHistoryDiff} onClose={() => { diffRequest.current++; setFileHistory(null); setDiff(null); }} />}
     </main>
-    {showDetail && (fileHistory
-      ? <Splitter width={fileHistoryWidth} onWidth={setFileHistoryWidth} size={FILE_HISTORY_PANEL_SIZE} label="File history changes width" />
+    {showDetail && (fileHistory || blame
+      ? <Splitter width={fileHistoryWidth} onWidth={setFileHistoryWidth} size={FILE_HISTORY_PANEL_SIZE} label={blame ? 'Blame details width' : 'File history changes width'} />
       : <Splitter width={width} onWidth={setWidth} />)}
-    {showDetail && fileHistory && <aside className="file-history-detail" aria-label="File history changes">
-      {diff ? <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} onCommit={() => void jump(diff.oid)} />
+    {showDetail && blame && <BlameDetail repositoryId={repository.id} sel={blameSel}
+      onJump={oid => { closeBlame(); void jump(oid); }} onConsole={onConsole} />}
+    {showDetail && !blame && fileHistory && <aside className="file-history-detail" aria-label="File history changes">
+      {diff ? <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} onCommit={() => void jump(diff.oid)}
+        onBlame={() => openBlame(diff.file, diff.oid)} />
         : <p className="empty-inline">Select a commit to view this file’s changes.</p>}
     </aside>}
-    {showDetail && !fileHistory && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile}
+    {showDetail && !fileHistory && !blame && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile}
       onFileMenu={(path, x, y) => setFileMenu({ path, x, y })} onConsole={onConsole} range={range} commitColors={commitColors} remotes={remotes}
       mark={commitState.commit ? marks[commitState.commit.oid] || null : null} onSetMark={applyMark} onClearMark={removeMark} />}
     {fileMenu && <Menu x={fileMenu.x} y={fileMenu.y} label={`Actions for ${fileMenu.path}`} onClose={() => setFileMenu(null)}
-      items={[{ key: 'file-history', text: 'File history', hint: 'Every commit that changed this file', icon: History, run: () => void openFileHistory(fileMenu.path) }]} />}
+      items={[
+        { key: 'file-history', text: 'File history', hint: 'Every commit that changed this file', icon: History, run: () => void openFileHistory(fileMenu.path) },
+        { key: 'blame', text: 'Blame history', hint: 'Who last changed each line, with steps into the past', icon: AlignLeft,
+          reason: /^[0-9a-f]{7,64}$/i.test(commitState.commit?.oid || selected || '') ? undefined : 'Select a committed version first',
+          run: () => openBlame(fileMenu.path, commitState.commit?.oid || selected) }
+      ]} />}
     {menu && <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)}
       label={menu.multi ? `Actions for ${menu.multi.length} selected commits` : `Actions for commit ${menu.commit.oid.slice(0, 7)}`}
       items={menu.multi

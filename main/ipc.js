@@ -1,6 +1,7 @@
 import { app, clipboard, dialog, ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { registerHistoryIpc } from './history-ipc.js';
+import { registerBlameIpc } from './blame-ipc.js';
 import { registerHistoryOpsIpc } from './history-ops-ipc.js';
 import { registerWorktreeIpc } from './worktree-ipc.js';
 import { registerProfileIpc } from './profile-ipc.js';
@@ -25,6 +26,7 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
   registerRepositoryIpc(getWindow, entryUrl, { journal, repositories, undo });
   registerProfileIpc(getWindow, entryUrl, { journal, repositories, stateDir: app.getPath('userData') });
   registerHistoryIpc(getWindow, entryUrl, { journal, repositories });
+  registerBlameIpc(getWindow, entryUrl, { journal, repositories });
   registerWorktreeIpc(getWindow, entryUrl, { journal, repositories, undo });
   registerHistoryOpsIpc(getWindow, entryUrl, { journal, repositories, undo, stateDir: app.getPath('userData') });
   ipcMain.handle('app:info', (event, ...args) => {

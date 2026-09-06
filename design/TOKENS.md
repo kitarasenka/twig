@@ -19,7 +19,7 @@ lane, and the Settings legend names every stop. No skill rerun for this one — 
 adds tokens and a settings row, not a screen.
 
 BugHunter, 2026-09-06: reran design-system for guided desktop debugging and
-React semantic controls. Retained Twig's tokens, local fonts and density.
+React semantic controls. Retained 🌱 Twig's tokens, local fonts and density.
 Adopted three named phases, an explicit remaining-test estimate, visible
 instructions, descriptive answer/skip/return buttons and expandable help.
 The requested sprout is part of the feature name. The panel wraps controls
@@ -28,7 +28,7 @@ Reviewed dark/light and 1000×640 Electron screenshots; the compact check
 asserts no panel overflow and space for at least one history row.
 
 M5 repository management: reran design-system for desktop Git repository
-management and React controlled forms/async feedback. Kept Twig's existing
+management and React controlled forms/async feedback. Kept 🌱 Twig's existing
 identity and density instead of the suggested marketing layout. Native folder
 selection, labeled inputs, explicit list removal, pending/Cancel states and live
 Git output define the forms. Existing tokens only; dialogs capped at 760px.
@@ -96,7 +96,7 @@ editor, the execution panel, the console and the trust prompt; `prefers-reduced-
 motion` disables the spinner animation.
 
 Rejected, with reasons: deep linking / "URL reflects state" — a single-window
-Electron app has no router, and screen state is in-memory like every other Twig
+Electron app has no router, and screen state is in-memory like every other 🌱 Twig
 screen; list virtualisation for pipelines and the run log — a repo has a handful
 of pipelines and the log is capped at 100; mobile keyboard / `inputmode` / 44px
 targets / 375px breakpoints — pointer-first desktop tool, min window 1000×640,
@@ -113,7 +113,7 @@ Adopted: Data-Dense Dashboard, restrained surfaces, 13px text, 30px history rows
 visible focus, stable hover, local Fira Sans / Fira Code, semantic HTML, tab state
 preservation. Rejected the initial marketing-page recommendation (hero, sales CTA,
 48px gaps): a desktop Git workspace requires the anatomy in PROMPT.md.
-The user-supplied Twig logo defines the palette: forest green, bright lime,
+The user-supplied 🌱 Twig logo defines the palette: forest green, bright lime,
 mint and ivory. Use the original logo locally; no external fonts or images. Lucide SVG icons share 16px size and 1.7px stroke.
 
 Spacing: 4/8/12/16/24/32 px. Radii: 4/6/10 px. Shadows only on dialogs.
@@ -219,6 +219,26 @@ coarse pointers get 44px targets. System theme by default; explicit theme persis
 }
 ```
 
+Blame, Blame History and Reverse Blame, 2026-09-07 (outside milestones): ran the
+skill `--design-system` for a dense desktop Git blame code view plus the web and
+react domains (`virtualize keyboard focus list navigation history back forward`,
+`virtual list state events request race stale`). Kept 🌱 Twig's identity, tokens,
+local Fira pair and 30px density; rejected the generic "Enterprise Gateway /
+Vibrant block" marketing recommendation and the IBM Plex / JetBrains Mono pair —
+the app already ships Fira Sans / Fira Code and every prior feature reuses them.
+Adopted: virtualised line list (same windowing as `CommitGraph`, no new library);
+a commit chip printed once per run of same-commit lines with a coloured spine
+continuing down the run, so adjacent lines read as one block; the reverse-blame
+row carries the word "Present at end" / "Last present in …" next to a shape, not
+colour alone; `:focus-visible` rings from the existing rule; `onKeyDown` beside
+every `onClick`; async reads guarded by a request counter so a stale file, mode
+or repository never repaints the current screen; `prefers-reduced-motion` already
+covered globally. New tokens: none — the chip reuses `--surface-raised` /
+`--border` / `--muted`, the "before/after" markers reuse `--accent` and
+`--danger`. Dialog/panel widths reuse `PANEL_MAX`. Review: dark/light Electron
+screenshots at 1000×640 in `artifacts/blame-*`; no root overflow, focus visible,
+list and detail scroll independently.
+
 ## M0 review
 
 File history review, 2026-09-06: ran the design-system for a dense desktop Git
@@ -237,13 +257,13 @@ Compact graph keeps the same SVG width to avoid scaling gaps between rows.
 Future graph virtualization, diff and conflict editor still require their own
 milestone review; this review covers only the M0 shell.
 
-## Twig identity update
+## 🌱 Twig identity update
 
 User-selected name: **🌱 Twig**. Source: `design/twig-logo.png`, the unmodified
 1254×1254 PNG supplied by the user. Platform icons in `build/` and the small
 renderer logo are resized/encoded copies of this same image, never redrawn.
 
-Ran the skill with `--design-system -p Twig` and `desktop git client dense forest
+Ran the skill with `--design-system -p 🌱 Twig` and `desktop git client dense forest
 green lime cream`, followed by UX contrast/focus review. Kept the established
 dense desktop layout and font pair; discarded the marketing/oversized-type
 recommendations. The user's palette and name take precedence over the generic
@@ -255,7 +275,7 @@ mint and cream distinguish graph lanes. Light mode uses ivory surfaces with
 forest/olive text for readable contrast. Warm error color remains semantic.
 All foregrounds are checked against all surfaces at 4.5:1 by `npm test`.
 
-Twig review completed on macOS: production build and Electron smoke passed;
+🌱 Twig review completed on macOS: production build and Electron smoke passed;
 checked actual dark/light screenshots and the compact layout. Screenshots now
 finish CSS transitions before capture, so foregrounds are assessed against the
 matching theme surfaces. SVG lanes retain their labels and remote-ref dash style.

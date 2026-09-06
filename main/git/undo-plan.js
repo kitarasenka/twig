@@ -42,7 +42,7 @@ export function buildUndoPlan(entry, direction) {
   } else if (kind === 'stash:pop' || kind === 'stash:apply') {
     destructive = undo;
     commands = undo ? [
-      ['stash', 'push', '--include-untracked', '--message', 'Twig undo stash', '--', ...after.paths.map(file => `:(literal)${file}`)],
+      ['stash', 'push', '--include-untracked', '--message', '🌱 Twig undo stash', '--', ...after.paths.map(file => `:(literal)${file}`)],
       ['stash', 'drop', 'stash@{0}'],
       ...(kind === 'stash:pop' ? [['stash', 'store', '--message', before.stashMessage, before.stashOid]] : [])
     ] : [['stash', kind === 'stash:pop' ? 'pop' : 'apply', `stash@{${args[0] || 0}}`]];

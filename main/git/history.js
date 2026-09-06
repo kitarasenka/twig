@@ -6,6 +6,9 @@ const FORMAT = '%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b';
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 500;
 const MAX_REBASE_ENTRIES = 1000;
+const SEARCH_QUERY_MAX = 200;
+const SEARCH_LIMIT = 200;
+const SEARCH_HEX = /^[0-9a-f]{4,64}$/i;
 
 function validateLimit(limit) {
   if (!Number.isInteger(limit) || limit < MIN_LIMIT || limit > MAX_LIMIT) {
@@ -15,6 +18,14 @@ function validateLimit(limit) {
 
 function validateSkip(skip) {
   if (!Number.isInteger(skip) || skip < 0) throw new TypeError('skip must be a non-negative integer');
+}
+
+function validateQuery(query) {
+  const trimmed = typeof query === 'string' ? query.trim() : '';
+  if (trimmed.length === 0 || trimmed.length > SEARCH_QUERY_MAX || trimmed.includes('\0')) {
+    throw new TypeError(`query must be a non-empty string of at most ${SEARCH_QUERY_MAX} characters`);
+  }
+  return trimmed;
 }
 
 /**
@@ -74,6 +85,48 @@ export async function loadFileHistory({ cwd, log, file, limit = 250 }) {
   const result = await runGit({ argv, cwd, log, operation: 'Read file history' });
   if (result.code !== 0) throw new Error('Git could not read the history for this file.');
   return { commits: parseFileHistory(result.stdout, file) };
+}
+
+/**
+ * Builds the argv for a commit-message search across every ref. `--fixed-strings`
+ * keeps the query literal (a user typing `(` is not writing a regex) and `-i`
+ * makes it case-insensitive. `--grep` matches the subject and the body — the
+ * same text the graph shows. Exported separately so the self-check can assert
+ * the exact argv without spawning Git.
+ * @param {string} query
+ * @param {number} [limit]
+ * @returns {string[]}
+ */
+export function buildSearchArgv(query, limit = SEARCH_LIMIT) {
+  const trimmed = validateQuery(query);
+  validateLimit(limit);
+  return ['log', '--all', '--topo-order', '-z', '-i', '--fixed-strings', `--grep=${trimmed}`,
+    `--format=${FORMAT}`, `--max-count=${limit}`];
+}
+
+/**
+ * Commits whose message matches `query`, newest first, across all refs. A query
+ * that is a hex string is also resolved as a commit id (or a prefix of one), so
+ * searching by SHA finds the commit even when its message holds none of those
+ * digits. Refs are not read here.
+ * @param {{ cwd: string, log: import('../command-log.js').CommandLog, query: string, limit?: number }} options
+ * @returns {Promise<{ commits: import('./history-parser.js').Commit[], truncated: boolean }>}
+ */
+export async function searchHistory({ cwd, log, query, limit = SEARCH_LIMIT }) {
+  const trimmed = validateQuery(query);
+  const result = await runGit({ argv: buildSearchArgv(trimmed, limit), cwd, log, operation: 'Search commit history' });
+  if (result.code !== 0) throw new Error('Git could not search commit history.');
+  const commits = parseHistoryV1(result.stdout);
+  const truncated = commits.length >= limit;
+  if (SEARCH_HEX.test(trimmed) && !commits.some(commit => commit.oid.startsWith(trimmed.toLowerCase()))) {
+    const resolved = await runGit({ argv: ['rev-parse', '--verify', '--quiet', `${trimmed}^{commit}`], cwd, log, operation: 'Resolve commit id' });
+    const oid = resolved.stdout.trim();
+    if (resolved.code === 0 && /^[0-9a-f]{40,64}$/i.test(oid) && !commits.some(commit => commit.oid === oid)) {
+      const one = await runGit({ argv: ['log', '--no-walk', '-z', `--format=${FORMAT}`, oid], cwd, log, operation: 'Read commit history' });
+      if (one.code === 0) commits.unshift(...parseHistoryV1(one.stdout));
+    }
+  }
+  return { commits, truncated };
 }
 
 /**
