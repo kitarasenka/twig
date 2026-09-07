@@ -166,6 +166,21 @@ try {
   await page.waitForFunction(() => !document.querySelector('.search-results'));
   assert.equal(await search.inputValue(), '');
 
+  // Console command bar: a read-only command runs and joins the journal; a
+  // mutating one is refused in place and never reaches git; ↑ recalls history.
+  const consoleInput = page.getByRole('textbox', { name: 'Run a read-only git command' });
+  if (await consoleInput.count() === 0) await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  await consoleInput.fill('log --oneline -3');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('article').filter({ hasText: 'log --oneline -3' }).first().waitFor();
+  assert.equal(await consoleInput.inputValue(), '');
+  await consoleInput.fill('commit -m nope');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: 'not an allowed read-only git command' }).waitFor();
+  assert.equal(await page.getByRole('article').filter({ hasText: 'git commit -m nope' }).count(), 0);
+  await consoleInput.press('ArrowUp');
+  assert.equal(await consoleInput.inputValue(), 'log --oneline -3');
+
   const rejected = await page.evaluate(async () => {
     const workspace = await window.twig.getWorkspace();
     const id = workspace.activeId;
@@ -175,11 +190,13 @@ try {
       window.twig.getFileHistory(id, '../escape'), window.twig.getFileHistory(id, '/etc/passwd'),
       window.twig.setMark(id, 'not-an-oid', 'red', ''), window.twig.setMark(id, 'a'.repeat(40), 'crimson', ''),
       window.twig.setMark('unregistered', 'a'.repeat(40), 'red', ''),
-      window.twig.searchHistory(id, '   '), window.twig.searchHistory(id, 'x'.repeat(201))
+      window.twig.searchHistory(id, '   '), window.twig.searchHistory(id, 'x'.repeat(201)),
+      window.twig.runConsoleCommand(id, 123), window.twig.runConsoleCommand(id, '-c core.pager=sh log'),
+      window.twig.runConsoleCommand(id, 'push origin main'), window.twig.runConsoleCommand('unregistered', 'status')
     ]);
     return results.map(result => result.status);
   });
-  assert.deepEqual(rejected, Array(11).fill('rejected'));
+  assert.deepEqual(rejected, Array(15).fill('rejected'));
 
   // Commit age colours: the default ramp, the switch back to branch lanes and
   // the choice surviving a restart. Colour classes are the only honest witness
@@ -229,7 +246,7 @@ try {
   await page.screenshot({ path: 'artifacts/m2-compact.png', animations: 'disabled' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, themes.');
+  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, console command bar, themes.');
 } finally {
   if (app) await app.close();
   await rm(root, { recursive: true, force: true });

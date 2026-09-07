@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Clipboard, FilePenLine, Folder, GitBranch, Globe, PanelLeftClose, PanelLeftOpen, Search, Tag, Terminal, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, Clipboard, CornerDownLeft, FilePenLine, Folder, GitBranch, Globe, PanelLeftClose, PanelLeftOpen, Search, Tag, Terminal, X } from 'lucide-react';
 import Button from '../ui/Button.jsx';
+import { checkReadOnly, tokenize } from '../../../main/git/read-only-command.js';
 import { commits, sections } from './demo.js';
 
 export function Sidebar({ collapsed, onCollapse, filter, onFilter, filterRef, mod }) {
@@ -39,10 +40,58 @@ export function CommitDetails({ selected, onSelect, onClose }) {
 function commandText(entry) { return `$ ${entry.executable || 'git'} ${entry.argv.join(' ')}`; }
 function elapsed(entry) { return entry.ms === null ? 'running' : `${entry.ms}ms`; }
 
-export function Console({ expanded, onToggle, mod, entries }) {
+export function Console({ expanded, onToggle, mod, entries, repositoryId = null }) {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
+  const [command, setCommand] = useState('');
+  const [error, setError] = useState('');
+  const [running, setRunning] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Expand the output of the last command the user typed, so it is readable
+  // the moment it finishes rather than after a manual click.
+  const lastTypedId = entries.filter(entry => entry.operation === 'Console command').at(-1)?.id;
+  useEffect(() => { if (lastTypedId) setExpandedId(lastTypedId); }, [lastTypedId]);
+  useEffect(() => { setError(''); }, [repositoryId]);
+
+  async function runCommand(event) {
+    event.preventDefault();
+    const value = command.trim();
+    if (!value || !repositoryId || running) return;
+    let argv;
+    try { argv = tokenize(value); } catch (failure) { setError(failure.message); return; }
+    const verdict = checkReadOnly(argv);
+    if (!verdict.ok) { setError(verdict.reason); return; }
+    setRunning(true); setError('');
+    try {
+      await window.twig.runConsoleCommand(repositoryId, value);
+      setHistory(entriesSoFar => (entriesSoFar.at(-1) === value ? entriesSoFar : [...entriesSoFar, value]));
+      setHistoryIndex(-1);
+      setCommand('');
+    } catch (failure) {
+      setError(String(failure?.message || failure).replace(/^Error:\s*/, ''));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function recallHistory(event) {
+    if (event.key === 'ArrowUp') {
+      if (history.length === 0) return;
+      event.preventDefault();
+      const index = historyIndex === -1 ? history.length - 1 : Math.max(0, historyIndex - 1);
+      setHistoryIndex(index); setCommand(history[index]);
+    } else if (event.key === 'ArrowDown') {
+      if (historyIndex === -1) return;
+      event.preventDefault();
+      const index = historyIndex + 1;
+      if (index >= history.length) { setHistoryIndex(-1); setCommand(''); }
+      else { setHistoryIndex(index); setCommand(history[index]); }
+    }
+  }
+
   const visible = entries.filter(entry => {
     const source = `${entry.operation} ${entry.argv.join(' ')} ${entry.cwd}`.toLowerCase();
     return (mode === 'all' || !entry.operation.startsWith('Background')) && source.includes(query.toLowerCase());
@@ -61,6 +110,18 @@ export function Console({ expanded, onToggle, mod, entries }) {
         <button className="console-entry-summary" onClick={() => setExpandedId(value => value === entry.id ? null : entry.id)} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} /><code>{commandText(entry)}</code><span>(cwd: {entry.cwd})</span><small>{entry.startedAt.replace('T', ' ').replace('Z', '')} · {entry.code ?? '…'} · {elapsed(entry)}</small></button>
         {expandedId === entry.id && <div className="console-output"><div className="console-copy"><Button icon={Clipboard} onClick={() => copy(`${commandText(entry)}\n(cwd: ${entry.cwd})\n${entry.stdout}${entry.stderr}`)}>Copy entry</Button></div>{entry.stdout && <pre>{entry.stdout}</pre>}{entry.stderr && <pre className="stderr">{entry.stderr}</pre>}{!entry.stdout && !entry.stderr && <p className="muted">Waiting for output…</p>}</div>}
       </article>)}
+      <div className="console-dock">
+        {error && <p className="console-input-error" role="alert">{error}</p>}
+        <form className="console-input" onSubmit={runCommand}>
+          <span className="console-prompt" aria-hidden="true">$ git</span>
+          <input className="console-command" value={command} spellCheck={false} autoCorrect="off" autoCapitalize="off"
+            onChange={(event) => { setCommand(event.target.value); setError(''); }} onKeyDown={recallHistory}
+            disabled={!repositoryId || running} aria-label="Run a read-only git command"
+            placeholder={repositoryId ? 'log --oneline -10   ·   read-only commands only' : 'Open a repository to run git commands'} />
+          <Button icon={CornerDownLeft} type="submit"
+            reason={!repositoryId ? 'Open a repository first' : running ? 'A command is running…' : !command.trim() ? 'Type a git command' : undefined}>Run</Button>
+        </form>
+      </div>
     </div>}
   </section>;
 }

@@ -101,6 +101,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
     return () => ipcRenderer.removeListener('automation:step', callback);
   },
   getConsoleEntries: () => ipcRenderer.invoke('console:entries'),
+  runConsoleCommand: (id, input) => ipcRenderer.invoke('console:run-command', id, input),
   onConsoleUpdate: (listener) => {
     if (typeof listener !== 'function') throw new TypeError('Console listener must be a function');
     const callback = (_event, update) => listener(update);

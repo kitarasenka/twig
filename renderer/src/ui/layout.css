@@ -176,6 +176,13 @@ summary span { float: right; font-family: var(--font-mono); font-weight: 400; }
 .console-empty > svg { color: var(--accent); }
 .console-empty p { margin-top: var(--space-2); color: var(--muted); font-size: var(--text-sm); }
 .console-empty kbd { margin-left: auto; color: var(--muted); font-size: var(--text-xs); }
+.console-dock { position: sticky; bottom: 0; margin-top: auto; background: var(--surface); border-top: 1px solid var(--border); }
+.console-input { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); }
+.console-prompt { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); white-space: nowrap; }
+.console-command { flex: 1; min-height: 28px; font-family: var(--font-mono); font-size: var(--text-xs); }
+.console-command:disabled { opacity: .6; }
+.console-input button { min-height: 28px; font-size: var(--text-xs); }
+.console-input-error { padding: var(--space-2) var(--space-4); color: var(--danger); font-size: var(--text-xs); border-bottom: 1px solid var(--border); }
 .welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--space-8); overflow: auto; text-align: center; }
 .welcome-mark { margin-bottom: var(--space-6); }
 .welcome-mark img { display: block; width: var(--welcome-logo-size); height: var(--welcome-logo-size); object-fit: contain; }
