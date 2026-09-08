@@ -89,6 +89,10 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const layout = useRef(createLaneLayout());
   const generation = useRef(0);
   const busy = useRef(false);
+  // When history last reloaded, so a disk change 🌱 Twig caused itself does not
+  // bounce straight back as an "external change" reload.
+  const lastReload = useRef(0);
+  const refreshBusy = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(null);
@@ -185,6 +189,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   }, [repository.id]);
 
   const reload = useCallback(async () => {
+    lastReload.current = Date.now();
     const epoch = ++generation.current;
     // Reloading history must not throw the user out of the working tree
     // screen: staging refreshes history, and the screen lives in `selected`.
@@ -207,6 +212,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       setData(dataRef.current);
       busy.current = false;
       await loadMore();
+      if (generation.current === epoch) lastReload.current = Date.now();
     } catch {
       if (generation.current === epoch) { setError('Could not load repository references.'); busy.current = false; setLoading(false); }
     }
@@ -228,6 +234,43 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     const tokens = [generation, jumpRequest, diffRequest];
     return () => { for (const token of tokens) token.current++; };
   }, [reload, refreshOperation, referencesRevision]);
+
+  useEffect(() => { refreshBusy.current = working || dropRunning || Boolean(execution) || Boolean(conflict) || Boolean(drag.state); },
+    [working, dropRunning, execution, conflict, drag.state]);
+  // Pick up work done to this repository from outside 🌱 Twig — a commit,
+  // checkout, fetch, merge or stash run in a terminal. `main` watches the git
+  // directory and sends an event; regaining focus after a real absence is a
+  // backstop for changes the watch cannot see (a bare `git add`, an unsupported
+  // platform). Both just reload, debounced, and skipped while an operation of
+  // ours is mid-flight or finished within the last second.
+  useEffect(() => {
+    if (!active) return undefined;
+    let timer = null;
+    let alive = true;
+    let blurredAt = 0;
+    const run = () => {
+      timer = null;
+      if (!alive || refreshBusy.current || Date.now() - lastReload.current < 1200) return;
+      void reload();
+      void refreshOperation();
+      onRepositoryChanged?.();
+    };
+    const schedule = () => { if (timer) clearTimeout(timer); timer = setTimeout(run, 350); };
+    const onBlur = () => { blurredAt = Date.now(); };
+    const onFocus = () => { if (Date.now() - blurredAt > 1500) schedule(); };
+    const unsubscribe = window.twig.onRepositoryChange
+      ? window.twig.onRepositoryChange(update => { if (update.cwd === repository.path || update.cwd === repository.id) schedule(); })
+      : () => {};
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [active, repository.path, repository.id, reload, refreshOperation, onRepositoryChanged]);
 
   // One search box drives both panes: the sidebar keeps filtering refs by name
   // (below), and a query of two or more characters also searches every commit

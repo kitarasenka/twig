@@ -191,8 +191,8 @@ figcaption { display: flex; justify-content: space-between; gap: 12px; color: va
 .install-help p { padding-block: 6px 12px; }
 .footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 110px; border-top: 1px solid var(--border); }
 .footer .brand { font-size: 26px; }
-.footer p, .footer > a:last-child { color: var(--muted); font-size: 12px; }
-.footer > a:last-child { padding-block: 14px; }
+.footer p, .footer > a:last-child, .footer .footer-link { color: var(--muted); font-size: 12px; }
+.footer > a:last-child, .footer .footer-link { padding-block: 14px; }
 
 @keyframes enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes trace { from { stroke-dashoffset: 120; } to { stroke-dashoffset: 0; } }

@@ -11,6 +11,12 @@ visible there, exactly as it was invoked.
 M0…M6 history is preserved. `PROMPT.md` is the full specification and `CLAUDE.md`
 records the current handoff state.
 
+**Website:** <https://kitarasenka.github.io/twig/> — overview and downloads.
+
+![The 🌱 Twig workspace: a real Git sandbox with commit graph in the center, refs
+on the left, commit detail with local marks on the right, and the command
+console below.](site/assets/workspace.png)
+
 ## What it does
 
 - **Real commit graph.** A virtualized, paginated view over
@@ -64,6 +70,10 @@ records the current handoff state.
 - **Command console** with the exact argv, cwd, timing, exit code and streamed
   output of every Git run, plus search and an "all / my actions" filter. The
   input line accepts **read-only Git only** — a subcommand allowlist, no shell.
+- **Auto-refresh.** A commit, checkout, fetch or merge run in a terminal shows up
+  on its own — `main` watches the active repository's git directory with a single
+  `fs.watch` (event-driven, no polling) and the workspace reloads. Regaining
+  focus after a real absence is a backstop; the Refresh button stays for the rest.
 - **Demo workspace.** The `workspace-demo` tab is a real Git repository seeded in
   `userData` with a local bare remote — not a mock. Every operation works there.
   Settings → *Reset demo workspace* re-seeds it.

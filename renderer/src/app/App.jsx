@@ -199,6 +199,16 @@ export default function App() {
     window.addEventListener('focus', refresh);
     return () => { alive = false; unsubscribe(); window.removeEventListener('focus', refresh); };
   }, [repositoryId, repositoryActive, worktreeVersion]);
+  // Watch whichever repository is on screen for changes made outside 🌱 Twig.
+  // One watcher in main follows the active tab; the workspace screen reloads on
+  // the event it sends.
+  useEffect(() => {
+    if (!window.twig?.watchRepository) return undefined;
+    const id = repositoryActive && repository?.available ? repository.id : null;
+    window.twig.watchRepository(id).catch(() => { /* watch is best-effort */ });
+    return () => { window.twig.watchRepository(null).catch(() => {}); };
+  }, [repositoryActive, repository?.id, repository?.available]);
+
   const moveUndo = useCallback(async direction => {
     if (!repositoryActive || !repositoryId || undoMoving) return;
     setUndoMoving(true); setSyncNote('');

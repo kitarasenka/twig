@@ -94,6 +94,38 @@ HTTP, с JS — локальную сборку `site/dist/index.html`; все �
 Снимок загружается лениво; исходные ресурсы локальные, фото-генерация не нужна.
 
 
+Авторефреш при изменениях извне (2026-09-08, вне вех): раньше история
+перечитывалась только после действия внутри 🌱 Twig или по кнопке Refresh —
+коммит/checkout/fetch из терминала оставались невидимыми. Теперь `main` следит
+за git-каталогом активного репозитория и шлёт renderer событие, по которому
+`HistoryWorkspace` перечитывает граф, refs, стеши, марки и состояние операции.
+**Это не опрос:** один `fs.watch` (`persistent: false`) на git-каталог,
+дебаунс 300 мс, ни одного `setInterval`. Событийная модель, как у уже
+существующего `onUndoUpdate`. Чистый модуль `main/repo-watch.js` (без импортов
+`electron`, чтобы Node-проверка гоняла его напрямую): `resolveGitDir`
+(`.git`-каталог или файл-указатель `gitdir:`, без запуска Git),
+`isWatchedPath` (реагируем на `HEAD`/`ORIG_HEAD`/`*_HEAD`/`packed-refs` и
+каталоги `refs`/`logs`/`rebase-*`/`sequencer`; `index` и `*.lock` игнорируются —
+`git status` внутри нашего же reload переписывает `index`, это была бы петля),
+`createRepositoryWatcher(getWindow)` (`watch(cwd|null)`, `stop`, `watching`).
+IPC-канал `repo:watch` в `main/ipc.js` резолвит репозиторий только по
+сохранённому списку и переключает единственный watcher вслед за активной
+вкладкой; renderer зовёт его из `App.jsx` по активному репозиторию (в т. ч.
+песочница), `null` — когда репозиторий не открыт. `preload`: `watchRepository`
+и `onRepositoryChange`. В `HistoryWorkspace` эффект слушает событие только для
+активной вкладки и ещё `blur`→`focus` с реальным отсутствием > 1.5 с (запас на
+`git add`, который в `.git` не пишет, и на платформы без `fs.watch`);
+`run()` пропускается, если идёт наша операция (`working`/`dropRunning`/
+`execution`/`conflict`/git-drag) или наш reload был < 1.2 с назад
+(`lastReload`-штамп в `reload()` — глушит собственное эхо от переноса HEAD).
+Новых таймеров опроса, подписок и сети нет; git не запускается ни на hover, ни
+на событие watcher (только тот же `reload`, что и по кнопке). Проверки:
+`scripts/checks/repo-watch.mjs` (в `npm test`) — `isWatchedPath`, `resolveGitDir`
+на настоящем temp-`.git` (каталог, `gitdir:`-файл, отсутствие), реальный
+`fs.watch`: событие на смену ref'а, дебаунс, `.lock` молчит, `watch(null)`
+глушит; `history-smoke.mjs` — коммит из внешнего `git` появляется в графе без
+кнопки Refresh. Версия остаётся 0.8.0.
+
 Регулируемые по ширине столбцы истории (2026-09-08, вне вехи): у всех пяти
 столбцов графа — `Branch / tag`, `Graph`, `Commit message`, `Author`, `Date` —
 на правом краю появился маркер перетаскивания; тянешь вправо — столбец шире.
@@ -985,6 +1017,16 @@ Smoke запускает реальный Electron через Playwright и вр
   `git` отбрасывается), `READ_ONLY` (allowlist подкоманд) и `checkReadOnly`
   (guard'ы `branch`/`tag`/`remote`/`stash`/`worktree`/`symbolic-ref`/`reflog`,
   запрет `--output`/`--ext-diff`/`--upload-pack`/… и глобальных опций).
+- `main/repo-watch.js` — авторефреш при изменениях извне. Чистый модуль без
+  импортов `electron` (Node-проверка гоняет напрямую): `resolveGitDir`,
+  `isWatchedPath` (ref'ы/`HEAD`/маркеры — да; `index` и `*.lock` — нет),
+  `createRepositoryWatcher(getWindow)` — один `fs.watch` (`persistent:false`,
+  дебаунс 300 мс) на git-каталог, шлёт `repo:external-change {cwd}`. Канал
+  `repo:watch` живёт в `main/ipc.js` (резолвит репозиторий по сохранённому
+  списку, один watcher следует за активной вкладкой). Renderer: `App.jsx`
+  выбирает цель, `HistoryWorkspace` перечитывает граф по событию (и по
+  `blur`→`focus` > 1.5 с), пропуская собственные операции и эхо своего reload
+  (`lastReload` < 1.2 с). Не опрос: `setInterval` нет.
 - `main/history-ops-ipc.js` — merge/cherry-pick/revert/reset/rebase/sequencer,
   ветки и теги, конфликты. Каждая мутация отвечает состоянием операции,
   прочитанным **после** запуска: ненулевой код у merge или rebase обычно
@@ -1194,11 +1236,15 @@ Smoke запускает реальный Electron через Playwright и вр
   untracked-каталог и имя с glob-символами доходят до индекса, что Unstage all
   не трогает рабочее дерево, и что конфликтный merge отвергает оба действия и
   переживает отказ (`MERGE_HEAD` на месте).
+- `scripts/checks/repo-watch.mjs` — авторефреш: `isWatchedPath` (ref'ы/маркеры
+  да, `index`/`*.lock` нет), `resolveGitDir` на настоящем temp-`.git` (каталог,
+  `gitdir:`-файл, отсутствие) и **реальный `fs.watch`** — событие на смену ref'а,
+  дебаунс одной пачки, молчание на `.lock`, `watch(null)` глушит.
 - `scripts/smoke.mjs` — сквозная проверка окна M0/M1 (демо, sandbox, темы),
   включая перетаскивание разделителя мышью, стрелку с клавиатуры и сброс
   двойным кликом — измеряется настоящая ширина панели, не значение состояния.
   Список ключей моста в нём сверяется точно — новый метод preload обязан
-  осознанно пройти через эту проверку.
+  осознанно пройти через эту проверку (`watchRepository`, `onRepositoryChange`).
 - `scripts/history-smoke.mjs` — сквозная проверка M2 на настоящем временном
   Git-репозитории: две страницы истории, слияние, annotated-тег, клавиатура,
   вкладки, дифф файла, рабочее дерево, отказ IPC на некорректных аргументах,
@@ -1212,6 +1258,8 @@ Smoke запускает реальный Electron через Playwright и вр
   Регулируемые столбцы: маркеры `Branch / tag`, `Commit message` и `Graph`
   тянутся шире, `--col-branch`/`--col-message`/`--graph-width` растут и
   переживают перезагрузку, двойной клик по `Graph` возвращает авторазмер.
+  Авторефреш: коммит, сделанный внешним `git` уже после запуска приложения,
+  появляется в графе сам, без кнопки Refresh.
 - `scripts/ops-smoke.mjs` — сквозная проверка M4: контекстное меню мышью и с
   клавиатуры (Shift+F10), конфликтующий merge, редактор конфликтов с выбором
   строк и своим undo/redo, баннер, диалог подтверждения `reset --hard` с

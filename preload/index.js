@@ -17,6 +17,13 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
     ipcRenderer.on('undo:update', callback);
     return () => ipcRenderer.removeListener('undo:update', callback);
   },
+  watchRepository: id => ipcRenderer.invoke('repo:watch', id),
+  onRepositoryChange: listener => {
+    if (typeof listener !== 'function') throw new TypeError('Invalid repository-change listener');
+    const callback = (_event, update) => listener(update);
+    ipcRenderer.on('repo:external-change', callback);
+    return () => ipcRenderer.removeListener('repo:external-change', callback);
+  },
   getWorkspace: () => ipcRenderer.invoke('workspace:startup'),
   openRepository: () => ipcRenderer.invoke('repositories:open'),
   selectRepository: (id) => ipcRenderer.invoke('repositories:select', id),

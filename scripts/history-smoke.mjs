@@ -274,6 +274,16 @@ try {
   assert.equal(await colVar('--graph-width'), beforeGraph, 'double-click restores the automatic graph width');
   await list.evaluate(node => { node.scrollTop = 0; });
 
+  // Auto-refresh: a commit made in a terminal shows up on its own. `main` watches
+  // the git directory; the workspace reloads on the event, with no Refresh click
+  // and no polling timer.
+  await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
+  await page.waitForTimeout(1500); // clear the short guard that skips a reload right after one
+  await writeFile(path.join(cwd, 'external.txt'), 'made outside Twig\n');
+  await git(['add', '--', 'external.txt']);
+  await git(['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', 'commit', '-m', 'Committed from a terminal']);
+  await page.getByRole('heading', { name: 'Committed from a terminal', exact: true }).waitFor();
+
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByLabel('Appearance').selectOption(theme); await page.keyboard.press('Escape');
@@ -283,7 +293,7 @@ try {
   await page.screenshot({ path: 'artifacts/m2-compact.png', animations: 'disabled' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, console command bar, adjustable columns, themes.');
+  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, console command bar, adjustable columns, external-change auto-refresh, themes.');
 } finally {
   if (app) await app.close();
   await rm(root, { recursive: true, force: true });

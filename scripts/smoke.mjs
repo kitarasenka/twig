@@ -47,6 +47,7 @@ try {
     'getBisectState', 'runBisect', 'listMarks', 'setMark', 'clearMark',
     'getBlame', 'getReverseBlame', 'getBlameBefore', 'cancelBlame',
     'cloneRepository', 'getRemotes', 'removeRepository', 'resetDemoWorkspace', 'getUndoState', 'moveUndo', 'onUndoUpdate',
+    'watchRepository', 'onRepositoryChange',
     'getSshKeys', 'getSshConfig', 'generateSshKey', 'saveSshConfig', 'testSshConnection', 'cancelSshConnection', 'secureSshKey',
     'getAutomationConfig', 'saveAutomationConfig', 'trustAutomations', 'runAutomation', 'cancelAutomation', 'getAutomationRuns', 'getAutomationRun', 'onAutomationStep',
     'runConsoleCommand'].sort());

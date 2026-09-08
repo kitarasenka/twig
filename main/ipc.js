@@ -11,6 +11,7 @@ import { registerSshIpc } from './ssh-ipc.js';
 import { registerMarksIpc } from './marks-ipc.js';
 import { registerAutomationsIpc } from './automations-ipc.js';
 import { registerConsoleIpc } from './console-ipc.js';
+import { createRepositoryWatcher } from './repo-watch.js';
 
 function validSender(event, getWindow, entryUrl, args, count) {
   const window = getWindow();
@@ -31,6 +32,17 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
   registerWorktreeIpc(getWindow, entryUrl, { journal, repositories, undo });
   registerHistoryOpsIpc(getWindow, entryUrl, { journal, repositories, undo, stateDir: app.getPath('userData') });
   registerConsoleIpc(getWindow, entryUrl, { repositories, journal });
+  const watcher = createRepositoryWatcher(getWindow);
+  ipcMain.handle('repo:watch', (event, ...args) => {
+    if (!validSender(event, getWindow, entryUrl, args, 1) || (args[0] !== null && typeof args[0] !== 'string')) {
+      throw new Error('Invalid watch request');
+    }
+    if (args[0] === null) { void watcher.watch(null); return true; }
+    const repo = repositories.snapshot().repositories.find(item => item.id === args[0] && item.available);
+    if (!repo) throw new Error('Repository is unavailable');
+    void watcher.watch(repo.path);
+    return true;
+  });
   ipcMain.handle('app:info', (event, ...args) => {
     if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid app information request');
     return { name: '🌱 Twig', version: app.getVersion(), platform: process.platform };

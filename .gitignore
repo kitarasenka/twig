@@ -2,5 +2,6 @@ node_modules/
 dist/
 release/
 artifacts/
+.claude/
 .DS_Store
 !package-lock.json
