@@ -1,0 +1,102 @@
+# Собирает нативные установщики Twig и публикует их как ассеты GitHub Release.
+#
+# Триггер — push тега вида twig-v<version> (напр. twig-v0.8.0). Тег обязан
+# совпадать с "version" из package.json. Одна машина все восемь сборок не даёт
+# (Windows-таргеты требуют Windows, Linux — Linux, macOS — mac), поэтому три
+# раннера в матрице собирают свою часть и догружают файлы в общий релиз.
+#
+# Имена файлов берутся из pkg.build.* тем же electron-builder — те же, что
+# ждут кнопки скачивания на сайте (site/build.mjs), поэтому после публикации
+# релиза ссылки на https://kitarasenka.github.io/twig/ начинают отдавать файлы
+# без пересборки сайта.
+
+name: release
+
+on:
+  push:
+    tags: ['twig-v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify tag matches package.json version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "twig-v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} != twig-v${version} (package.json version)"
+            exit 1
+          fi
+
+      - name: Create draft release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --draft \
+              --title "🌱 Twig ${GITHUB_REF_NAME#twig-v}" \
+              --generate-notes
+          fi
+
+  build:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: 'pack:mac'
+            assets: 'release/*.dmg release/*.zip'
+          - os: windows-latest
+            script: 'pack:win'
+            assets: 'release/*.exe'
+          - os: ubuntu-latest
+            script: 'pack:linux'
+            assets: 'release/*.AppImage release/*.deb'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Package
+        run: npm run ${{ matrix.script }}
+        env:
+          # Никакой подписи: build.mac.identity уже null, отключаем автопоиск,
+          # чтобы electron-builder не искал сертификаты на раннере.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Upload installers to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber ${{ matrix.assets }}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Undraft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false
