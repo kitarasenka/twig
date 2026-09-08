@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { runGit } from './exec.js';
 import { parseStatusV2 } from './status-parser.js';
+import { SANDBOX_NAME, ensureSandbox, resetSandbox } from './sandbox.js';
 
 function succeeded(result) { return result.code === 0; }
 
@@ -15,15 +16,27 @@ async function readStatus(directory, log) {
   return parseStatusV2(result.stdout);
 }
 
-/** @param {{ log: import('../command-log.js').CommandLog, store: import('../store.js').RepositoryStore }} options */
-export function createRepositoryService({ log, store }) {
+/**
+ * @param {{ log: import('../command-log.js').CommandLog, store: import('../store.js').RepositoryStore,
+ *   sandbox?: { dir: string, remoteDir: string, markerFile: string },
+ *   undo?: import('../undo.js').UndoService, marks?: import('../marks-store.js').MarksStore }} options
+ */
+export function createRepositoryService({ log, store, sandbox = null, undo = null, marks = null }) {
   let state = store.snapshot();
+  let sandboxEntry = sandbox
+    ? { id: sandbox.dir, path: sandbox.dir, name: SANDBOX_NAME, sandbox: true, available: false, status: null }
+    : null;
   let pending = Promise.resolve();
   const serialize = action => (...args) => {
     const next = pending.then(() => action(...args));
     pending = next.catch(() => {});
     return next;
   };
+
+  /** The sandbox is always the first tab; it is derived, never persisted. */
+  const decorate = current => sandboxEntry
+    ? { ...current, repositories: [sandboxEntry, ...current.repositories] }
+    : current;
 
   async function statusFor(repository) {
     const root = await resolveRoot(repository.path, log);
@@ -35,11 +48,17 @@ export function createRepositoryService({ log, store }) {
     }
   }
 
+  async function refreshSandbox() {
+    if (!sandbox) return;
+    sandboxEntry = await statusFor({ id: sandbox.dir, path: sandbox.dir, name: SANDBOX_NAME, sandbox: true });
+  }
+
   async function refresh() {
     const repositories = [];
     for (const repository of state.repositories) repositories.push(await statusFor(repository));
+    await refreshSandbox();
     state = { ...state, repositories };
-    return state;
+    return decorate(state);
   }
 
   async function add(directory) {
@@ -59,10 +78,11 @@ export function createRepositoryService({ log, store }) {
         ? { ...repository, available: true, status: { error: 'Git status is unavailable.' } }
         : item) };
     }
-    return state;
+    return decorate(state);
   }
 
   async function select(id) {
+    if (sandbox && id === sandbox.dir) { await refreshSandbox(); return decorate(state); }
     const repository = state.repositories.find(item => item.id === id);
     if (!repository) throw new Error('Unknown repository.');
     state = await store.save(state.repositories, repository.id);
@@ -70,16 +90,30 @@ export function createRepositoryService({ log, store }) {
   }
 
   async function remove(id) {
+    if (sandbox && id === sandbox.dir) throw new Error('The demo workspace cannot be removed.');
     if (!state.repositories.some(item => item.id === id)) throw new Error('Unknown repository.');
     const repositories = state.repositories.filter(item => item.id !== id);
     const activeId = state.activeId === id ? repositories.find(item => item.available)?.id || repositories[0]?.id || null : state.activeId;
     state = await store.save(repositories, activeId);
-    return state;
+    return decorate(state);
+  }
+
+  async function reset() {
+    if (!sandbox) throw new Error('No demo workspace to reset.');
+    await resetSandbox({ dir: sandbox.dir, remoteDir: sandbox.remoteDir, log });
+    await undo?.forget(sandbox.dir);
+    await marks?.forget(sandbox.dir);
+    await refreshSandbox();
+    return decorate(state);
   }
 
   return {
-    load: serialize(async () => { state = await store.load(); return refresh(); }),
-    add: serialize(add), select: serialize(select), remove: serialize(remove),
-    snapshot: () => state
+    load: serialize(async () => {
+      state = await store.load();
+      if (sandbox) await ensureSandbox({ ...sandbox, log });
+      return refresh();
+    }),
+    add: serialize(add), select: serialize(select), remove: serialize(remove), resetSandbox: serialize(reset),
+    snapshot: () => decorate(state)
   };
 }

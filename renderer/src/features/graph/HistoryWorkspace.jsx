@@ -11,7 +11,8 @@ import WorktreeScreen from '../worktree/WorktreeScreen.jsx';
 import ConflictEditor from '../conflicts/ConflictEditor.jsx';
 import OperationBanner from '../ops/OperationBanner.jsx';
 import BisectBanner from '../ops/BisectBanner.jsx';
-import RefsScreen from '../refs/RefsScreen.jsx';
+import RefsScreen, { UpstreamDialog } from '../refs/RefsScreen.jsx';
+import { pushRefCommand, splitRemoteRef } from '../refs/remote-ref.js';
 import StashScreen from '../stash/StashScreen.jsx';
 import AutomationsScreen from '../automations/AutomationsScreen.jsx';
 import ExecutionPanel from '../automations/ExecutionPanel.jsx';
@@ -26,6 +27,7 @@ import useGitDrag, { refEndpoint } from './useGitDrag.js';
 import DropDialog from './DropDialog.jsx';
 import BlameView from '../blame/BlameView.jsx';
 import BlameDetail from '../blame/BlameDetail.jsx';
+import DiffLines from '../diff/DiffLines.jsx';
 import { dropActions, endpointLabel, sameEndpoint } from '../../../../main/git/drop-plan.js';
 
 const NOOP = () => {};
@@ -58,9 +60,7 @@ function Diff({ diff, onClose, onCommit, onBlame }) {
     {onBlame && <Button icon={AlignLeft} onClick={onBlame}>Blame</Button>}
     <Button icon={X} aria-label="Close diff" onClick={onClose} /></header>
     {onCommit && <div className="file-history-diff-heading"><code>{diff.oid.slice(0, 8)}</code><Button icon={GitBranch} onClick={onCommit}>Go to commit</Button></div>}
-    {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : <div className="diff-lines" tabIndex={0} aria-label="Diff lines">
-      {diff.patch ? diff.patch.split('\n').map((line, index) => <div key={index} className={line.startsWith('+') ? 'diff-added' : line.startsWith('-') ? 'diff-deleted' : line.startsWith('@@') ? 'diff-hunk' : ''}><span>{line || ' '}</span></div>) : <p className="empty-inline">No changes for this file in this comparison.</p>}
-    </div>}
+    {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : diff.patch ? <DiffLines patch={diff.patch} /> : <p className="empty-inline">No changes for this file in this comparison.</p>}
   </section>;
 }
 
@@ -435,7 +435,68 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       removeMark: () => void removeMark(commit.oid),
       copy: (text, what) => {
         void window.twig.copyText(text).then(() => setNote(`${what} copied.`)).catch(() => setNote('Could not copy that.'));
-      }
+      },
+      // Ref actions, mirroring the "Branches and tags" screen. Deletion has no
+      // inverse, so every mutating one opens the §6.5 dialog first.
+      renameBranch: name => setDialog({
+        type: 'name', title: `Rename ${name}`, label: 'New branch name', placeholder: name, confirmLabel: 'Rename branch',
+        onConfirm: ({ name: next }) => perform(() => window.twig.renameBranch(repository.id, name, next), `Branch ${name} renamed to ${next}.`)
+      }),
+      setUpstream: ref => setDialog({
+        type: 'upstream', branch: ref.name, current: ref.upstream || null,
+        candidates: data.refs.filter(item => item.type === 'remote').map(item => item.name),
+        onConfirm: value => perform(() => window.twig.setUpstream(repository.id, ref.name, value),
+          value ? `${ref.name} now tracks ${value}.` : `${ref.name} no longer tracks anything.`)
+      }),
+      publishBranch: (name, remote) => setDialog({
+        type: 'confirm', title: `Publish ${name} to ${remote}`, command: pushRefCommand({ remote, ref: `refs/heads/${name}` }),
+        consequence: `${name} is pushed to ${remote} and becomes visible to everyone who fetches it. Nothing is force-pushed: if ${remote} has moved on, the push is refused.`,
+        confirmLabel: `Push to ${remote}`,
+        onConfirm: () => perform(() => window.twig.pushRef(repository.id, remote, `refs/heads/${name}`, false), `${name} pushed to ${remote}.`)
+      }),
+      deleteBranch: async name => {
+        const result = await perform(() => window.twig.deleteBranch(repository.id, name, false), `Branch ${name} deleted.`);
+        if (result && result.ok === false) setDialog({
+          type: 'confirm', title: `Delete ${name} without checking`, command: ['branch', '-D', '--', name],
+          consequence: `Git refused to delete ${name} because it holds commits that are on no other branch. Deleting it anyway leaves those commits reachable only through the reflog, which expires.`,
+          confirmLabel: 'Delete the branch anyway',
+          onConfirm: () => perform(() => window.twig.deleteBranch(repository.id, name, true), `Branch ${name} force-deleted.`)
+        });
+      },
+      checkoutRemote: ref => setDialog({
+        type: 'name', title: `Check out ${ref.name}`, label: 'Local branch name',
+        placeholder: ref.name.slice(ref.name.indexOf('/') + 1), confirmLabel: 'Create and check out',
+        onConfirm: ({ name }) => performGated(null, 'post-checkout', () => window.twig.createBranch(repository.id, name, ref.target, true), `Checked out ${name}.`)
+      }),
+      deleteRemoteBranch: ref => {
+        const split = splitRemoteRef(ref.fullName, remotes.map(item => item.name));
+        if (!split) { setNote('The remote of this branch is no longer configured. Reload the remotes first.'); onConsole(); return; }
+        setDialog({
+          type: 'confirm', title: `Delete ${split.branch} on ${split.remote}`,
+          command: pushRefCommand({ remote: split.remote, ref: split.ref, remove: true }),
+          consequence: `The branch is removed on ${split.remote} for everyone. Your local branches are untouched, and anyone who already fetched it keeps their copy until they prune.`,
+          confirmLabel: `Delete on ${split.remote}`,
+          onConfirm: () => perform(() => window.twig.pushRef(repository.id, split.remote, split.ref, true), `${ref.name} deleted on ${split.remote}.`)
+        });
+      },
+      deleteTag: ref => setDialog({
+        type: 'confirm', title: `Delete tag ${ref.name}`, command: ['tag', '-d', '--', ref.name],
+        consequence: 'The tag is removed locally. If it was already pushed, it stays on the remote until it is deleted there too.',
+        confirmLabel: 'Delete tag',
+        onConfirm: () => perform(() => window.twig.deleteTag(repository.id, ref.name), `Tag ${ref.name} deleted.`)
+      }),
+      publishTag: (ref, remote) => setDialog({
+        type: 'confirm', title: `Publish ${ref.name} to ${remote}`, command: pushRefCommand({ remote, ref: `refs/tags/${ref.name}` }),
+        consequence: `The tag becomes visible to everyone who fetches ${remote}. A published tag is not meant to be moved afterwards.`,
+        confirmLabel: `Push to ${remote}`,
+        onConfirm: () => perform(() => window.twig.pushRef(repository.id, remote, `refs/tags/${ref.name}`, false), `${ref.name} pushed to ${remote}.`)
+      }),
+      deleteTagOnRemote: (ref, remote) => setDialog({
+        type: 'confirm', title: `Delete ${ref.name} on ${remote}`, command: pushRefCommand({ remote, ref: `refs/tags/${ref.name}`, remove: true }),
+        consequence: `The tag disappears from ${remote} for everyone. Clones that already fetched it keep their copy until they prune.`,
+        confirmLabel: `Delete on ${remote}`,
+        onConfirm: () => perform(() => window.twig.pushRef(repository.id, remote, `refs/tags/${ref.name}`, true), `${ref.name} deleted on ${remote}.`)
+      })
     };
   }
 
@@ -779,7 +840,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
           }
         })
         : buildCommitMenu({
-          commit: menu.commit, refs: refMap.get(menu.commit.oid) || [], operation, bisect, dirty,
+          commit: menu.commit, refs: refMap.get(menu.commit.oid) || [], remotes: remotes.map(remote => remote.name), operation, bisect, dirty,
           mark: marks[menu.commit.oid] || null,
           head: { branch: headBranch, oid: headOid, detached: Boolean(repository.status?.branch?.detached) },
           handlers: commitHandlers(menu.commit)
@@ -795,6 +856,8 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     {dialog?.type === 'confirm' && <ConfirmDialog {...dialog} onClose={() => setDialog(null)} />}
     {dialog?.type === 'name' && <NameDialog {...dialog} onClose={() => setDialog(null)} />}
     {dialog?.type === 'message' && <MessageDialog {...dialog} onClose={() => setDialog(null)} />}
+    {dialog?.type === 'upstream' && <UpstreamDialog branch={dialog.branch} current={dialog.current} candidates={dialog.candidates}
+      onClose={() => setDialog(null)} onConfirm={dialog.onConfirm} />}
     {dialog?.type === 'rebase' && <RebaseDialog commits={dialog.commits} onClose={() => setDialog(null)}
       onRun={entries => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, dialog.oid, entries), 'Rebase finished.')} />}
     {execution && <ExecutionPanel event={execution.event} label={execution.label} phase={execution.phase}

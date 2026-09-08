@@ -125,7 +125,9 @@ const keysOf = menu => menu.filter(item => !item.separator).map(item => item.key
 // Menu.jsx disables any item that carries a reason, so the check reads it the same way.
 const enabledOf = menu => menu.filter(item => !item.separator && !item.reason).map(item => item.key);
 const handlers = Object.fromEntries(['createBranch', 'createTag', 'checkoutBranch', 'checkoutCommit', 'merge',
-  'cherryPick', 'revert', 'rebase', 'interactiveRebase', 'reword', 'reset', 'copy', 'mark', 'removeMark'].map(name => [name, () => {}]));
+  'cherryPick', 'revert', 'rebase', 'interactiveRebase', 'reword', 'reset', 'copy', 'mark', 'removeMark',
+  'renameBranch', 'setUpstream', 'publishBranch', 'deleteBranch', 'checkoutRemote', 'deleteRemoteBranch',
+  'deleteTag', 'publishTag', 'deleteTagOnRemote'].map(name => [name, () => {}]));
 
 // No branch points at this commit: Merge is shown but disabled, with the
 // reason, because its absence would read as a missing feature.
@@ -177,6 +179,41 @@ const handlers = Object.fromEntries(['createBranch', 'createTag', 'checkoutBranc
   const merge = { oid: A, subject: 'merge', body: '', parents: [B, C] };
   const menu = buildCommitMenu({ commit: merge, refs: [], head: { branch: 'main', oid: C }, handlers });
   assert.equal(menu.find(item => item.key === 'revert').hint, 'merge commit');
+}
+// Ref actions ride on the ref that sits on the commit. A local branch gets
+// rename/upstream/delete; the checked-out one keeps Delete but disabled; a
+// remote gets a remote delete; a tag gets its own delete. Publish items only
+// appear once a remote is configured, one per remote when there is more than
+// one, and there are none at all without refs.
+{
+  const plain = buildCommitMenu({ commit, refs: [], remotes: ['origin'], head: { branch: 'main', oid: C }, handlers });
+  assert.ok(!keysOf(plain).some(key => key.startsWith('ref-')), 'no ref items without a ref here');
+
+  const feature = { type: 'local', name: 'feature', fullName: 'refs/heads/feature', upstream: null };
+  const current = { type: 'local', name: 'main', fullName: 'refs/heads/main', upstream: 'origin/main' };
+  const remoteRef = { type: 'remote', name: 'origin/feature', fullName: 'refs/remotes/origin/feature' };
+  const tag = { type: 'tag', name: 'v1.0.0', fullName: 'refs/tags/v1.0.0' };
+  const menu = buildCommitMenu({ commit, refs: [feature, current, remoteRef, tag], remotes: ['origin', 'fork'],
+    head: { branch: 'main', oid: C }, handlers });
+  const keys = keysOf(menu);
+  assert.ok(keys.includes('ref-rename-refs/heads/feature'));
+  assert.ok(keys.includes('ref-upstream-refs/heads/feature'));
+  assert.ok(enabledOf(menu).includes('ref-delete-refs/heads/feature'));
+  assert.ok(keys.includes('ref-delete-refs/heads/main'));
+  assert.ok(!enabledOf(menu).includes('ref-delete-refs/heads/main'), 'the checked-out branch cannot be deleted');
+  assert.ok(keys.includes('ref-publish-refs/heads/feature-origin') && keys.includes('ref-publish-refs/heads/feature-fork'));
+  assert.ok(keys.includes('ref-delete-remote-refs/remotes/origin/feature'));
+  assert.ok(keys.includes('ref-tag-delete-refs/tags/v1.0.0'));
+  assert.ok(keys.includes('ref-tag-delete-remote-refs/tags/v1.0.0-fork'));
+
+  const noRemote = buildCommitMenu({ commit, refs: [feature], remotes: [], head: { branch: 'main', oid: C }, handlers });
+  assert.ok(!keysOf(noRemote).some(key => key.startsWith('ref-publish-')), 'publish needs a remote');
+  assert.ok(keysOf(noRemote).includes('ref-delete-refs/heads/feature'));
+
+  // Mid-operation the ref actions are offered but disabled, like everything else.
+  const busy = buildCommitMenu({ commit, refs: [feature], remotes: ['origin'], operation: { kind: 'rebase' },
+    head: { branch: 'main', oid: C }, handlers });
+  assert.ok(!enabledOf(busy).some(key => key.startsWith('ref-')));
 }
 
 // --- branch and tag management ----------------------------------------------

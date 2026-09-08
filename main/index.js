@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, session, shell } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { registerIpc } from './ipc.js';
 import { isExternalLink, isLocalAsset, isTrustedPage } from './security.js';
@@ -11,11 +12,24 @@ import { AutomationRunsStore } from './automation-runs-store.js';
 import { resolveLoginPath } from './automation/path.js';
 import { runGit } from './git/exec.js';
 import { createRepositoryService } from './git/repository.js';
+import { SANDBOX_DIRNAME, SANDBOX_MARKER_FILE, SANDBOX_REMOTE_DIRNAME } from './git/sandbox.js';
 import { UndoService } from './undo.js';
+import { resolvePortableDataDir } from './portable.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const iconPath = path.join(root, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 const development = !app.isPackaged && process.env.TWIG_DEV === '1';
+
+// Redirect every store to a folder next to the binary when this is a portable
+// copy. Must run before the app is ready and before any `getPath('userData')`.
+const portableDataDir = resolvePortableDataDir({
+  env: process.env, platform: process.platform, packaged: app.isPackaged,
+  execPath: app.getPath('exe'), exists: existsSync
+});
+if (portableDataDir) {
+  mkdirSync(portableDataDir, { recursive: true });
+  app.setPath('userData', portableDataDir);
+}
 const entryUrl = development ? 'http://127.0.0.1:5188/'
   : pathToFileURL(path.join(root, 'dist/renderer/index.html')).href;
 let window;
@@ -72,18 +86,24 @@ app.whenReady().then(async () => {
       { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
     { role: 'windowMenu' }
   ]));
-  const journal = new CommandLog(app.getPath('userData'));
+  const userData = app.getPath('userData');
+  const journal = new CommandLog(userData);
   await journal.load();
   const git = await detectGit(journal);
-  const repositories = createRepositoryService({ log: journal, store: new RepositoryStore(app.getPath('userData')) });
-  await repositories.load();
   journal.onChange((event) => {
     if (window && !window.isDestroyed()) window.webContents.send('console:update', event);
   });
-  const undo = new UndoService({ directory: app.getPath('userData'), log: journal });
+  const undo = new UndoService({ directory: userData, log: journal });
   await undo.load();
-  const marks = new MarksStore(app.getPath('userData'));
+  const marks = new MarksStore(userData);
   await marks.load();
+  const sandbox = {
+    dir: path.join(userData, SANDBOX_DIRNAME),
+    remoteDir: path.join(userData, SANDBOX_REMOTE_DIRNAME),
+    markerFile: path.join(userData, SANDBOX_MARKER_FILE)
+  };
+  const repositories = createRepositoryService({ log: journal, store: new RepositoryStore(userData), sandbox, undo, marks });
+  await repositories.load();
   const automations = new AutomationsStore(app.getPath('userData'));
   const automationRuns = new AutomationRunsStore(app.getPath('userData'));
   const [, , automationPath] = await Promise.all([automations.load(), automationRuns.load(), resolveLoginPath()]);

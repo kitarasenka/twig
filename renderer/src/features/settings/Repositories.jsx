@@ -16,7 +16,9 @@ export default function Repositories({ workspace, onWorkspace, onOpen, onClone, 
     } catch (failure) { setError(failure.message || 'Could not update the repository list.'); }
     finally { setBusy(false); }
   }
-  const items = (workspace?.repositories || []).filter(item => `${item.name} ${item.path}`.toLowerCase().includes(filter.toLowerCase()));
+  // The demo sandbox is managed from Settings -> Reset demo workspace, not here.
+  const connected = (workspace?.repositories || []).filter(item => !item.sandbox);
+  const items = connected.filter(item => `${item.name} ${item.path}`.toLowerCase().includes(filter.toLowerCase()));
   return <section className="repository-manager" aria-label="Connected repositories" aria-busy={busy}>
     <p className="muted">Your connected repositories. Removing an entry keeps every file on disk.</p>
     <div className="manager-actions"><Button icon={FolderOpen} onClick={onOpen} reason={busy ? 'Wait for the current action' : undefined}>Open folder</Button><Button icon={ArrowDown} onClick={onClone} reason={busy ? 'Wait for the current action' : undefined}>Clone repository</Button></div>
@@ -28,6 +30,6 @@ export default function Repositories({ workspace, onWorkspace, onOpen, onClone, 
       <div className="manager-actions"><Button icon={FolderOpen} reason={busy ? 'Wait for the current action' : undefined} onClick={() => act('select', item.id)}>Open {item.name}</Button><Button icon={Trash2} reason={busy ? 'Wait for the current action' : undefined} onClick={() => setRemoving(item.id)}>Remove from list</Button></div>
       {removing === item.id && <div className="manager-confirm"><p>Remove {item.name} from 🌱 Twig? Its folder and files will stay on disk.</p><Button reason={busy ? 'Removing…' : undefined} onClick={() => act('remove', item.id)}>Confirm removal</Button><Button reason={busy ? 'Removing…' : undefined} onClick={() => setRemoving(null)}>Keep repository</Button></div>}
     </li>)}</ul>
-    {!items.length && <p className="empty-inline">{workspace?.repositories.length ? 'No repositories match this filter.' : 'No connected repositories. Open a folder or clone a repository to begin.'}</p>}
+    {!items.length && <p className="empty-inline">{connected.length ? 'No repositories match this filter.' : 'No connected repositories. Open a folder or clone a repository to begin.'}</p>}
   </section>;
 }

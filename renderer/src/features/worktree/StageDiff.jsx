@@ -1,7 +1,19 @@
 import { useMemo } from 'react';
 import Button from '../../ui/Button.jsx';
+import { segmentHunkLines } from '../diff/intraline.js';
 
 const changeable = line => line.kind !== 'context';
+const MARKER = { add: '+', delete: '-' };
+const SEGMENT_CLASS = { add: 'diff-seg-add', del: 'diff-seg-del' };
+
+/** A hunk line's text: whole, or per-character spans when only part changed. */
+function LineText({ line, segments }) {
+  const marker = MARKER[line.kind] ?? ' ';
+  if (!segments) return <>{marker}{line.text || ' '}</>;
+  return <>{marker}{segments.map((seg, index) => seg.type === 'same'
+    ? seg.text
+    : <span key={index} className={SEGMENT_CLASS[seg.type]}>{seg.text}</span>)}</>;
+}
 
 /** Old/new line numbers for the gutter, derived from the hunk header. */
 function numbering(hunk) {
@@ -20,6 +32,7 @@ function numbering(hunk) {
 
 export default function StageDiff({ file, diff, staged, selection, onSelection, onApply, busy, onClose }) {
   const gutters = useMemo(() => diff.hunks.map(numbering), [diff.hunks]);
+  const segments = useMemo(() => diff.hunks.map(hunk => segmentHunkLines(hunk.lines)), [diff.hunks]);
   const selectedCount = Object.values(selection).reduce((total, lines) => total + lines.length, 0);
   const verb = staged ? 'Unstage' : 'Stage';
 
@@ -68,7 +81,7 @@ export default function StageDiff({ file, diff, staged, selection, onSelection, 
                 : <span className="stage-line-spacer" />}
               <span className="line-number">{gutter.old ?? ''}</span>
               <span className="line-number">{gutter.next ?? ''}</span>
-              <span className="line-text">{line.kind === 'add' ? '+' : line.kind === 'delete' ? '-' : ' '}{line.text || ' '}</span>
+              <span className="line-text"><LineText line={line} segments={segments[hunkIndex][lineIndex]} /></span>
             </div>;
           })}
           {hunk.lines.some(line => line.noNewline) && <div className="stage-line no-newline"><span className="stage-line-spacer" /><span className="line-number" /><span className="line-number" /><span className="line-text">\ No newline at end of file</span></div>}

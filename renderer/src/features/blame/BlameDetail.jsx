@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { GitBranch } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import DiffLines from '../diff/DiffLines.jsx';
 
 /**
  * The right-hand panel for the blame screen: the commit a selected line (or
@@ -54,9 +55,7 @@ export default function BlameDetail({ repositoryId, sel, onJump, onConsole }) {
         <div className="files-heading"><strong>Diff of {sel.path.split('/').at(-1)}</strong></div>
         {diff?.loading ? <div className="skeleton" aria-label="Loading diff" />
           : diff?.binary ? <p className="muted">Binary file — no text diff.</p>
-          : diff?.patch ? <div className="diff-lines" tabIndex={0} aria-label="Diff lines">
-            {diff.patch.split('\n').map((row, index) => <div key={index} className={row.startsWith('+') ? 'diff-added' : row.startsWith('-') ? 'diff-deleted' : row.startsWith('@@') ? 'diff-hunk' : ''}><span>{row || ' '}</span></div>)}
-          </div>
+          : diff?.patch ? <DiffLines patch={diff.patch} />
           : <p className="muted">This commit did not change {sel.path.split('/').at(-1)} against its first parent.</p>}
       </>}
     </div>

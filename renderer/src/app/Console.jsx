@@ -1,41 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Clipboard, CornerDownLeft, FilePenLine, Folder, GitBranch, Globe, PanelLeftClose, PanelLeftOpen, Search, Tag, Terminal, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clipboard, CornerDownLeft, Search, Terminal } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import { checkReadOnly, tokenize } from '../../../main/git/read-only-command.js';
-import { commits, sections } from './demo.js';
-
-export function Sidebar({ collapsed, onCollapse, filter, onFilter, filterRef, mod }) {
-  if (collapsed) return <aside className="sidebar collapsed"><Button icon={PanelLeftOpen} aria-label="Expand sidebar" title={`${mod}+B`} onClick={onCollapse} /></aside>;
-  return <aside className="sidebar" aria-label="Repository navigation">
-    <div className="sidebar-filter"><Search /><input ref={filterRef} aria-label="Filter branches and history" placeholder={`Filter · ${mod}+F`} value={filter} onChange={(e) => onFilter(e.target.value)} /></div>
-    <div className="sidebar-sections">{sections.map(([name, items]) => <details key={name} open>
-      <summary>{name}<span>{items.length}</span></summary>
-      {items.length === 0 ? <p className="section-empty">No stashes in this demo</p> : items.filter(item => item.toLowerCase().includes(filter.toLowerCase())).map(item =>
-        <div className={`branch-item ${item === 'main' ? 'current' : ''}`} key={item} title={item}>
-          {name === 'TAGS' ? <Tag /> : name === 'REMOTES' || name === 'REMOTE' ? <Globe /> : item.includes('/') && name === 'LOCAL' ? <Folder /> : <GitBranch />}
-          <span>{item}</span>{item === 'main' && <small>HEAD</small>}
-        </div>)}
-    </details>)}</div>
-    <div className="sidebar-footer"><span>Demo workspace</span><Button icon={PanelLeftClose} aria-label="Collapse sidebar" title={`${mod}+B`} onClick={onCollapse} /></div>
-  </aside>;
-}
-
-export function CommitDetails({ selected, onSelect, onClose }) {
-  const commit = commits.find(c => c.id === selected) || commits[0];
-  const [tree, setTree] = useState(false);
-  return <aside className="commit-detail" aria-label="Commit details">
-    <header className="panel-heading"><span>COMMIT <code>{commit.id}</code></span><Button icon={X} aria-label="Close commit details" onClick={onClose} /></header>
-    <div className="detail-content"><span className="eyebrow">DEMO COMMIT</span><h2>{commit.subject}</h2>
-      <pre className="commit-body">{commit.body}{'\n\n'}This is sample content for the 🌱 Twig workspace preview.</pre>
-      <div className="author-card"><span className="avatar">{commit.author.split(' ').map(n => n[0]).join('')}</span><div><strong>{commit.author}</strong><span>Sample author</span></div></div>
-      <dl className="metadata"><dt>Authored</dt><dd>{commit.authored}</dd><dt>Committed</dt><dd>{commit.authored}</dd><dt>Parent</dt><dd>{commit.parentIndex !== null
-        ? <button className="text-button" onClick={() => onSelect(commits[commit.parentIndex].id)}>{commits[commit.parentIndex].id}</button> : 'Root commit'}</dd></dl>
-      <div className="files-heading"><FilePenLine /><strong>{commit.files.length} modified</strong></div>
-      <div className="file-controls"><div className="segmented" aria-label="File list view"><button aria-pressed={!tree} onClick={() => setTree(false)}>Path</button><button aria-pressed={tree} onClick={() => setTree(true)}>Tree</button></div><span>Sample files</span></div>
-      <ul className="file-list">{commit.files.map(file => <li key={file} title={`${file} — Diff available in M2`}><FilePenLine /><span>{tree ? file.split('/').map((part, i) => <span className="file-part" key={i}>{i > 0 && <ChevronRight />}{part}</span>) : file}</span><small>M</small></li>)}</ul>
-    </div>
-  </aside>;
-}
 
 function commandText(entry) { return `$ ${entry.executable || 'git'} ${entry.argv.join(' ')}`; }
 function elapsed(entry) { return entry.ms === null ? 'running' : `${entry.ms}ms`; }

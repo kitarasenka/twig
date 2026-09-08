@@ -1,4 +1,4 @@
-import { Bookmark, BookmarkX, ClipboardCopy, Combine, GitBranch, GitCommitHorizontal, GitMerge, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Undo2 } from 'lucide-react';
+import { Bookmark, BookmarkX, ClipboardCopy, Combine, GitBranch, GitCommitHorizontal, GitMerge, Link2, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Trash2, Undo2, Upload } from 'lucide-react';
 import { squashable } from './squash-plan.js';
 
 /**
@@ -14,7 +14,7 @@ import { squashable } from './squash-plan.js';
  * unfinished, Git refuses everything, and a menu that had quietly shrunk to
  * two items would leave the user guessing.
  */
-export function buildCommitMenu({ commit, refs = [], head = {}, operation = { kind: 'none' },
+export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, operation = { kind: 'none' },
   bisect = { active: false, done: false, terms: { bad: 'bad', good: 'good' } }, dirty = false, mark = null, handlers }) {
   const short = commit.oid.slice(0, 7);
   const busy = operation.kind !== 'none';
@@ -32,6 +32,51 @@ export function buildCommitMenu({ commit, refs = [], head = {}, operation = { ki
     { key: 'detach', icon: GitCommitHorizontal, text: `Check out ${short} (detached)`, reason: reason || (isHead && head.detached ? 'Already checked out' : undefined), run: handlers.checkoutCommit },
     { separator: true }
   ];
+
+  // Everything the "Branches and tags" screen does to a ref, offered on the
+  // commit the ref sits on — but only for the refs that actually point here.
+  // Deleting a ref has no inverse, so each item that mutates goes through the
+  // §6.5 confirmation the handlers open, not straight to the command.
+  const remoteNames = (Array.isArray(remotes) ? remotes : []).filter(name => typeof name === 'string' && name);
+  const perRemote = (make) => remoteNames.map(make);
+  const refItems = [];
+  for (const ref of refs) {
+    if (ref.type === 'local') {
+      const current = ref.name === head.branch;
+      refItems.push(
+        { key: `ref-rename-${ref.fullName}`, icon: PenLine, text: `Rename ${ref.name}…`, reason, run: () => handlers.renameBranch(ref.name) },
+        { key: `ref-upstream-${ref.fullName}`, icon: Link2, text: `Set upstream for ${ref.name}…`, reason, run: () => handlers.setUpstream(ref) },
+        ...perRemote(name => ({
+          key: `ref-publish-${ref.fullName}-${name}`, icon: Upload,
+          text: remoteNames.length > 1 ? `Publish ${ref.name} to ${name}` : `Publish ${ref.name}`,
+          reason, run: () => handlers.publishBranch(ref.name, name)
+        })),
+        { key: `ref-delete-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete ${ref.name}`,
+          reason: reason || (current ? 'A checked-out branch cannot be deleted' : undefined),
+          run: () => handlers.deleteBranch(ref.name) }
+      );
+    } else if (ref.type === 'remote') {
+      refItems.push(
+        { key: `ref-checkout-remote-${ref.fullName}`, icon: GitCommitHorizontal, text: `Check out ${ref.name} as a new branch…`, reason, run: () => handlers.checkoutRemote(ref) },
+        { key: `ref-delete-remote-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete ${ref.name} on its remote`, reason, run: () => handlers.deleteRemoteBranch(ref) }
+      );
+    } else if (ref.type === 'tag') {
+      refItems.push(
+        ...perRemote(name => ({
+          key: `ref-tag-publish-${ref.fullName}-${name}`, icon: Upload,
+          text: remoteNames.length > 1 ? `Publish ${ref.name} to ${name}` : `Publish ${ref.name}`,
+          reason, run: () => handlers.publishTag(ref, name)
+        })),
+        { key: `ref-tag-delete-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete tag ${ref.name}`, reason, run: () => handlers.deleteTag(ref) },
+        ...perRemote(name => ({
+          key: `ref-tag-delete-remote-${ref.fullName}-${name}`, icon: Trash2, danger: true,
+          text: remoteNames.length > 1 ? `Delete ${ref.name} on ${name}` : `Delete ${ref.name} on its remote`,
+          reason, run: () => handlers.deleteTagOnRemote(ref, name)
+        }))
+      );
+    }
+  }
+  if (refItems.length) items.push(...refItems, { separator: true });
 
   for (const ref of branches) {
     if (ref.type === 'local' && ref.name === head.branch) continue;

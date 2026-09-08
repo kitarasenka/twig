@@ -7,7 +7,7 @@ import { pushRefCommand, splitRemoteRef } from './remote-ref.js';
 const TABS = [['local', 'Branches', GitBranch], ['remote', 'Remote branches', Globe], ['tag', 'Tags', Tag]];
 
 /** Picks the upstream for a branch out of the remote-tracking refs the repository has. */
-function UpstreamDialog({ branch, current, candidates, onConfirm, onClose }) {
+export function UpstreamDialog({ branch, current, candidates, onConfirm, onClose }) {
   const [value, setValue] = useState(current || '');
   return <Dialog title={`Upstream for ${branch}`} onClose={onClose}>
     <form className="name-dialog" onSubmit={event => { event.preventDefault(); onClose(); onConfirm(value || null); }}>

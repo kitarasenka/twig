@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Archive, FilePlus2, GitBranch, RefreshCw, Trash2 } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import DiffLines from '../diff/DiffLines.jsx';
+import FileStatus from '../diff/FileStatus.jsx';
 
 function when(value) {
   const date = new Date(value);
@@ -121,7 +123,7 @@ export default function StashScreen({ repository, busy, onBack, onPerform, onDia
           {files.length === 0 && <li className="empty-inline">This stash changes no tracked file.</li>}
           {files.map(file => <li key={`${file.path}:${file.untracked}`}>
             <button type="button" className={diff?.path === file.path ? 'selected' : ''} onClick={() => void openDiff(file)}>
-              <span className="file-status">{file.status}</span>
+              <FileStatus status={file.status} />
               <span>{file.path}</span>
               {file.untracked && <small><FilePlus2 aria-hidden="true" />untracked</small>}
             </button>
@@ -133,9 +135,7 @@ export default function StashScreen({ repository, busy, onBack, onPerform, onDia
           {diff.loading ? <div className="loading-shell"><div className="skeleton" /></div>
             : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p>
               : diff.binary ? <p className="empty-inline">Binary file. A text diff is unavailable.</p>
-                : <div className="diff-lines" tabIndex={0}>{diff.patch.split('\n').map((line, index) =>
-                  <div key={index} className={line.startsWith('+') ? 'diff-added' : line.startsWith('-') ? 'diff-deleted' : line.startsWith('@@') ? 'diff-hunk' : ''}>
-                    <span>{line || ' '}</span></div>)}</div>}
+                : <DiffLines patch={diff.patch} label={`Diff of ${diff.path}`} />}
         </div>}
       </div>}
     </div>

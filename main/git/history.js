@@ -33,13 +33,16 @@ function validateQuery(query) {
  * format. Exported separately (beyond the `loadHistoryPage` in the M2-HISTORY
  * contract) so the self-check can assert on the exact argv without spawning
  * Git or touching `exec.js`.
+ * `--exclude=refs/stash` keeps the raw `WIP on …` / `index on …` commits out of
+ * the row list: a stash is shown as a marker on the commit it was based on, not
+ * as history of its own.
  * @param {{ limit?: number, skip?: number }} options
  * @returns {string[]}
  */
 export function buildHistoryArgv({ limit = 250, skip = 0 } = {}) {
   validateLimit(limit);
   validateSkip(skip);
-  return ['log', '--all', '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${limit}`, `--skip=${skip}`];
+  return ['log', '--exclude=refs/stash', '--all', '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${limit}`, `--skip=${skip}`];
 }
 
 /**
@@ -100,7 +103,7 @@ export async function loadFileHistory({ cwd, log, file, limit = 250 }) {
 export function buildSearchArgv(query, limit = SEARCH_LIMIT) {
   const trimmed = validateQuery(query);
   validateLimit(limit);
-  return ['log', '--all', '--topo-order', '-z', '-i', '--fixed-strings', `--grep=${trimmed}`,
+  return ['log', '--exclude=refs/stash', '--all', '--topo-order', '-z', '-i', '--fixed-strings', `--grep=${trimmed}`,
     `--format=${FORMAT}`, `--max-count=${limit}`];
 }
 

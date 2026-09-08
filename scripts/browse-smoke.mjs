@@ -82,11 +82,13 @@ try {
   };
   const row = name => page.locator('.refs-row').filter({ hasText: name }).first();
   const hunterTool = page.locator('.toolbar .bughunter-tool');
+
+  // The New repository tab has no repository, so BugHunter is a disabled placeholder there.
+  await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
   await hunterTool.waitFor();
   assert.equal(await hunterTool.isDisabled(), true, 'BugHunter needs a real repository');
   assert.equal(await hunterTool.locator('..').getAttribute('title'), 'Connect a repository to use this action', 'disabled hover explains how to enable it');
 
-  await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
   await page.getByRole('button', { name: 'Open repository', exact: true }).click();
   await page.getByRole('listbox', { name: 'Commit history', exact: true }).waitFor();
 
@@ -165,8 +167,8 @@ try {
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   const history = page.getByRole('listbox', { name: 'Commit history', exact: true });
   await history.waitFor();
-  // Rows are addressed by object id: `git log --all` also lists the stash
-  // commits, whose subjects quote the commit they were made on.
+  // Rows are addressed by object id. Stash commits are excluded from the graph
+  // (`--exclude=refs/stash`); a stash shows only as a marker on its base commit.
   const commitRow = oid => page.locator(`#commit-${oid}`);
   await history.press('Home');
   await commitRow(commits.at(-1)).click({ button: 'right' });

@@ -1,8 +1,14 @@
-# modules/git_desk
+# twig
 
 🌱 Twig — автономный десктопный Git-клиент на Electron + React 18 + Vite,
 JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, прочитать целиком.
-Это **не** сервис nodex: `nodex.json` и PM2-запись запрещены.
+
+Отдельный публичный репозиторий (`github.com/kitarasenka/twig`), выделен из
+приватного монорепозитория `nodes-managers` (каталог `modules/git_desk`) через
+`git subtree split` — история M0…M6 сохранена, пути в старых коммитах остались с
+префиксом `modules/git_desk/`. Это **не** сервис nodex: `nodex.json`, PM2-запись
+и упоминания монорепо в новом коде не нужны. В `nodes-managers/modules/git_desk`
+пока лежит незакоммиченная копия того же состояния — трогать её отдельно.
 
 Название во всех пользовательских текстах — **🌱 Twig**, с росточком и пробелом:
 сайт, кнопки, заголовки, метаданные страницы, сообщения приложения и документация.
@@ -10,6 +16,292 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 машинные имена; написание бренда ими не определяется.
 
 ## Состояние
+
+Переезд в отдельный репозиторий + публикация лендинга на GitHub Pages
+(2026-09-08, вне вех): GitHub Pages для приватного репозитория требует
+Enterprise, поэтому весь `modules/git_desk` выделен в публичный
+`github.com/kitarasenka/twig` через `git subtree split --prefix=modules/git_desk`
+(13 коммитов M0…M6 + один импорт-коммит с незакоммиченной «вне вех» работой:
+реальная песочница, портативные сборки, редизайн сайта, регулируемые столбцы,
+бейдж статуса файла, построчный дифф, ref-операции в меню). Монорепо-копия
+`nodes-managers/modules/git_desk` пока оставлена как есть.
+
+Воркфлоу `.github/workflows/site.yml` собирает `site/dist` и деплоит его на Pages
+при push в `main` по путям `site/**`, `package.json`,
+`renderer/src/ui/tokens.css` и самого воркфлоу, плюс `workflow_dispatch`.
+Job `build`: `npm ci --omit=dev` c `ELECTRON_SKIP_BINARY_DOWNLOAD=1` (для
+`build:site` нужны только `@fontsource/fira-sans` и `tokens.css` из репо, не
+electron/vite/playwright), затем `build:site` с
+`TWIG_SITE_DOWNLOAD_BASE=https://github.com/${{ github.repository }}/releases/download/twig-v<version>/`,
+`upload-pages-artifact`; job `deploy` — `actions/deploy-pages` (нативный Pages
+этого же репозитория, репозиторий публичный). Concurrency-group
+`pages`, `cancel-in-progress: false`. Разово в Settings → Pages выбрать source
+«GitHub Actions».
+
+`site/build.mjs`: новая переменная `TWIG_SITE_DOWNLOAD_BASE` — абсолютный
+`https://`-префикс для кнопок скачивания вместо соседнего `downloads/` (по
+умолчанию). Значение нормализуется (хвостовой `/`) и проверяется регэкспом
+`^https://<host>(/<seg>)*/$`; не-`https` или подозрительный путь роняет сборку.
+Имена файлов приписываются к базе как раньше и по-прежнему проходят
+`^[a-zA-Z0-9._-]+$`. Установщики на Pages не помещаются (~1 ГБ на сайт против
+восьми сборок Electron), поэтому бинарники — ассеты GitHub Release с тегом
+`twig-v<version>`; до публикации Release кнопки отдают 404 (то же, что при
+самостоятельном хостинге до загрузки файлов). Порядок выпуска в
+`site/README.md` (раздел «GitHub Pages»).
+
+`site/check.mjs`: download-ссылки теперь могут быть кросс-доменными.
+`downloadUrl`/`isDownload` резолвят href из `downloads.json` относительно origin;
+route-перехват фикстуры и фильтр внешних запросов (обе страницы) сверяются с этим
+множеством, а не с глобом `**/downloads/*`. Проверка прогнана локально в обоих
+режимах (относительный `downloads/` и абсолютный Release-URL), 8 ссылок,
+без утечки внешних запросов; `eslint site/build.mjs site/check.mjs` чист.
+Живьём воркфлоу запускается после первого push в новый репозиторий; в Settings →
+Pages должен быть выбран source «GitHub Actions». Версия остаётся 0.8.0.
+
+Сайт: конкретные преимущества и анимации (2026-09-08, вне вех): переработаны
+`site/index.html` и `site/style.css`. Первый экран — три переключаемых примера
+(автоматизация блокирует push, предпросмотр merge, локальная марка с заметкой).
+Главные акценты: визуальные автоматизации, марки, журнал и реальная песочница;
+rebase/staging/конфликты/blame — отдельный основной набор. Убраны лозунги и
+неподтверждённые обещания скорости. Сравнение официальных сайтов GitKraken,
+Fork, Tower, Sourcetree, GitHub Desktop и основания утверждений лежат в
+`site/COMPETITORS.md`; исключительность возможностей не заявляется.
+
+`site/site.js` — небольшой локальный скрипт без зависимостей: ARIA-вкладки
+(стрелки/Home/End, панель получает фокус по Tab) и одноразовый IntersectionObserver
+для появления секций. Нет автопереключения/опроса/бесконечных анимаций.
+Reduced motion выключает движение, включая изменение настройки в открытой
+вкладке. Без JS все примеры видны подряд, якоря и загрузки работают.
+CSP разрешает только свой скрипт; `preview.mjs` отдаёт `.js` с корректным MIME.
+При сборке `tokens.css` берётся из приложения, селектор светлой темы расширен
+с root до контейнера секции — палитра больше не дублируется в CSS лендинга.
+Снимок `site/assets/workspace.png` обновлён из `artifacts/sandbox-dark.png`:
+реальная песочница, регулируемые столбцы и статусы файлов. Иллюстрации на сайте
+отдельно подписаны, Git-команды не выполняются. Ранее записанное «без клиентского
+JavaScript» относится к первоначальному лендингу и больше не актуально.
+
+Проверки этой правки: `npm run build:site`, ESLint для `site/*.mjs`/`site/site.js`
+и `git diff --check` прошли. Chromium проверил 375/768/1024/1440 px: без JS по
+HTTP, с JS — локальную сборку `site/dist/index.html`; все вкладки, клавиатуру,
+стабильную высоту примеров, отсутствие переполнения, смену reduced motion,
+ресурсы, якоря и восемь ссылок (ответы установщиков — фикстуры, не бинарники).
+Просмотрены снимки `artifacts/site-desktop.png`, `site-mobile.png` и полные страницы.
+
+Аудит безопасности: только статический HTML и локальный JS, CSP без inline/eval,
+нет форм, fetch, cookies/storage, исполнения команд и новых зависимостей.
+Аудит производительности: анимации конечные, нет таймеров/опроса; observer
+отключается для показанной секции и на pagehide, учитывает reduced motion.
+Снимок загружается лениво; исходные ресурсы локальные, фото-генерация не нужна.
+
+
+Регулируемые по ширине столбцы истории (2026-09-08, вне вехи): у всех пяти
+столбцов графа — `Branch / tag`, `Graph`, `Commit message`, `Author`, `Date` —
+на правом краю появился маркер перетаскивания; тянешь вправо — столбец шире.
+`Graph` особый: по умолчанию (`defaultWidth: null`) считается от числа дорожек;
+drag фиксирует его ширину, двойной клик / `Home`/`Enter` возвращают `null` и
+авторазмер. Все остальные столбцы, включая `Commit message`, — обычные
+фиксированные ширины (`var(--col-*)`); слабину добирает **хвостовой трек**
+`minmax(0, 1fr)` шестой колонкой грида (без своего span), поэтому ползунок на
+правом крае столбца тянет именно этот столбец сразу и заметно, а горизонтальный
+скролл появляется только когда колонки перерастают панель. Шапка
+(`.real-history-columns` — сосед скроллера, а не его потомок) сдвигается вручную
+по `scrollLeft` через `transform` в `onScroll`, чтобы не разъехаться с телом.
+`--table-min-width` (сумма фикс-ширин + `var(--graph-width)` + padding, без
+`1fr`) задаёт `min-width` и шапке, и `.virtual-commits`. Заголовки столбцов центрированы
+(`justify-content: center` на `.real-history-columns > span`). Маркер —
+`<span role="separator" aria-orientation="vertical" tabIndex=0>` в ячейке шапки:
+pointer-drag с `setPointerCapture`, `←`/`→` (шаг 12 px, `→` всегда расширяет),
+`Home`/`Enter` и двойной клик — сброс к дефолту; `aria-valuenow/min/max`.
+Ширины лежат в `localStorage` (`twig:history-columns`, JSON
+`{branch,graph,message,author,date}`, `graph` = число или `null`, `message` —
+реальная ширина, а не минимум) по образцу
+`twig:commit-colors`/`twig:commit-details`; чтение и запись в try/catch,
+значение вне диапазона подтягивается в него на чтении. На ≤1250 px столбец
+`Author` (и его маркер) уже скрыт прежним `.author-col { display: none }` (плюс
+явный `.real-history-columns > .author-col { display: none }` — новый `> span`
+перебивал бы его по специфичности) — шаблон грида и `--table-min-width` там на
+4 дорожки. Чистый модуль без импортов
+`renderer/src/features/graph/column-widths.js` (грузят Vite и Node-проверка):
+`HISTORY_COLUMNS` (min/max/default по столбцу, у `graph` default `null`),
+`clampColumnWidth` (нечисло → default, у `graph` это `null`),
+`normalizeColumnWidths`, `read/writeColumnWidths`, `dragColumnWidth`,
+`nudgeColumnWidth`. Grid-шаблон в `history.css` — на
+`var(--col-branch) var(--graph-width) var(--col-message) var(--col-author) var(
+--col-date) minmax(0,1fr)` с дефолтами на `.real-history`; `CommitGraph`
+считает `graphWidth = columns.graph ?? auto` и проставляет `--*` инлайном. Git
+не вызывается, новых IPC/таймеров/подписок/сети нет. Проверки:
+`scripts/checks/column-widths.mjs` (в `npm test`) — клампы, drag, `graph`-null,
+нормализация, round-trip и падающий storage; `history-smoke.mjs` тянет маркеры
+`Branch / tag`, `Commit message`, `Graph`, проверяет рост
+`--col-branch`/`--col-message`/`--graph-width` и что они пережили перезагрузку,
+а двойной клик по `Graph` вернул авторазмер. Версия остаётся 0.8.0.
+
+Детали коммита скрыты по умолчанию (2026-09-08, вне вех): в панели коммита при
+открытии видны только заголовок (subject), список файлов и дифф. Тело сообщения
+(`.commit-body`), карточка автора и метаданные (`Authored` / `Committed` /
+`Parents`) свёрнуты за кнопкой `Show details` / `Hide details` (`.details-toggle`,
+обычный `.text-button` под заголовком). Выбор запоминается в `localStorage`
+(`twig:commit-details`, `show`/`hide`) по образцу темы и `twig:commit-colors` —
+коммит открывается так же, как в прошлый раз; чтение и запись в try/catch. Режим
+сравнения (`range`) кнопки не показывает и всегда рендерит эти блоки. Git не
+вызывается, новых IPC/токенов/таймеров нет. `ops-smoke.mjs` перед снимками тем
+жмёт `Show details`, чтобы на ревью-картинках были автор и сообщение. Версия
+остаётся 0.8.0.
+
+Цветной бейдж статуса файла (2026-09-08, вне вех): буква статуса перед путём
+изменённого файла (панель коммита, рабочее дерево, файлы стеша) теперь —
+залитый скруглённый квадратик: буква в `var(--bg)` на заливке `--mark-*`, свой
+цвет на каждый статус — added/untracked `--mark-green`, modified `--mark-amber`,
+deleted/conflict `--mark-red`, renamed/copied `--mark-blue`, type-change
+`--mark-violet`, прочее `--mark-slate`. Переиспользует те же шесть токенов марок
+ровно как узлы графа (заливка цветом марки, глиф в `--bg`); новых токенов нет.
+Цвет не единственный носитель: буква сама называет статус, у каждого бейджа
+`title`/`aria-label` («Added», «Modified», …). Чистый модуль без импортов
+`renderer/src/features/diff/file-status.js` (`FILE_STATUS`, `fileStatus` —
+нормализация: ведущая буква, `R100`→`R`, `?`→untracked, пробел/неизвестное →
+нейтральный) грузят Vite и Node-проверка; общий компонент
+`renderer/src/features/diff/FileStatus.jsx` заменил три копии
+`<span className="file-status">`. Git не вызывается, новых IPC/таймеров/сети нет.
+Проверка `scripts/checks/file-status.mjs` (в `npm test`): нормализация, паритет
+имён классов с `history.css` (каждый класс залит токеном марки), контраст `--bg`
+на каждой заливке ≥ 3:1 в обеих темах (тот же порог, что у марок в
+`foundation.mjs` — глиф это жирный однобуквенный бейдж с дублирующей текстовой
+подписью). Версия остаётся 0.8.0.
+
+Построчный дифф изменённых частей строки (2026-09-08, вне вех): в диффе строки,
+которую хунк одновременно удаляет и добавляет обратно, теперь подсвечивается
+**только изменившийся фрагмент**, а не вся строка. Дифф идёт по **токенам**
+(слова, пробелы, одиночная пунктуация), а не по сырым символам: вставка
+`runAutomation = null, ` перед `onConsole` подсвечивает ровно этот фрагмент, а не
+раскидывает общие буквы `o`/`n`/`s` по строке (первый заход был посимвольным и
+на реальных правках кода давал мусор). Заменённый токен, который лишь слегка
+поправили («сорока» → «сорок»), затем уточняется до символа. Цвет не единственный
+носитель: добавленное подчёркнуто, удалённое — зачёркнуто
+(`.diff-seg-add` / `.diff-seg-del`, лёгкий `color-mix` 26 % / 34 % от `--accent` /
+`--danger` на `var(--text)`, как у марок; новых токенов нет; тинт нарочно слабый,
+чтобы текст держал 4.5:1). Ядро — чистый модуль без импортов
+`renderer/src/features/diff/intraline.js` (грузят Vite и Node-проверка):
+`segmentPair` — токенайзер + LCS по токенам + `refine` (пара delete→insert
+уточняется посимвольно, если общего ≥ 25 %) → сегменты `same/del/add`, возвращает
+`null`, если строки равны, длиннее 400 символов или общего меньше 20 % (это уже
+переписывание — тогда красится вся строка); `segmentHunkLines` — пары k-я
+удалённая ↔ k-я добавленная в одном подряд идущем блоке; `annotatePatch` — то же
+для сырого текста патча, строки до первого `@@` (`diff --git`, `index`,
+`---`/`+++`) никогда не парятся. Общий компонент `renderer/src/features/diff/
+DiffLines.jsx` заменил три копии `patch.split('\n').map(...)` в `HistoryWorkspace`
+(панель коммита / история файла), `StashScreen` и `BlameDetail`; `StageDiff`
+(построчный staging) рендерит сегменты в `.line-text`. Git не вызывается, новых
+IPC/таймеров/сети нет — только рендер уже полученного патча. Проверки:
+`scripts/checks/intraline.mjs` (в `npm test`) — реконструкция обеих сторон из
+сегментов, guard'ы длины и похожести, парность в хунке и патче, паритет имён
+классов с CSS; `history-smoke.mjs` дополнительно проверяет `.diff-seg-add/-del`
+в реальном DOM на правке hello.txt на вершине. Версия остаётся 0.8.0
+(см. запись про 0.8.0 ниже — до 1.0.0 не бампаем во время проверки).
+
+Ref-операции в контекстном меню коммита (2026-09-08, вне вех): раньше меню
+графа (§8.2) только *создавало* ветки/теги, а удаление/переименование/upstream/
+публикация жили лишь на экране «Branches and tags». Теперь для каждой ссылки,
+которая указывает на этот коммит (её плашка на строке), меню добавляет полный
+набор с того экрана: локальная ветка — `Rename …`, `Set upstream for …`,
+`Publish … to <remote>` (по пункту на remote, если их >1), `Delete` (у текущей
+ветки пункт есть, но выключен — «checked-out branch cannot be deleted»);
+remote-ветка — `Check out … as a new branch…`, `Delete … on its remote`;
+тег — `Publish … to <remote>`, `Delete tag …`, `Delete … on <remote>`.
+Пункты без настроенного remote не показываются. Все мутирующие идут через тот
+же §6.5-диалог, что и на экране: удаление слитой ветки — сразу `branch -d`,
+отказ открывает `-D`; удаление на remote — `sync:push-ref --delete`; публикация —
+`sync:push-ref` без force. Никаких новых IPC-каналов и git-путей: те же
+`window.twig.deleteBranch/renameBranch/setUpstream/deleteTag/pushRef/createBranch`.
+`buildCommitMenu` получил параметр `remotes` (список имён); `UpstreamDialog`
+вынесен из `RefsScreen.jsx` как экспорт и подключён к `dialog` типа `upstream`
+в `HistoryWorkspace`. `commit-menu.js` — `renderer/src/features/refs/remote-ref.js`
+(`splitRemoteRef`, `pushRefCommand`) переиспользуется для команд в диалоге.
+Проверки: `history-ops.mjs` — новые кейсы applicability (пункты появляются
+только при наличии ссылки, publish требует remote, текущая ветка не удаляется,
+mid-operation всё выключено); `ops-smoke.mjs` — меню на ветке показывает
+Rename/Delete, создание ветки `scratch` из меню и её удаление из меню (реальный
+`branch -d` + перезагрузка графа). `npm test` и `ops-smoke` зелёные. Версия не
+бампалась (см. запись про 0.8.0 ниже).
+
+Портативные сборки + автономный режим состояния (2026-09-08, вне вех):
+`build.mac.target` получил `zip` (обе арки) рядом с `dmg`, `build.win.target` —
+`portable` рядом с `nsis`, плюс блок `build.portable.artifactName`
+(`Twig-${version}-windows-${arch}-portable.${ext}`), чтобы портативный `.exe`
+не столкнулся по имени с nsis-инсталлятором. Linux `AppImage` и так портативный.
+«Портативное» = запуск без установки: `.zip` разворачивается куда угодно и
+стартует двойным кликом по `🌱 Twig.app`, `-portable.exe` — самодостаточный
+без записи в реестр.
+
+**Автономное состояние (`main/portable.js`):** весь `userData` (настройки,
+подключённые репозитории, журнал, марки, автоматизации, демо-песочница, кэш
+Chromium) переезжает в папку `twig-data` рядом с бинарём, так что копия на
+флешке несёт состояние с собой. Чистая функция `resolvePortableDataDir({ env,
+platform, packaged, execPath, exists })` решает куда: `TWIG_DATA_DIR` (абсолютный)
+побеждает на любой платформе и без упаковки; иначе только упакованная сборка и
+только по запросу — `TWIG_PORTABLE=1`, запуск Windows-portable
+(`PORTABLE_EXECUTABLE_DIR`), либо уже лежащая рядом папка `twig-data` /
+маркер-файл `.twig-portable`. Хост-каталог: рядом с `PORTABLE_EXECUTABLE_DIR`
+(win), рядом с `$APPIMAGE` (linux), каталог, содержащий `Twig.app` (macOS —
+выход из бандла по `.app/Contents/MacOS/`). `main/index.js` зовёт её на
+верхнем уровне модуля (до `app.whenReady()` и любого `getPath('userData')`),
+и при непустом ответе делает `mkdirSync` + `app.setPath('userData', …)`.
+Обычный dmg/nsis-инсталл и `npm run dev`/smoke (unpackaged, без маркера)
+поведения не меняют.
+
+`site/build.mjs`: `formats` расширен `zip`/`portable`, портативный target берёт
+имя из `build.portable.artifactName`, на карточках скачивания подписи
+«· портативный» / «Портативная версия». `site/check.mjs` и
+`site/README.md`/`index.html` — под 8 ссылок вместо 5. Заодно исправлено давнее
+расхождение: electron-builder переписывает `${arch}` по таргету — AppImage
+получает `x86_64`, deb — `amd64` (проверено реальной сборкой
+`Twig-0.8.0-linux-x86_64.AppImage`), а `site/build.mjs` подставлял сырой `x64`,
+из-за чего обе Linux-ссылки на сайте были битыми. Добавлена карта `archNames`.
+Отдельно: `deb` не собирается без `homepage`/email автора в `package.json`
+(`pack:linux` упрётся в это) — не тронуто, нужен URL.
+
+Проверки: `scripts/checks/portable.mjs` (в `npm test`) — `TWIG_DATA_DIR`
+absolute/relative, отказ автодетекта в dev, win-portable, nsis остаётся на ОС,
+AppImage только с opt-in, macOS выход из бандла и маркер, не-бандловый путь.
+`npm test` зелёный. Живьём: `env -u PYTHON_PATH electron-builder --mac zip
+--arm64` собрал `release/Twig-0.8.0-macos-arm64.zip`, распакованная копия с
+`.twig-portable` рядом создала `twig-data/` с `command-log.jsonl`,
+`demo-sandbox*` и кэшем — не в `~/Library/Application Support`. `portable.exe`
+на macOS не собрать (нужен wine), target стандартный. Версия остаётся **0.8.0**
+(едет в том же незакоммиченном наборе, что и реинит песочницы): пока идёт
+проверка «как всё работает», до 1.0.0 не поднимаем — 1.0.0 приберегли на релиз.
+
+Рабочая демо-песочница + реинит (2026-09-07, вне вех): вкладка `workspace-demo`
+больше **не** статичный фейк (`DemoGraph.jsx`/`demo.js`/`Workspace.jsx` удалены,
+`Panels.jsx` → `Console.jsx` — остался только `Console`). Теперь это **настоящий
+git-репозиторий** в `userData/demo-sandbox` с локальным bare-remote
+`userData/demo-sandbox-remote.git`; ни одного сетевого вызова. `main/git/sandbox.js`:
+`sandboxPlan()` — чистый список из 12 бэкдейт-коммитов (ветки `main` +
+`feature/command-log` + `feature/repository-tabs`, merge, теги `v0.0.1`/`v0.0.2`,
+`origin/main` на один коммит позади, один стеш, README с несохранённой правкой и
+untracked `notes.todo`); `runSeed`/`resetSandbox`/`ensureSandbox` его исполняют.
+`ensureSandbox` на старте: если `.git` нет или `demo-sandbox.json` (маркер **вне**
+репозитория) с чужим `SEED_VERSION` — снести и пересеять. Песочница —
+производная запись репозитория (`{ sandbox: true }`, id = путь), всегда первая в
+`repositories`, **не** пишется в `repositories.json`; `createRepositoryService`
+инъектит её в каждый снапшот, `remove` для неё отказывает, `resetSandbox()`
+чистит Undo (`undo.forget`) и марки (`marks.forget`). `HistoryWorkspace`
+переиспользуется как есть — все команды (checkout/merge/rebase/commit/stash/
+blame/автоматизации/консоль/Undo/drag-drop) работают, потому что это реальный git.
+Реинит: Settings → **Reset demo workspace** → §6.5-подтверждение (`.confirm-dialog`,
+`AlertTriangle` + текст, список последствий, danger-кнопка последней в tab-order,
+`closeReason` блокирует Esc во время сброса) → канал `sandbox:reset`.
+`buildHistoryArgv`/`buildSearchArgv` получили `--exclude=refs/stash`: стеш и так
+показан плашкой на своём базовом коммите, сырые `WIP on …`/`index on …` в графе не
+нужны. App.jsx: демо-вкладка без крестика, `repository` теперь берётся по активной
+вкладке (а не по `activeId`), демо-`HistoryWorkspace` монтируется только когда
+активна (реальные вкладки — всегда, ради сохранения DOM), иначе её граф
+пересекался бы с локаторами других вкладок в смоук-тестах. `Cmd+B`
+(сворачивание сайдбара на уровне App) удалён — работал только для старого демо.
+Проверки: `checks/sandbox.mjs` (план + настоящий сев/сброс), `sandbox-smoke.mjs`
+(демо-репо, стеш-pop, Reset demo workspace восстанавливает историю, обе темы);
+`smoke.mjs` переписан под реальный демо-граф; `browse/profile/repositories-smoke`
+поправлены под «старт на реальном демо-репозитории». UI-скилл прогнан по
+Settings-диалогу, решения — в `design/TOKENS.md`. Версия 0.7.0 → **0.8.0** (minor).
 
 Упаковка 0.6.1 (2026-09-07): первая реально собранная нативная сборка после M6.
 Две правки в `package.json`. `build.files` получил
@@ -506,10 +798,10 @@ UI-профиль просмотрен в обеих темах на 1000×640, 
 
 Сделано:
 - Изолированное окно Electron, сборка preload и Vite, запуск dev одной командой.
-- Табы, тулбар, сайдбар, статическая демонстрация истории, выбор коммита и родителя,
-  фильтр, правая панель, пустая раскрываемая консоль.
-- Сохранение состояния демонстрации при переключении вкладок (панель остаётся
-  смонтированной); закрытие демо сбрасывает её состояние.
+- Табы, тулбар, сайдбар, правая панель, раскрываемая консоль. Вкладка
+  `workspace-demo` — реальная git-песочница (`main/git/sandbox.js`), не фейк;
+  сохранение состояния DOM при переключении вкладок — для реальных репозиториев
+  (демо монтируется только когда активна).
 - System/dark/light с сохранением выбора, локальные Fira Sans / Fira Code,
   Lucide SVG. Темы применяются до загрузки React без светлой вспышки.
 - Клавиатурная навигация, хоткеи Cmd/Ctrl, сворачивание сайдбара, закрытие и
@@ -741,6 +1033,16 @@ Smoke запускает реальный Electron через Playwright и вр
   чистой функцией с полом для графа: доступное место меряется в момент
   действия (две соседние панели, без ширины разделителя), без ResizeObserver и таймеров.
   `panel-width.js` без импортов: его грузит и Vite, и Node в проверке.
+- `renderer/src/features/graph/column-widths.js` — регулируемые ширины столбцов
+  истории (`branch`/`graph`/`message`/`author`/`date`; все фиксированные, слабину
+  добирает хвостовой `1fr`-трек грида, `graph` default `null` = авторазмер по
+  дорожкам):
+  `HISTORY_COLUMNS`, клампы, нормализация, `read/writeColumnWidths`
+  (`twig:history-columns` в `localStorage`), `dragColumnWidth`/`nudgeColumnWidth`.
+  Импортов нет: его грузит и Vite, и Node в проверке. `CommitGraph` рендерит
+  маркеры `role="separator"` на правом краю ячеек шапки, проставляет `--col-*`
+  инлайном и держит шапку в синхроне со скроллером по `scrollLeft`; `history.css`
+  держит дефолты и `--table-min-width`.
 - `renderer/src/features/refs/remote-ref.js` — к какому remote относится
   `refs/remotes/...`. Импортов нет: его грузит и Vite, и Node в проверке.
 - `renderer/src/features/commit/forge-url.js` — remote URL → веб-ссылки на
@@ -802,16 +1104,30 @@ Smoke запускает реальный Electron через Playwright и вр
 - `main/git/patch-builder.js` — ядро staging'а по строкам. Классификация и
   нумерация строк **зеркальны** для staging и unstaging: `git apply` при
   `--reverse` сопоставляет с индексом новую сторону патча, а не старую.
+- `renderer/src/features/diff/intraline.js` — построчный дифф изменённых
+  символов: `segmentPair` (символьный LCS → `same/del/add`, `null` при
+  равенстве / длине > 400 / общего < 30 %), `segmentHunkLines`, `annotatePatch`.
+  Импортов нет: грузят и Vite, и Node-проверка. `renderer/src/features/diff/
+  DiffLines.jsx` — общий рендер тела диффа (панель коммита, стеши, blame);
+  `StageDiff` подключает сегменты напрямую.
+- `renderer/src/features/diff/file-status.js` — `FILE_STATUS` (буква статуса →
+  `{label, className}`) и `fileStatus` (нормализация ведущей буквы, `R100`→`R`,
+  `?`, пробел/неизвестное → нейтральный бейдж). Импортов нет: грузят Vite и
+  `scripts/checks/file-status.mjs`. Компонент `FileStatus.jsx` — цветной
+  квадратик с буквой (панель коммита, рабочее дерево, файлы стеша).
 - `preload/index.js` — ESM-исходник; esbuild → `dist/preload/index.cjs` для sandbox.
   Это требование Electron: sandboxed preload не поддерживает ESM напрямую.
-- `renderer/src/app` — окно, вкладки и панели; `demo.js` — выдуманный образец
-  демо-вкладки (остаётся статичной иллюстрацией, не путать с реальными репозиториями).
+- `renderer/src/app` — окно, вкладки и панели; `Console.jsx` — только развёрнутая
+  консоль (бывший `Panels.jsx`, демо-компоненты удалены). Статичного демо больше
+  нет: вкладка `workspace-demo` — реальная песочница (см. `main/git/sandbox.js`).
+- `main/git/sandbox.js` — `sandboxPlan()` (чистый список коммитов),
+  `runSeed`/`resetSandbox`/`ensureSandbox` для `userData/demo-sandbox` и локального
+  bare-remote. `createRepositoryService` инъектит песочницу первой в снапшот, не
+  персистит; `resetSandbox()` (канал `sandbox:reset`) чистит Undo и марки.
 - `features/graph/HistoryWorkspace.jsx` — экран открытого репозитория: сайдбар,
   граф, правая панель, рабочее дерево. `CommitGraph.jsx` — виртуализация и
   клавиатура. `layout.js` — инкрементальная раскладка дорожек (без библиотеки).
   `features/commit/CommitPanel.jsx` — детали коммита, файлы, дифф.
-  `features/graph/DemoGraph.jsx` остаётся демо-иллюстрацией, к реальным
-  репозиториям отношения не имеет.
 - `ui/tokens.css` — точная копия CSS из `design/TOKENS.md`, паритет проверяет npm test.
   `ui/history.css` — стили реального графа/сайдбара/панели на тех же токенах.
 - `scripts/checks/foundation.mjs` — URL-политика, контраст, паритет токенов,
@@ -830,6 +1146,11 @@ Smoke запускает реальный Electron через Playwright и вр
 - `scripts/checks/panel-width.mjs` — клампинг ширины панели коммита и
   направление перетаскивания (панель справа, движение влево её расширяет),
   а также удвоенный максимум `FILE_HISTORY_PANEL_SIZE` для истории файла.
+- `scripts/checks/column-widths.mjs` — регулируемые столбцы истории: набор из
+  пяти столбцов, клампы и округление, `graph`-null (нет drag → авторазмер),
+  `dragColumnWidth`/`nudgeColumnWidth`, нормализация мусора и выхода за диапазон,
+  round-trip через фейковый storage (graph auto и graph pinned) и откат к
+  дефолтам на падающем/битом storage.
 - `scripts/checks/marks.mjs` — паритет палитры марок renderer↔main, `validateMark`
   (плохой цвет/oid, длина и NUL заметки), атомарный `MarksStore` (изоляция по
   репозиториям, параллельные записи, чистка ключа, persist во временном каталоге).
@@ -838,6 +1159,12 @@ Smoke запускает реальный Electron через Playwright и вр
   для GitHub/GitLab/Bitbucket, `pickRemoteUrl` (origin → upstream → любой фордж).
 - `scripts/checks/diff-parser.mjs`, `conflict-parser.mjs` — разбор патча и
   маркеров конфликта, без запуска Git.
+- `scripts/checks/intraline.mjs` — построчный дифф символов: реконструкция обеих
+  сторон из сегментов, guard'ы длины и похожести, парность в хунке и в патче,
+  строки-заголовки патча не парятся, паритет имён классов с `history.css`.
+- `scripts/checks/file-status.mjs` — бейдж статуса файла: нормализация
+  `fileStatus`, паритет имён классов с `history.css` (каждый залит токеном
+  марки), контраст `--bg` на каждой заливке `--mark-*` ≥ 3:1 в обеих темах.
 - `scripts/checks/blame.mjs` — argv-билдеры (путь после `--`, не `:(literal)`),
   `parseBlamePorcelain` (таб в коде, boundary, previous, C-кавычки, NUL→binary),
   `mapLineBack`, и **на настоящем Git**: атрибуция при add/change/delete строк,
@@ -880,7 +1207,11 @@ Smoke запускает реальный Electron через Playwright и вр
   экране, переключение на цвета веток, легенда и то, что выбор переживает
   перезагрузку. Локальные марки: постановка из контекстного меню, выбор цвета и
   заметка в панели, подсветка строки, устойчивость к reload, снятие марки и три
-  отказа IPC (плохой oid/цвет, чужой репозиторий).
+  отказа IPC (плохой oid/цвет, чужой репозиторий). Построчный дифф символов:
+  правка hello.txt на вершине даёт `.diff-seg-add` и `.diff-seg-del` в реальном DOM.
+  Регулируемые столбцы: маркеры `Branch / tag`, `Commit message` и `Graph`
+  тянутся шире, `--col-branch`/`--col-message`/`--graph-width` растут и
+  переживают перезагрузку, двойной клик по `Graph` возвращает авторазмер.
 - `scripts/ops-smoke.mjs` — сквозная проверка M4: контекстное меню мышью и с
   клавиатуры (Shift+F10), конфликтующий merge, редактор конфликтов с выбором
   строк и своим undo/redo, баннер, диалог подтверждения `reset --hard` с

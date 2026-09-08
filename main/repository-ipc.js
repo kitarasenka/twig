@@ -20,6 +20,7 @@ export function registerRepositoryIpc(getWindow, entryUrl, { journal, repositori
     if (!item || (requireAvailable && !item.available)) throw new TypeError('Repository is unavailable');
     return item;
   }
+  register('sandbox:reset', 0, () => repositories.resetSandbox());
   register('repositories:remove', 1, id => {
     repository(id, false);
     if (remoteJobs.has(id)) throw new Error('Wait for the remote action before removing this repository.');

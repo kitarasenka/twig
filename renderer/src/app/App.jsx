@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, Settings, SquareTerminal, Undo2, Upload, UserRound, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, RefreshCw, Settings, SquareTerminal, Undo2, Upload, UserRound, X } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
-import Workspace from './Workspace.jsx';
-import { Console } from './Panels.jsx';
+import { Console } from './Console.jsx';
 import HistoryWorkspace from '../features/graph/HistoryWorkspace.jsx';
 import GitProfile from '../features/settings/GitProfile.jsx';
 import Repositories from '../features/settings/Repositories.jsx';
@@ -39,12 +38,11 @@ function applyConsoleUpdate(entries, update) {
 export default function App() {
   const [theme, setTheme] = useState(initialTheme);
   const [commitColors, setCommitColors] = useState(initialCommitColors);
-  const [active, setActive] = useState('demo');
-  const [demoOpen, setDemoOpen] = useState(true);
+  const [active, setActive] = useState('');
   const [emptyOpen, setEmptyOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [bugHunterSlot, setBugHunterSlot] = useState(null);
-  const [sidebar, setSidebar] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [dialogBusy, setDialogBusy] = useState(false);
   const [info, setInfo] = useState(null);
@@ -61,13 +59,14 @@ export default function App() {
   const [closedTabs, setClosedTabs] = useState(() => new Set());
   const [undoState, setUndoState] = useState({ undo: false, redo: false, undoReason: 'No application actions to undo.', redoReason: 'No next action.' });
   const [undoMoving, setUndoMoving] = useState(false);
-  const filterRef = useRef(null);
   const repositoryFilters = useRef(new Map());
   const selectionRequest = useRef(0);
   const divergenceRequest = useRef(0);
   const mod = info?.platform === 'darwin' || (!info && /Mac/.test(navigator.platform)) ? 'Cmd' : 'Ctrl';
   const ready = (info !== null && workspace !== null) || Boolean(startupError);
-  const repository = workspace?.repositories.find(item => item.id === workspace.activeId) || null;
+  const repository = workspace?.repositories.find(item => active === `repository:${item.id}`)
+    || workspace?.repositories.find(item => item.id === workspace.activeId) || null;
+  const sandboxId = workspace?.repositories.find(item => item.sandbox)?.id || null;
   const repositoryActive = active.startsWith('repository:');
 
   useEffect(() => {
@@ -77,7 +76,8 @@ export default function App() {
       .then(([appInfo, initialWorkspace, initialEntries]) => {
         if (!alive) return;
         setInfo(appInfo); setWorkspace(initialWorkspace); setEntries(initialEntries);
-        if (initialWorkspace.activeId) setActive(`repository:${initialWorkspace.activeId}`);
+        const startId = initialWorkspace.activeId || initialWorkspace.repositories[0]?.id;
+        if (startId) setActive(`repository:${startId}`);
       })
       .catch(() => { if (alive) setStartupError('Desktop connection unavailable. Restart 🌱 Twig.'); });
     const unsubscribe = window.twig.onConsoleUpdate((update) => { if (alive) setEntries(current => applyConsoleUpdate(current, update)); });
@@ -156,6 +156,26 @@ export default function App() {
     } finally { setSyncing(null); }
   }
 
+  async function resetDemo() {
+    setResetting(true); setSyncNote('');
+    try {
+      const next = await window.twig.resetDemoWorkspace();
+      ++selectionRequest.current;
+      setWorkspace(next);
+      setWorktreeVersion(value => value + 1);
+      const demo = next.repositories.find(item => item.sandbox);
+      if (demo) {
+        setActive(`repository:${demo.id}`);
+        setRemoteRevisions(current => ({ ...current, [demo.id]: (current[demo.id] || 0) + 1 }));
+      }
+      setDialog(null);
+      setSyncNote('Demo workspace reset to its sample history.');
+    } catch (error) {
+      setSyncNote(error.message || 'Could not reset the demo workspace.');
+      setConsoleOpen(true);
+    } finally { setResetting(false); }
+  }
+
   const syncReason = !repositoryActive || !repository?.available ? unavailable
     : syncing ? `${syncing} is running` : undefined;
 
@@ -203,7 +223,6 @@ export default function App() {
   }, [dialog, moveUndo, undoState]);
 
   function openEmpty() { setEmptyOpen(true); setActive('new'); }
-  function openDemo() { setDemoOpen(true); setActive('demo'); }
   async function openRepository() {
     try {
       const next = await window.twig.openRepository();
@@ -226,14 +245,15 @@ export default function App() {
     if (active !== `repository:${id}`) return;
     const openRepositories = (workspace?.repositories || []).filter(item => item.id !== id && !closedTabs.has(item.id));
     if (openRepositories.length > 0) setActive(`repository:${openRepositories[0].id}`);
-    else if (demoOpen) setActive('demo');
+    else if (sandboxId) setActive(`repository:${sandboxId}`);
     else openEmpty();
   }
   function acceptWorkspace(next, open = false) {
     ++selectionRequest.current;
     setWorkspace(next);
     if (open || !next.repositories.some(item => active === `repository:${item.id}`)) {
-      if (next.activeId) setActive(`repository:${next.activeId}`);
+      const fallbackId = next.activeId || next.repositories.find(item => item.sandbox)?.id;
+      if (fallbackId) setActive(`repository:${fallbackId}`);
       else openEmpty();
     }
     if (open) setDialog(null);
@@ -243,10 +263,8 @@ export default function App() {
     if (!dialogBusy) setDialog(null);
   }
   const focusSearch = useCallback(() => {
-    setSidebar(false);
     requestAnimationFrame(() => {
       if (active.startsWith('repository:')) repositoryFilters.current.get(active.slice(11))?.focus();
-      else filterRef.current?.focus();
     });
   }, [active]);
   useEffect(() => {
@@ -256,30 +274,34 @@ export default function App() {
       if (key === 'j') { event.preventDefault(); setConsoleOpen(value => !value); }
       if (key === ',') { event.preventDefault(); setDialog('Settings'); }
       if (key === 't') { event.preventDefault(); openEmpty(); }
-      if (key === 'b') { event.preventDefault(); setSidebar(value => !value); }
-      if (key === 'f' && (active === 'demo' || active.startsWith('repository:'))) { event.preventDefault(); focusSearch(); }
+      if (key === 'f' && active.startsWith('repository:')) { event.preventDefault(); focusSearch(); }
       if (key === 'w') {
         event.preventDefault();
-        if (active === 'demo') { setDemoOpen(false); openEmpty(); }
-        else if (demoOpen) { setEmptyOpen(false); setActive('demo'); }
+        if (active === 'new') { setEmptyOpen(false); if (sandboxId) setActive(`repository:${sandboxId}`); }
+        else if (repositoryActive && active.slice(11) !== sandboxId) {
+          const id = active.slice(11);
+          setClosedTabs(current => new Set(current).add(id));
+          const remaining = (workspace?.repositories || []).filter(item => item.id !== id && !closedTabs.has(item.id));
+          setActive(remaining[0] ? `repository:${remaining[0].id}` : sandboxId ? `repository:${sandboxId}` : 'new');
+          if (!remaining[0] && !sandboxId) setEmptyOpen(true);
+        }
       }
     }
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
-  }, [dialog, active, demoOpen, focusSearch]);
+  }, [dialog, active, repositoryActive, sandboxId, workspace, closedTabs, focusSearch]);
 
   return <div className="app-shell">
     <header className="tab-bar"><div className="brand"><img className="brand-logo" src="./twig-logo.png" alt="" width="36" height="36" /><strong>🌱 Twig</strong></div>
       <nav className="tabs" aria-label="Repository tabs">
-        {demoOpen && <div className={`tab ${active === 'demo' ? 'active' : ''}`}><button aria-current={active === 'demo' ? 'page' : undefined} onClick={() => setActive('demo')}><GitBranch /><span>workspace-demo</span><small>DEMO</small></button><Button icon={X} aria-label="Close demo tab" title={`${mod}+W`} onClick={() => { setDemoOpen(false); openEmpty(); }} /></div>}
-        {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{!item.available && <small>OFFLINE</small>}</button><Button icon={X} aria-label={`Close ${item.name} tab`} onClick={() => closeRepositoryTab(item.id)} /></div>)}
-        {emptyOpen && <div className={`tab ${active === 'new' ? 'active' : ''}`}><button aria-current={active === 'new' ? 'page' : undefined} onClick={() => setActive('new')}><FolderOpen />New repository</button>{demoOpen && <Button icon={X} aria-label="Close new tab" onClick={() => { setEmptyOpen(false); setActive('demo'); }} />}</div>}
+        {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{item.sandbox ? <small>DEMO</small> : !item.available && <small>OFFLINE</small>}</button>{!item.sandbox && <Button icon={X} aria-label={`Close ${item.name} tab`} title={`${mod}+W`} onClick={() => closeRepositoryTab(item.id)} />}</div>)}
+        {emptyOpen && <div className={`tab ${active === 'new' ? 'active' : ''}`}><button aria-current={active === 'new' ? 'page' : undefined} onClick={() => setActive('new')}><FolderOpen />New repository</button><Button icon={X} aria-label="Close new tab" onClick={() => { setEmptyOpen(false); if (sandboxId) setActive(`repository:${sandboxId}`); }} /></div>}
         <Button icon={Plus} aria-label="New repository tab" title={`${mod}+T`} onClick={openEmpty} />
       </nav>
       <div className="account-actions"><Button icon={Settings} aria-label="Settings" title={`Settings · ${mod}+,`} onClick={() => setDialog('Settings')} /><Button icon={UserRound} aria-label="Git profile" title="Git profile" onClick={() => setDialog('Git profile')} /></div>
     </header>
     <section className="toolbar" aria-label="Git actions">
-      <div className="repo-select"><label htmlFor="repository-select">REPOSITORY</label><select id="repository-select" value={active} onChange={(e) => { const { value } = e.target; if (value === 'demo') openDemo(); else if (value === 'new') openEmpty(); else void selectRepository(value.slice(11)); }}><option value="demo">workspace-demo</option>{workspace?.repositories.map(item => <option key={item.id} value={`repository:${item.id}`}>{item.name}</option>)}<option value="new">Open repository…</option></select></div>
+      <div className="repo-select"><label htmlFor="repository-select">REPOSITORY</label><select id="repository-select" value={active} onChange={(e) => { const { value } = e.target; if (value === 'new') openEmpty(); else void selectRepository(value.slice(11)); }}>{workspace?.repositories.map(item => <option key={item.id} value={`repository:${item.id}`}>{item.name}</option>)}<option value="new">Open repository…</option></select></div>
       <div className="branch-select"><span>CURRENT BRANCH</span><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : unavailable} onClick={focusSearch}>{repositoryActive ? repository?.status?.branch?.name || (repository?.status?.branch?.detached ? 'Detached HEAD' : 'Unavailable') : 'main'}<ChevronDown /></Button></div>
       <div className="tool-group"><Button className="tool" icon={Undo2} title={`${undoState.undoReason} · ${mod}+Z`} reason={undoMoving ? 'Reversing the action…' : !repositoryActive ? unavailable : !undoState.undo ? undoState.undoReason : undefined} onClick={() => moveUndo('undo')}>Undo</Button><Button className="tool" icon={Redo2} title={`${undoState.redoReason} · ${mod}+Shift+Z`} reason={undoMoving ? 'Reversing the action…' : !repositoryActive ? unavailable : !undoState.redo ? undoState.redoReason : undefined} onClick={() => moveUndo('redo')}>Redo</Button></div>
       <div className="tool-group">
@@ -305,18 +327,21 @@ export default function App() {
     {syncNote && <div className="sync-note" role="status"><span>{syncNote}</span><button onClick={() => setSyncNote('')} aria-label="Dismiss">×</button></div>}
     {!ready && <div className="loading-shell" aria-label="Loading workspace" aria-busy="true">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>}
     {ready && <div className="workspace-container">
-      {demoOpen && <div className="workspace-tab" hidden={active !== 'demo'}><Workspace filterRef={filterRef} mod={mod} sidebar={sidebar} onSidebar={() => setSidebar(!sidebar)} searchSignal={focusSearch} /></div>}
       {workspace?.repositories.map(item => <div className="workspace-tab" key={item.id} hidden={active !== `repository:${item.id}`}>
-        {item.available ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} mod={mod} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} toolbarSlot={bugHunterSlot} toolbarBusyReason={syncing ? `${syncing} is running` : undoMoving ? 'Reversing the action…' : undefined}
-          filterRef={node => { if (node) repositoryFilters.current.set(item.id, node); else repositoryFilters.current.delete(item.id); }}
-          onConsole={() => setConsoleOpen(true)} onRepositoryChanged={refreshRepository} />
-          : <RepositoryReady repository={item} onOpen={openRepository} />}
+        {/* Real repository tabs stay mounted so switching keeps their DOM; the
+            always-present demo tab mounts only while active, so its graph never
+            collides with another tab's. */}
+        {(!item.sandbox || active === `repository:${item.id}`) && (item.available
+          ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} mod={mod} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} toolbarSlot={bugHunterSlot} toolbarBusyReason={syncing ? `${syncing} is running` : undoMoving ? 'Reversing the action…' : undefined}
+            filterRef={node => { if (node) repositoryFilters.current.set(item.id, node); else repositoryFilters.current.delete(item.id); }}
+            onConsole={() => setConsoleOpen(true)} onRepositoryChanged={refreshRepository} />
+          : <RepositoryReady repository={item} onOpen={openRepository} />)}
       </div>)}
-      {active === 'new' && <main className="welcome"><div className="welcome-mark"><img src="./twig-logo.png" alt="" width="96" height="96" /></div><span className="eyebrow">YOUR NEXT WORKSPACE</span><h1>A clear view of your code.</h1><p>Open a folder, clone a repository, or choose one you have connected.</p><div className="welcome-actions"><Button icon={FolderOpen} className="primary" onClick={openRepository}>Open repository</Button><Button icon={ArrowDown} onClick={() => setDialog('Clone repository')}>Clone repository</Button><Button icon={GitBranch} onClick={() => setDialog('Repositories')}>Connected repositories</Button></div><div className="welcome-demo"><span className="demo-pill">PREVIEW</span><p>Explore the workspace with a sample history.</p><Button icon={GitBranch} className="primary" onClick={openDemo}>Explore demo workspace</Button></div></main>}
+      {active === 'new' && <main className="welcome"><div className="welcome-mark"><img src="./twig-logo.png" alt="" width="96" height="96" /></div><span className="eyebrow">YOUR NEXT WORKSPACE</span><h1>A clear view of your code.</h1><p>Open a folder, clone a repository, or choose one you have connected.</p><div className="welcome-actions"><Button icon={FolderOpen} className="primary" onClick={openRepository}>Open repository</Button><Button icon={ArrowDown} onClick={() => setDialog('Clone repository')}>Clone repository</Button><Button icon={GitBranch} onClick={() => setDialog('Repositories')}>Connected repositories</Button></div><div className="welcome-demo"><span className="demo-pill">DEMO</span><p>The <strong>workspace-demo</strong> tab is a real sandbox repository — every command runs against it.</p>{sandboxId && <Button icon={GitBranch} className="primary" onClick={() => setActive(`repository:${sandboxId}`)}>Open workspace-demo</Button>}</div></main>}
     </div>}
     <Console expanded={consoleOpen} onToggle={() => setConsoleOpen(!consoleOpen)} mod={mod} entries={entries}
       repositoryId={workspace?.repositories.find(item => item.available && active === `repository:${item.id}`)?.id || null} />
-    {dialog && <Dialog title={dialog} wide={['Git profile', 'Repositories', 'Clone repository', 'Remotes', 'SSH'].includes(dialog)} closeReason={dialogBusy ? 'Wait for the action to finish or cancel it first' : undefined} onClose={() => setDialog(null)}>
+    {dialog && <Dialog title={dialog} wide={['Git profile', 'Repositories', 'Clone repository', 'Remotes', 'SSH'].includes(dialog)} closeReason={dialogBusy || resetting ? 'Wait for the action to finish or cancel it first' : undefined} onClose={() => setDialog(null)}>
       {dialog === 'Settings' && <><p className="muted">Make this workspace feel like yours.</p>
         <label className="setting-row" htmlFor="theme"><span><strong>Appearance</strong><small>System follows your device setting.</small></span><select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
         <label className="setting-row" htmlFor="commit-colors"><span><strong>Commit colors</strong><small>Age shades the graph and the dates from brown roots to green new work.</small></span><select id="commit-colors" value={commitColors} onChange={(e) => setCommitColors(e.target.value)}><option value="age">Commit age</option><option value="lanes">Branch lanes</option></select></label>
@@ -324,6 +349,16 @@ export default function App() {
         <div className="settings-note">🌱 Twig {info?.version || '0.2.0'}<br />Local fonts. No telemetry. No automatic updates.</div></>}
       {dialog === 'Settings' && <div className="manager-actions"><Button icon={FolderOpen} onClick={() => setDialog('Repositories')}>Manage repositories</Button><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : 'Open a repository first'} onClick={() => setDialog('Remotes')}>Manage remotes</Button></div>}
       {dialog === 'Settings' && <Button onClick={() => setDialog('SSH')}>SSH keys and config</Button>}
+      {dialog === 'Settings' && <div className="setting-row"><span><strong>Demo workspace</strong><small>Restore the <strong>workspace-demo</strong> sandbox to its sample history.</small></span><Button icon={RefreshCw} onClick={() => setDialog('Reset demo workspace')}>Reset demo workspace</Button></div>}
+      {dialog === 'Reset demo workspace' && <div className="confirm-dialog">
+        <p className="confirm-consequence"><AlertTriangle aria-hidden="true" /><span>Deletes the <strong>workspace-demo</strong> sandbox and its local demo remote, then recreates them with the sample history.</span></p>
+        <ul>
+          <li>Any commits, branches, stashes or edits you made in the demo are discarded.</li>
+          <li>The demo’s Undo history ends and its commit marks are cleared.</li>
+          <li>Your own connected repositories and automation pipelines are not touched.</li>
+        </ul>
+        <div className="dialog-actions"><Button onClick={() => setDialog('Settings')} reason={resetting ? 'Resetting…' : undefined}>Cancel</Button><Button className="danger" icon={RefreshCw} onClick={resetDemo} reason={resetting ? 'Resetting the demo workspace…' : undefined}>Reset demo workspace</Button></div>
+      </div>}
       {dialog === 'SSH' && <SshSettings entries={entries} onBusyChange={setDialogBusy} onConsole={showManagerOutput} />}
       {dialog === 'Git profile' && <GitProfile repository={repositoryActive ? repository : null} onConsole={() => { setDialog(null); setConsoleOpen(true); }} />}
       {dialog === 'Repositories' && <Repositories workspace={workspace} onWorkspace={acceptWorkspace} onBusyChange={setDialogBusy} onConsole={showManagerOutput} onOpen={async () => { await openRepository(); setDialog(null); }} onClone={() => setDialog('Clone repository')} />}

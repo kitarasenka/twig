@@ -18,6 +18,34 @@ Colour is never the only carrier: the same row prints "45 days ago" next to the
 lane, and the Settings legend names every stop. No skill rerun for this one — it
 adds tokens and a settings row, not a screen.
 
+Intra-line diff, 2026-09-08: in a line a hunk removes and re-adds, only the
+changed characters carry a mark — added get a light `color-mix(--accent 26%)`
+plus a 2px underline, removed get `color-mix(--danger 34%)` plus a strike, both
+on `var(--text)`; the tint stays subtle so text keeps 4.5:1 and the decoration
+does the heavy lifting. Colour is never the
+only signal: the underline and strike say add vs remove on their own, and the
+line still sits on the existing `.diff-added` / `.diff-deleted` background. The
+diff runs on tokens (words, whitespace, single punctuation), not raw characters,
+so an inserted span stays whole instead of scattering shared letters; a rewrite
+(under 20% shared characters) or a very long line falls back to whole-line
+colouring. No new tokens — the mix
+follows the commit-mark precedent — and no new screen, so no full skill rerun,
+same call as the age ramp above.
+
+Changed-file status badge, 2026-09-08: the single status letter before a changed
+file's path (commit panel, working tree, stash files) is now a filled rounded
+square — the letter in `var(--bg)` on a `--mark-*` fill, one colour per status:
+added / untracked `--mark-green`, modified `--mark-amber`, deleted / conflict
+`--mark-red`, renamed / copied `--mark-blue`, type-change `--mark-violet`,
+anything else `--mark-slate`. Reuses the six commit-mark tokens exactly as the
+graph nodes do (fill in the mark colour, glyph in `--bg`), so no new tokens.
+Colour is never the only carrier: the letter still spells the status and every
+badge carries a `title` / `aria-label` ("Added", "Modified", …). The check holds
+`--bg` on each mark fill to the 3:1 a UI component needs — the same bar
+`foundation.mjs` holds the marks to — since the glyph is a bold single-letter
+badge with a redundant text label, not body copy. No new screen, no full skill
+rerun, same call as the age ramp and intra-line diff above.
+
 BugHunter, 2026-09-06: reran design-system for guided desktop debugging and
 React semantic controls. Retained 🌱 Twig's tokens, local fonts and density.
 Adopted three named phases, an explicit remaining-test estimate, visible
@@ -279,3 +307,44 @@ All foregrounds are checked against all surfaces at 4.5:1 by `npm test`.
 checked actual dark/light screenshots and the compact layout. Screenshots now
 finish CSS transitions before capture, so foregrounds are assessed against the
 matching theme surfaces. SVG lanes retain their labels and remote-ref dash style.
+
+## Demo sandbox + reinit (2026-09-07)
+
+`workspace-demo` is now a real seeded Git repository, so it reuses the already
+reviewed `HistoryWorkspace` screen — no new screen. Ran the skill for a
+destructive-confirmation review of the only new surface: a **Reset demo
+workspace** control in the Settings dialog and its confirm step.
+
+Accepted: keep the reinit affordance inside the Settings dialog as a labelled
+`.setting-row` (Appearance / Commit colors / Demo workspace), not a toolbar
+button — it is rare and destructive. The confirm reuses the vetted
+`.confirm-dialog` / `.confirm-consequence` / `.dialog-actions` / `.danger`
+pattern from `features/ops/dialogs.jsx`: `AlertTriangle` icon plus text (colour
+is never the only signal), a plain-language consequence list, and the
+destructive button last in tab order. Native `<dialog>` keeps the focus trap,
+Esc handling and focus return; `closeReason` blocks Esc/close while the reset
+runs; both action buttons disable during the operation; success is a brief
+`sync-note`. No `$ git …` line is shown because a reset is `rm -rf` plus a
+scripted re-seed, not one command — the consequence list is the honest form.
+
+Rejected: the skill's generic "no emoji icons" (the seedling is the product
+name, per the identity note above) and any marketing-scale typography.
+
+## Product website review (2026-09-08)
+
+Ran ui-ux-pro-max design-system for a professional Git developer tool and
+UX animation/accessibility search. Kept the existing forest/lime and cream
+palettes and local Fira Sans. The website build scopes the existing light
+palette to section containers; colour values are no longer duplicated in
+site/style.css. No renderer token changes.
+
+Accepted: product demonstration in the hero, a grid of four concrete features,
+44 px tab targets, visible focus, keyboard arrows/Home/End, finite 350–650 ms
+transform/opacity animations and reduced-motion support. Static HTML remains
+readable if scripts fail; all demo scenarios are visible without JavaScript.
+Rejected: horizontal scroll journeys, scroll hijacking, unrelated new fonts,
+continuous decorative motion, stock social proof and unsupported speed claims.
+
+Spacing: 92 px section rhythm (62 px on mobile), 20 px feature gaps, 25–32 px
+card padding. Existing 6–12 px radii, app shadows and palette tokens. The
+original logo stays in navigation/footer; the hero demonstrates the product.

@@ -64,13 +64,13 @@ try {
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Terminal', exact: true }).click();
   assert.ok(await list.getByRole('option').count() < 60);
-  await page.getByRole('button', { name: 'M hello.txt', exact: true }).click();
+  await page.getByRole('button', { name: 'Modified hello.txt', exact: true }).click();
   await page.getByRole('region', { name: 'File diff' }).waitFor().catch(() => {});
   await page.getByText('+Hello real history', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Close diff', exact: true }).click();
   // File history: the changed-file context menu lists every commit that touched
   // it. hello.txt changed twice — once at the root, once at the tip.
-  await page.getByRole('button', { name: 'M hello.txt', exact: true }).click({ button: 'right' });
+  await page.getByRole('button', { name: 'Modified hello.txt', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'File history' }).click();
   const fileHistory = page.getByRole('region', { name: 'File history', exact: true });
   await fileHistory.getByRole('listitem').first().waitFor();
@@ -90,11 +90,15 @@ try {
   assert.ok(await fileHistory.isVisible());
   await fileHistory.getByRole('listitem').first().getByRole('button').click();
   await fileDiff.getByText('+Hello real history', { exact: true }).waitFor();
+  // The tip edits hello.txt in place: the diff marks only the characters that
+  // changed, not the whole line.
+  assert.ok(await fileDiff.locator('.diff-seg-add').count() > 0, 'added characters are highlighted inside the line');
+  assert.ok(await fileDiff.locator('.diff-seg-del').count() > 0, 'removed characters are highlighted inside the line');
   await fileDiff.getByRole('button', { name: 'Go to commit', exact: true }).click();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
   assert.equal(await fileHistory.count(), 0);
 
-  await page.getByRole('button', { name: 'A renamed.txt', exact: true }).click({ button: 'right' });
+  await page.getByRole('button', { name: 'Added renamed.txt', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'File history' }).click();
   await fileHistory.getByRole('listitem').last().getByRole('button').click();
   await fileDiff.getByText('+Rename history content', { exact: true }).waitFor();
@@ -237,6 +241,39 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll('.real-lane circle')].some(node => node.classList.contains('graph-age-4')));
   await list.evaluate(node => { node.scrollTop = 0; });
 
+  // Adjustable columns: drag two handles wider and the widths stick across a reload.
+  const colVar = name => page.evaluate(prop =>
+    parseInt(getComputedStyle(document.querySelector('.real-history')).getPropertyValue(prop), 10), name);
+  const dragColumn = async (label, dx) => {
+    const box = await page.getByRole('separator', { name: `Resize ${label} column` }).boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+  };
+  const beforeBranch = await colVar('--col-branch');
+  const beforeMessage = await colVar('--col-message');
+  const beforeGraph = await colVar('--graph-width');
+  await dragColumn('Branch / tag', 70);
+  await dragColumn('Commit message', 90);
+  await dragColumn('Graph', 60);
+  const afterBranch = await colVar('--col-branch');
+  const afterMessage = await colVar('--col-message');
+  const afterGraph = await colVar('--graph-width');
+  assert.ok(afterBranch >= beforeBranch + 50, `branch column widened: ${beforeBranch} -> ${afterBranch}`);
+  assert.ok(afterMessage >= beforeMessage + 60, `message column widened: ${beforeMessage} -> ${afterMessage}`);
+  assert.ok(afterGraph >= beforeGraph + 40, `graph column widened: ${beforeGraph} -> ${afterGraph}`);
+  await page.reload();
+  await list.waitFor();
+  await list.getByRole('option').first().waitFor();
+  assert.equal(await colVar('--col-branch'), afterBranch, 'the branch width survives a restart');
+  assert.equal(await colVar('--col-message'), afterMessage, 'the message width survives a restart');
+  assert.equal(await colVar('--graph-width'), afterGraph, 'the pinned graph width survives a restart');
+  // Double-click the Graph handle to drop back to the automatic width.
+  await page.getByRole('separator', { name: 'Resize Graph column' }).dblclick();
+  assert.equal(await colVar('--graph-width'), beforeGraph, 'double-click restores the automatic graph width');
+  await list.evaluate(node => { node.scrollTop = 0; });
+
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByLabel('Appearance').selectOption(theme); await page.keyboard.press('Escape');
@@ -246,7 +283,7 @@ try {
   await page.screenshot({ path: 'artifacts/m2-compact.png', animations: 'disabled' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, console command bar, themes.');
+  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, console command bar, adjustable columns, themes.');
 } finally {
   if (app) await app.close();
   await rm(root, { recursive: true, force: true });

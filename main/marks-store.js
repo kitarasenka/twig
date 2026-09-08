@@ -45,6 +45,11 @@ export class MarksStore {
     });
   }
 
+  /** Drop every mark for a repository — used when the demo sandbox is reset. */
+  forget(repoId) {
+    return this.#write(state => { delete state[repoId]; return repoId; });
+  }
+
   clear(repoId, oid) {
     return this.#write(state => {
       if (state[repoId]) {

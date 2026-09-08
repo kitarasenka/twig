@@ -25,12 +25,13 @@ try {
   const dialog = page.getByRole('dialog', { name: 'Git profile' });
   const name = dialog.locator('input[id="profile-user.name"]');
   const saveName = () => dialog.getByRole('button', { name: 'Save Name', exact: true }).click();
+  // The New repository tab has no repository, so the profile edits global config.
+  await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
   await openProfile(); await name.fill('Global Twig'); await saveName();
   await dialog.getByText('user.name saved globally.', { exact: true }).waitFor();
   assert.equal(await git(['config', '--global', 'user.name']), 'Global Twig');
   await page.keyboard.press('Escape');
   await app.evaluate(({ dialog }, directory) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] }); }, cwd);
-  await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
   await page.getByRole('button', { name: 'Open repository', exact: true }).click();
   await page.getByRole('listbox', { name: 'Commit history', exact: true }).waitFor();
   await openProfile(); await name.waitFor(); assert.equal(await name.inputValue(), '');

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, FilePenLine, FilePlus2, Minus, Plus } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import FileStatus from '../diff/FileStatus.jsx';
 import StageDiff from './StageDiff.jsx';
 
 const EMPTY = { staged: [], unstaged: [], untracked: [], branch: null };
@@ -8,7 +9,7 @@ const EMPTY = { staged: [], unstaged: [], untracked: [], branch: null };
 function FileRow({ entry, active, onOpen, onPrimary, primaryIcon: Icon, primaryLabel, busy }) {
   return <div className={`worktree-file ${active ? 'selected' : ''}`}>
     <button className="worktree-open" onClick={onOpen} title={entry.path}>
-      <span className="file-status">{entry.status}</span><span>{entry.path}</span>
+      <FileStatus status={entry.status} /><span>{entry.path}</span>
     </button>
     <Button icon={Icon} aria-label={`${primaryLabel} ${entry.path}`} reason={busy ? 'Git is working' : undefined} onClick={onPrimary} />
   </div>;

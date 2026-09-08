@@ -83,11 +83,29 @@ try {
   // itself, and rebasing onto the tip of the current branch is not offered.
   await menu.getByRole('menuitem', { name: 'Merge feature into main', exact: true }).waitFor();
   assert.equal(await menu.getByRole('menuitem', { name: /Merge main into/ }).count(), 0);
+  // The ref that sits on this commit brings its own actions: rename, upstream, delete.
+  await menu.getByRole('menuitem', { name: 'Rename feature…', exact: true }).waitFor();
+  await menu.getByRole('menuitem', { name: 'Delete feature', exact: true }).waitFor();
   await shot('menu');
 
   // Escape closes it and focus goes back to the history, not to the top of the page.
   await page.keyboard.press('Escape');
   await menu.waitFor({ state: 'detached' });
+
+  // Create a throwaway branch from the menu on a commit that main already
+  // contains, then delete it from the menu: the whole ref-action path (menu
+  // item → §6.5 dialog → refs:delete-branch → graph reload) runs against real
+  // Git, and `branch -d` accepts it because nothing would be lost.
+  const gardenRow = page.getByRole('option', { name: /plant the garden/ });
+  await gardenRow.click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: 'Create branch here…', exact: true }).click();
+  await page.getByLabel('Branch name').fill('scratch');
+  await page.getByRole('button', { name: 'Create branch', exact: true }).click();
+  await expect('Branch scratch created.', 'the scratch branch is created');
+  await gardenRow.click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: 'Delete scratch', exact: true }).click();
+  await expect('Branch scratch deleted.', 'the scratch branch is deleted from the menu');
+  assert.equal(await page.getByRole('option', { name: /\bscratch\b/ }).count(), 0, 'the deleted branch is gone from the graph');
 
   // The same menu is reachable without a mouse.
   await page.getByRole('listbox', { name: 'Commit history', exact: true }).focus();
@@ -306,7 +324,9 @@ try {
   assert.deepEqual(rejected, Array(8).fill('rejected'));
 
   // The commit panel finishes loading before the theme shots, so the review
-  // images show the real thing rather than skeleton placeholders.
+  // images show the real thing rather than skeleton placeholders. The author,
+  // message and metadata start collapsed, so reveal them for the review images.
+  await page.getByRole('button', { name: 'Show details' }).click();
   await page.getByRole('complementary', { name: 'Commit details' }).getByText('Twig Fixture').first().waitFor();
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();

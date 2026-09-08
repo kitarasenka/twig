@@ -21,11 +21,14 @@ try {
     await server.listen();
     env.TWIG_DEV = '1';
   }
-  app = await electron.launch({ args: ['.', `--user-data-dir=${profile}`], env, timeout: 20000 });
+  app = await electron.launch({ args: ['.', `--user-data-dir=${profile}`], env, timeout: 30000 });
   const page = await app.firstWindow();
-  page.setDefaultTimeout(10000);
+  page.setDefaultTimeout(15000);
   page.on('pageerror', e => errors.push(e.message));
-  await page.getByRole('listbox', { name: 'Demo commit history' }).waitFor();
+  // The demo tab is a real seeded sandbox repository, not a mock: on first
+  // launch the app runs git init and scripts a sample history under the temp
+  // profile, then renders the same HistoryWorkspace every connected repo uses.
+  await page.getByRole('listbox', { name: 'Commit history', exact: true }).waitFor();
   const info = await page.evaluate(() => window.twig.getAppInfo());
   assert.equal(info.name, '🌱 Twig');
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined');
@@ -43,7 +46,7 @@ try {
     'stashFiles', 'stashDiff', 'stashAction', 'pushRef', 'runDrop', 'deleteBranch', 'renameBranch', 'setUpstream', 'deleteTag',
     'getBisectState', 'runBisect', 'listMarks', 'setMark', 'clearMark',
     'getBlame', 'getReverseBlame', 'getBlameBefore', 'cancelBlame',
-    'cloneRepository', 'getRemotes', 'removeRepository', 'getUndoState', 'moveUndo', 'onUndoUpdate',
+    'cloneRepository', 'getRemotes', 'removeRepository', 'resetDemoWorkspace', 'getUndoState', 'moveUndo', 'onUndoUpdate',
     'getSshKeys', 'getSshConfig', 'generateSshKey', 'saveSshConfig', 'testSshConnection', 'cancelSshConnection', 'secureSshKey',
     'getAutomationConfig', 'saveAutomationConfig', 'trustAutomations', 'runAutomation', 'cancelAutomation', 'getAutomationRuns', 'getAutomationRun', 'onAutomationStep',
     'runConsoleCommand'].sort());
@@ -52,21 +55,10 @@ try {
     return { sandbox: prefs.sandbox, contextIsolation: prefs.contextIsolation, nodeIntegration: prefs.nodeIntegration };
   });
   assert.deepEqual(security, { sandbox: true, contextIsolation: true, nodeIntegration: false });
-  await page.getByRole('listbox').getByRole('option').nth(2).click();
-  await page.getByRole('heading', { name: 'Stream command output as it arrives' }).waitFor();
+  await page.getByRole('listbox', { name: 'Commit history', exact: true }).getByRole('option').first().click();
+  await page.getByRole('heading', { name: 'Refine the workspace layout' }).waitFor();
   await page.keyboard.press('ArrowDown');
   await page.getByRole('heading', { name: 'Add keyboard navigation to commit details' }).waitFor();
-  await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
-  await page.getByRole('heading', { name: 'A clear view of your code.' }).waitFor();
-  await page.getByRole('button', { name: /workspace-demo/ }).click();
-  await page.getByRole('heading', { name: 'Add keyboard navigation to commit details' }).waitFor();
-  const filter = page.getByRole('textbox', { name: 'Filter branches and history' });
-  await filter.fill('fonts');
-  assert.equal(await page.getByRole('listbox').getByRole('option').count(), 1);
-  await filter.fill('nothing matches this');
-  await page.getByText('No matching commits.').waitFor();
-  await filter.fill('');
-  await page.getByRole('listbox').getByRole('option').first().click();
   // The commit panel is resized by dragging the divider, not by a slider, so
   // both the pointer and the keyboard path are asserted against the real width.
   assert.equal(await page.getByRole('slider').count(), 0);
@@ -84,6 +76,18 @@ try {
   assert.equal(Math.round(await panelWidth()), Math.round(started) + 44);
   await splitter.dblclick();
   assert.equal(Math.round(await panelWidth()), Math.round(started));
+  // The demo tab has no close control; opening the New repository tab and coming
+  // back keeps its selection.
+  assert.equal(await page.getByRole('button', { name: 'Close workspace-demo tab' }).count(), 0);
+  await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
+  await page.getByRole('heading', { name: 'A clear view of your code.' }).waitFor();
+  await page.getByRole('button', { name: 'Open workspace-demo', exact: true }).click();
+  await page.getByRole('heading', { name: 'Refine the workspace layout' }).waitFor();
+  // One search box drives the sidebar refs and a global commit search.
+  const search = page.getByRole('textbox', { name: 'Search commits and references' });
+  await search.fill('repository-tabs');
+  await page.getByRole('button', { name: 'repository-tabs', exact: true }).waitFor();
+  await search.fill('');
   await page.getByRole('button', { name: 'Terminal', exact: true }).click();
   await page.getByRole('textbox', { name: 'Search command log' }).waitFor();
   await page.getByText(/git --no-pager -c color.ui=false --version/).first().waitFor();

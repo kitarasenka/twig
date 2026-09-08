@@ -40,8 +40,9 @@ try {
   await clone.getByRole('button', { name: 'Clone and open', exact: true }).click();
   await page.getByRole('listbox', { name: 'Commit history', exact: true }).getByRole('option', { name: /A cloned history/ }).waitFor();
   const workspace = await page.evaluate(() => window.twig.getWorkspace());
-  const clonedPath = workspace.repositories[0].path;
-  assert.equal(workspace.repositories[0].name, 'twig-clone');
+  const cloned = workspace.repositories.find(item => !item.sandbox);
+  const clonedPath = cloned.path;
+  assert.equal(cloned.name, 'twig-clone');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Manage remotes', exact: true }).click();
   const remotes = page.getByRole('dialog', { name: 'Remotes', exact: true });
@@ -92,6 +93,9 @@ try {
   await app.close(); app = await electron.launch({ args, env });
   const restarted = await app.firstWindow();
   await restarted.waitForFunction(() => Boolean(window.twig));
-  assert.deepEqual((await restarted.evaluate(() => window.twig.getWorkspace())).repositories, []);
+  // Only the always-present demo sandbox remains after the connected clone is removed.
+  const restartedRepos = (await restarted.evaluate(() => window.twig.getWorkspace())).repositories;
+  assert.deepEqual(restartedRepos.filter(item => !item.sandbox), []);
+  assert.equal(restartedRepos.filter(item => item.sandbox).length, 1);
   console.log('M5 repositories Electron passed: clone and history, remote add/edit/fetch/remove, repository filtering/removal, restart, disk preservation, journal, IPC and themes.');
 } finally { await app?.close(); await rm(root, { recursive: true, force: true }); }

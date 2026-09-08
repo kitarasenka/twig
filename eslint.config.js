@@ -8,7 +8,7 @@ export default [
   js.configs.recommended,
   { languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: globals.node } },
   {
-    files: ['renderer/public/*.js', 'scripts/smoke.mjs', 'scripts/history-smoke.mjs', 'scripts/blame-smoke.mjs', 'scripts/worktree-smoke.mjs', 'scripts/ops-smoke.mjs', 'scripts/drop-smoke.mjs', 'scripts/browse-smoke.mjs', 'scripts/profile-smoke.mjs', 'scripts/repositories-smoke.mjs', 'scripts/ssh-undo-smoke.mjs', 'scripts/automations-smoke.mjs'],
+    files: ['renderer/public/*.js', 'scripts/smoke.mjs', 'scripts/history-smoke.mjs', 'scripts/blame-smoke.mjs', 'scripts/worktree-smoke.mjs', 'scripts/ops-smoke.mjs', 'scripts/drop-smoke.mjs', 'scripts/browse-smoke.mjs', 'scripts/profile-smoke.mjs', 'scripts/repositories-smoke.mjs', 'scripts/ssh-undo-smoke.mjs', 'scripts/automations-smoke.mjs', 'scripts/sandbox-smoke.mjs'],
     languageOptions: { globals: globals.browser }
   },
   {

@@ -1,0 +1,69 @@
+# Собирает лендинг site/ и публикует его на GitHub Pages этого репозитория.
+#
+# Только статическая страница. Установщики Twig на Pages не помещаются (лимит
+# около 1 ГБ на сайт против восьми сборок Electron), поэтому бинарники — ассеты
+# GitHub Release с тегом twig-v<version>, а кнопки скачивания указывают прямо
+# туда: build:site приписывает имена файлов из downloads.json к
+# TWIG_SITE_DOWNLOAD_BASE (см. site/build.mjs). Пока Release с нужным тегом не
+# опубликован, кнопки отдают 404 — ожидаемое состояние.
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'package.json'
+      - 'renderer/src/ui/tokens.css'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # build:site нужны только @fontsource/fira-sans и tokens.css из репо —
+      # ни electron, ни vite, ни playwright не требуются.
+      - run: npm ci --omit=dev
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - id: meta
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - run: npm run build:site
+        env:
+          TWIG_SITE_DOWNLOAD_BASE: https://github.com/${{ github.repository }}/releases/download/twig-v${{ steps.meta.outputs.version }}/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

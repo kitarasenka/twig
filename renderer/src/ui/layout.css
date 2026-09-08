@@ -72,7 +72,6 @@ summary span { float: right; font-family: var(--font-mono); font-weight: 400; }
 .graph-heading > div { display: flex; align-items: center; gap: var(--space-2); }
 .graph-heading svg { color: var(--muted); }
 .count { padding: 0 var(--space-2); color: var(--muted); background: var(--surface-raised); border-radius: var(--radius-sm); font-size: var(--text-xs); }
-.demo-notice { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); color: var(--muted); font-size: var(--text-xs); border-bottom: 1px solid var(--border); }
 .demo-pill { display: inline-flex; padding: 2px var(--space-1); color: var(--accent); background: var(--accent-bg); border-radius: var(--radius-sm); font-size: 9px; font-weight: 500; letter-spacing: .08em; white-space: nowrap; }
 .history { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .history-columns, .commit-row { display: grid; grid-template-columns: 144px 88px minmax(140px, 1fr) 60px 86px; align-items: center; gap: 0; padding: 0 var(--space-3); }

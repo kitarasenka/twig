@@ -28,6 +28,14 @@ export class UndoService {
     });
     this.#writes = next; await next;
   }
+  /** Drop the recorded chain for a repository — used when the demo sandbox is reset. */
+  async forget(cwd) {
+    if (!this.#states.has(cwd) && !this.#busy.has(cwd)) return;
+    this.#states.delete(cwd);
+    await this.#save();
+    this.#emit(cwd);
+  }
+
   async inspect(cwd) {
     const state = this.#state(cwd);
     const summary = reason => ({ undo: false, redo: false, undoReason: reason, redoReason: reason });
