@@ -49,10 +49,11 @@ npm run pack:linux
 | macOS Intel | `Twig-VERSION-macos-x64.dmg` |
 | Windows x64 | `Twig-VERSION-windows-x64.exe` |
 | Debian / Ubuntu x64 | `Twig-VERSION-linux-amd64.deb` |
+| Linux x64 (portable) | `Twig-VERSION-linux-x86_64.AppImage` |
 
-Доступны только установщики: DMG для macOS, NSIS для Windows и DEB для
-Debian / Ubuntu. Настройки и демо-песочница хранятся в стандартном
-пользовательском каталоге ОС.
+Доступны: DMG для macOS, NSIS для Windows, DEB для Debian / Ubuntu и
+AppImage для остальных Linux (запускается без установки). Настройки и
+демо-песочница хранятся в стандартном пользовательском каталоге ОС.
 
 Источник имён и архитектур один: `build.mac/win/linux` в `package.json`.
 Сайт читает те же `artifactName` и `target`, которые использует упаковщик.
@@ -86,6 +87,7 @@ Debian / Ubuntu. Настройки и демо-песочница хранят�
     Twig-VERSION-macos-x64.dmg
     Twig-VERSION-windows-x64.exe
     Twig-VERSION-linux-amd64.deb
+    Twig-VERSION-linux-x86_64.AppImage
 ```
 
 Ссылки относительные: сайт работает и в корне домена, и в подкаталоге.

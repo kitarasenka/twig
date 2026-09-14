@@ -285,9 +285,31 @@ Rename/Delete, создание ветки `scratch` из меню и её уд�
 `branch -d` + перезагрузка графа). `npm test` и `ops-smoke` зелёные. Версия не
 бампалась (см. запись про 0.8.0 ниже).
 
+AppImage вернулся (2026-09-14, вне вех): `build.linux.target` — `deb` (amd64)
+**и** `AppImage` (x86_64), рядом с DMG (arm64/x64) и NSIS (x64). AppImage
+запускается без установки (`chmod +x`), но userData остаётся стандартным
+каталогом Electron: `main/portable.js` не возвращается, автономного режима
+состояния нет. `site/build.mjs`: `formats` получил `AppImage: 'AppImage'`,
+`archNames` — `AppImage: { x64: 'x86_64' }` (electron-builder переписывает
+`${arch}` по таргету: deb → `amd64`, AppImage → `x86_64`; сырой `x64` дал бы
+битую ссылку), карточка Linux — вторая кнопка «AppImage · x64». В
+`release.yml` ubuntu-раннер грузит `release/*.deb release/*.AppImage`.
+`site/check.mjs` считает ссылки из `downloads.json`, правок не потребовал —
+теперь их 5. Проверено: `npm run build:site` печатает
+`Twig-0.8.3-linux-x86_64.AppImage`, `eslint site/build.mjs` чист, `AppImage`
+есть в схеме установленного electron-builder. Реальная Linux-сборка на macOS
+не запускалась — её делает раннер релиза.
+
+**Релиз по тегу — часть бампа версии.** Каждый подъём версии обязан
+сопровождаться тегом `twig-v<version>` на коммите с этой версией и его пушем:
+`release.yml` срабатывает только на push тега `twig-v*`, иначе установщики не
+собираются и кнопки сайта отдают 404. Тег сверяется с `package.json`, иначе
+воркфлоу падает.
+
 Только установщики (2026-09-14): по запросу пользователя удалены ZIP, Windows
 portable и AppImage, их ссылки на сайте и публикация в release workflow.
-Остаются DMG (arm64/x64), NSIS (x64), DEB (amd64). Удалён main/portable.js:
+Остаются DMG (arm64/x64), NSIS (x64), DEB (amd64); AppImage позже вернули
+(см. запись выше). Удалён main/portable.js:
 маркеры рядом с бинарём и переменные портативного режима больше не
 перенаправляют userData; используется стандартный каталог Electron.
 Изоляция smoke-тестов через --user-data-dir сохраняется.

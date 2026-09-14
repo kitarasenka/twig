@@ -77,7 +77,10 @@
     },
     "linux": {
       "artifactName": "Twig-${version}-linux-${arch}.${ext}",
-      "target": [{ "target": "deb", "arch": ["x64"] }],
+      "target": [
+        { "target": "deb", "arch": ["x64"] },
+        { "target": "AppImage", "arch": ["x64"] }
+      ],
       "category": "Development",
       "maintainer": "nodex contributors <kitarasenka@users.noreply.github.com>",
       "icon": "build/icon.png"

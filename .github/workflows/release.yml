@@ -67,7 +67,7 @@ jobs:
             assets: 'release/Twig-*-windows-x64.exe'
           - os: ubuntu-latest
             script: 'pack:linux'
-            assets: 'release/*.deb'
+            assets: 'release/*.deb release/*.AppImage'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

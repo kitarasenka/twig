@@ -16,9 +16,10 @@ const downloadBase = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 if (downloadBase !== DEFAULT_DOWNLOAD_BASE && !/^https:\/\/[a-z0-9.-]+(?:\/[a-z0-9._~-]+)*\/$/i.test(downloadBase)) {
   throw new Error(`Unsafe site download base: ${downloadBase}`);
 }
-const formats = { dmg: 'dmg', nsis: 'exe', deb: 'deb' };
-// electron-builder uses Debian architecture names for deb artifacts.
-const archNames = { deb: { x64: 'amd64' } };
+const formats = { dmg: 'dmg', nsis: 'exe', deb: 'deb', AppImage: 'AppImage' };
+// electron-builder rewrites ${arch} per target: deb gets Debian names, AppImage
+// the uname spelling. Raw x64 would produce dead links for both.
+const archNames = { deb: { x64: 'amd64' }, AppImage: { x64: 'x86_64' } };
 const platforms = { mac: 'macOS', win: 'Windows', linux: 'Linux' };
 const downloads = [];
 const cards = Object.entries(platforms).map(([platform, title]) => {
@@ -36,6 +37,7 @@ const cards = Object.entries(platforms).map(([platform, title]) => {
     const label = platform === 'mac'
       ? macArch
       : target === 'deb' ? 'Debian / Ubuntu · x64'
+      : target === 'AppImage' ? 'AppImage · x64'
       : 'Установщик · x64';
     return `<a class="download-link" href="${href}" download><span>${label}<small>.${ext}</small></span><span aria-hidden="true">↓</span></a>`;
   }));
