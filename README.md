@@ -6,7 +6,7 @@ history in the center, repository navigation on the left, commit details on the
 right, and a command console below — everything the app runs against Git is
 visible there, exactly as it was invoked.
 
-**Current version: 0.8.5.** Released 2026-09-14 — what appeared in each release
+**Current version: 0.8.6.** Released 2026-09-14 — what appeared in each release
 is listed in [CHANGELOG.md](CHANGELOG.md). This repository was split out of the private
 `nodes-managers` monorepo (`modules/git_desk`) with `git subtree split`; the
 M0…M6 history is preserved. `PROMPT.md` is the full specification and `CLAUDE.md`
@@ -197,3 +197,18 @@ the app makes for itself is the manual update check in Settings: one call to the
 GitHub Releases API when you press the button, compared against the running
 version — nothing is checked in the background, downloaded or installed. Colors
 come only from `design/TOKENS.md`.
+
+## License
+
+Copyright (c) 2026 Kiryl Tarasenka.
+
+🌱 Twig is distributed under the Functional Source License, Version 1.1, with an
+Apache 2.0 future license (`FSL-1.1-ALv2`) — see [LICENSE.md](LICENSE.md). You
+may use, modify and redistribute it for any purpose that is not a competing
+commercial product or service, and every version becomes Apache 2.0 two years
+after it is made available.
+
+That license applies to the commit that introduced it and everything published
+after it. Releases up to and including 0.8.5 were published with no license file
+and no grant of any kind; [NOTICE.md](NOTICE.md) spells this out. Contributions
+are accepted under the [CLA](CLA.md).

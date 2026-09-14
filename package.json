@@ -1,13 +1,13 @@
 {
   "name": "twig",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "releaseDate": "2026-09-14",
   "private": true,
   "type": "module",
   "description": "An independent desktop Git workspace with a visual commit graph",
-  "author": "nodex contributors",
+  "author": "Kiryl Tarasenka <tarasenka.kiryl@gmail.com>",
   "homepage": "https://kitarasenka.github.io/twig/",
-  "license": "UNLICENSED",
+  "license": "SEE LICENSE IN LICENSE.md",
   "nodexInstall": false,
   "main": "main/index.js",
   "engines": {
@@ -84,7 +84,7 @@
         { "target": "AppImage", "arch": ["x64"] }
       ],
       "category": "Development",
-      "maintainer": "nodex contributors <kitarasenka@users.noreply.github.com>",
+      "maintainer": "Kiryl Tarasenka <kitarasenka@users.noreply.github.com>",
       "icon": "build/icon.png"
     }
   }
