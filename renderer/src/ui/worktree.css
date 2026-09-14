@@ -27,15 +27,18 @@
 .stage-diff { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .stage-diff .panel-heading code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .diff-actions { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
-.diff-scroll { flex: 1; overflow: auto; font-family: var(--font-mono); font-size: var(--text-xs); }
+.diff-scroll { flex: 1; overflow: auto; font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.35; }
 .stage-hunk { border-top: 1px solid var(--border); }
-.stage-hunk-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2);
+.stage-hunk-head { display: flex; align-items: center; gap: var(--space-2); padding: 2px var(--space-2);
   background: var(--surface); color: var(--muted); position: sticky; top: 0; }
 .stage-hunk-head label { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 .stage-hunk-head em { font-style: normal; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.stage-line { display: grid; grid-template-columns: 22px 44px 44px minmax(0, 1fr); align-items: baseline; }
+.stage-line { display: grid; grid-template-columns: 22px 44px 44px minmax(0, 1fr); align-items: center; }
 .stage-line:hover { background: var(--surface-hover); }
-.stage-line input { justify-self: center; }
+/* The global input rule gives every control --row-height (30px) plus padding;
+   on a diff that turns a 15px line into a 38px one. Diff checkboxes are sized
+   to the line, not to a form field. */
+.stage-line input, .stage-hunk-head input { justify-self: center; min-height: 0; width: 12px; height: 12px; margin: 0; padding: 0; }
 .stage-line-spacer { display: block; }
 .line-number { color: var(--muted); text-align: right; padding-right: var(--space-2); user-select: none; }
 .line-text { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: var(--space-2); }

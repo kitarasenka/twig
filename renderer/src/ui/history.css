@@ -153,7 +153,7 @@
 .file-history-entry > code { color: var(--accent); font-size: var(--text-xs); }
 .file-history-subject { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .file-history-meta { color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
-.diff-lines { flex: 1; overflow: auto; font: var(--text-sm)/1.7 var(--font-mono); padding-block: var(--space-3); }
+.diff-lines { flex: 1; overflow: auto; font: var(--text-sm)/1.35 var(--font-mono); padding-block: var(--space-2); }
 .diff-lines > div { white-space: pre; min-width: max-content; padding-inline: var(--space-4); }
 .diff-added { color: var(--accent); background: var(--accent-bg); }
 .diff-deleted { color: var(--danger); background: var(--surface); }

@@ -161,6 +161,10 @@ summary span { float: right; font-family: var(--font-mono); font-weight: 400; }
   /* The journal keeps up to 2000 entries; off-screen rows skip rendering instead of being virtualised. */
   content-visibility: auto; contain-intrinsic-size: auto 32px; }
 .console-entry.failed { box-shadow: inset 2px 0 var(--danger); }
+/* The entry "Show output" jumped to: same danger bar as a failure, plus a tint
+   that stays until another entry is opened, so the row is findable after the flash. */
+.console-entry.focused { box-shadow: inset 3px 0 var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); animation: console-focus 900ms ease-out 1; }
+@keyframes console-focus { from { background: color-mix(in srgb, var(--danger) 34%, transparent); } }
 .console-entry-summary { width: 100%; min-height: 32px; justify-content: flex-start; gap: var(--space-2); border-radius: 0; padding: var(--space-1) var(--space-4); font-size: 10px; text-align: left; }
 .console-entry-summary > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; }
 .console-entry-summary > span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

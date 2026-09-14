@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Clipboard, CornerDownLeft, Search, Terminal } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import { checkReadOnly, tokenize } from '../../../main/git/read-only-command.js';
@@ -7,7 +7,7 @@ function commandText(entry) { return `$ ${entry.executable || 'git'} ${entry.arg
 function elapsed(entry) { return entry.ms === null ? 'running' : `${entry.ms}ms`; }
 function startedText(entry) { return entry.startedAt.replace('T', ' ').replace(/\.\d+/, '').replace('Z', ''); }
 
-export function Console({ expanded, onToggle, mod, entries, repositoryId = null }) {
+export function Console({ expanded, onToggle, mod, entries, repositoryId = null, focus = null }) {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState('all');
   const [expandedId, setExpandedId] = useState(null);
@@ -16,12 +16,29 @@ export function Console({ expanded, onToggle, mod, entries, repositoryId = null 
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [focusedId, setFocusedId] = useState(null);
+  const entryNodes = useRef(new Map());
 
   // Expand the output of the last command the user typed, so it is readable
   // the moment it finishes rather than after a manual click.
   const lastTypedId = entries.filter(entry => entry.operation === 'Console command').at(-1)?.id;
   useEffect(() => { if (lastTypedId) setExpandedId(lastTypedId); }, [lastTypedId]);
   useEffect(() => { setError(''); }, [repositoryId]);
+
+  // "Show output" next to an error hands us the entry that failed: reveal it
+  // instead of dropping the reader at the top of a 2000-line journal. The
+  // filter is cleared first, otherwise the entry could be filtered out of view.
+  useEffect(() => {
+    if (!focus) return undefined;
+    setMode('all'); setQuery(''); setExpandedId(focus.id); setFocusedId(focus.id);
+    const frame = requestAnimationFrame(() => {
+      const node = entryNodes.current.get(focus.id);
+      if (!node) return;
+      node.scrollIntoView({ block: 'nearest' });
+      node.querySelector('.console-entry-summary')?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focus]);
 
   async function runCommand(event) {
     event.preventDefault();
@@ -73,8 +90,9 @@ export function Console({ expanded, onToggle, mod, entries, repositoryId = null 
     {expanded && <div className="console-body">
       <div className="console-tools"><div className="segmented" aria-label="Command filter"><button aria-pressed={mode === 'all'} onClick={() => setMode('all')}>All</button><button aria-pressed={mode === 'mine'} onClick={() => setMode('mine')}>My actions</button></div><label className="console-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands" aria-label="Search command log" /></label><kbd>{mod}+J</kbd></div>
       {visible.length === 0 && <div className="console-empty"><Terminal /><div><strong>Your commands, in plain sight.</strong><p>{entries.length ? 'No commands match this filter.' : 'Git checks, repository status and future actions appear here.'}</p></div></div>}
-      {visible.map(entry => <article key={entry.id} className={`console-entry ${entry.code !== null && entry.code !== 0 ? 'failed' : ''}`}>
-        <button className="console-entry-summary" onClick={() => setExpandedId(value => value === entry.id ? null : entry.id)} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} /><code>{commandText(entry)}</code><span>(cwd: {entry.cwd})</span><small>{startedText(entry)} · {entry.code ?? '…'} · {elapsed(entry)}</small></button>
+      {visible.map(entry => <article key={entry.id} ref={node => { if (node) entryNodes.current.set(entry.id, node); else entryNodes.current.delete(entry.id); }}
+        className={`console-entry ${entry.code !== null && entry.code !== 0 ? 'failed' : ''} ${focusedId === entry.id ? 'focused' : ''}`}>
+        <button className="console-entry-summary" onClick={() => { setFocusedId(null); setExpandedId(value => value === entry.id ? null : entry.id); }} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} /><code>{commandText(entry)}</code><span>(cwd: {entry.cwd})</span><small>{startedText(entry)} · {entry.code ?? '…'} · {elapsed(entry)}</small></button>
         {expandedId === entry.id && <div className="console-output"><div className="console-copy"><Button icon={Clipboard} onClick={() => copy(`${commandText(entry)}\n(cwd: ${entry.cwd})\n${entry.stdout}${entry.stderr}`)}>Copy entry</Button></div>{entry.stdout && <pre>{entry.stdout}</pre>}{entry.stderr && <pre className="stderr">{entry.stderr}</pre>}{!entry.stdout && !entry.stderr && <p className="muted">Waiting for output…</p>}</div>}
       </article>)}
       <div className="console-dock">

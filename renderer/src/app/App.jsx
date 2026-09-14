@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, FolderOpen, GitBranch, 
 import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
 import { Console } from './Console.jsx';
+import { pickFailedEntry } from './console-focus.js';
 import HistoryWorkspace from '../features/graph/HistoryWorkspace.jsx';
 import GitProfile from '../features/settings/GitProfile.jsx';
 import Repositories from '../features/settings/Repositories.jsx';
@@ -50,6 +51,16 @@ export default function App() {
   const [info, setInfo] = useState(null);
   const [workspace, setWorkspace] = useState(null);
   const [entries, setEntries] = useState([]);
+  const [consoleFocus, setConsoleFocus] = useState(null);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  // Opening the console is not enough when something failed: point at the entry
+  // that actually failed, so the reader does not hunt for it in the journal.
+  const showConsole = useCallback(() => {
+    setConsoleOpen(true);
+    const failed = pickFailedEntry(entriesRef.current);
+    setConsoleFocus(failed ? { id: failed.id } : null);
+  }, []);
   const [startupError, setStartupError] = useState('');
   const [divergence, setDivergence] = useState({ ahead: 0, behind: 0, upstream: null });
   const [stashCount, setStashCount] = useState(null);
@@ -125,7 +136,7 @@ export default function App() {
           setPushGate({ steps: result.steps, result: result.blocked ? 'blocked' : result.ok ? 'passed' : 'failed', blocked: result.blocked });
           if (!result.blocked) setTimeout(() => { setPushGate(null); pushGateResolve.current = null; resolve(true); }, result.ok ? 900 : 1600);
         })
-        .catch(() => { setPushGate(null); pushGateResolve.current = null; setConsoleOpen(true); resolve(true); });
+        .catch(() => { setPushGate(null); pushGateResolve.current = null; showConsole(); resolve(true); });
     });
   }
   function closePushGate(proceed, bypass = false) {
@@ -143,13 +154,13 @@ export default function App() {
     try {
       const result = await window.twig.runSync(repository.id, mode, branchName);
       setSyncNote(result.ok ? `${mode} finished.` : result.message);
-      if (!result.ok) setConsoleOpen(true);
+      if (!result.ok) showConsole();
       const next = await window.twig.selectRepository(repository.id);
       setWorkspace(next);
       setWorktreeVersion(value => value + 1);
     } catch (error) {
       setSyncNote(error.message || 'The operation failed.');
-      setConsoleOpen(true);
+      showConsole();
     } finally { setSyncing(null); }
   }
   async function runStash(action) {
@@ -164,7 +175,7 @@ export default function App() {
       setWorktreeVersion(value => value + 1);
     } catch (error) {
       setSyncNote(error.message || 'The operation failed.');
-      setConsoleOpen(true);
+      showConsole();
     } finally { setSyncing(null); }
   }
 
@@ -192,7 +203,7 @@ export default function App() {
       setSyncNote('Demo workspace reset to its sample history.');
     } catch (error) {
       setSyncNote(error.message || 'Could not reset the demo workspace.');
-      setConsoleOpen(true);
+      showConsole();
     } finally { setResetting(false); }
   }
 
@@ -237,10 +248,10 @@ export default function App() {
       await refreshRepository();
       setSyncNote(`${direction === 'undo' ? 'Undo' : 'Redo'} ${result.cancelled ? 'cancelled' : 'completed'}.`);
     }
-    catch (failure) { setSyncNote(failure.message || 'The action could not be reversed.'); setConsoleOpen(true); }
+    catch (failure) { setSyncNote(failure.message || 'The action could not be reversed.'); showConsole(); }
     finally { setUndoMoving(false); }
     setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
-  }, [repositoryActive, repositoryId, refreshRepository, undoMoving]);
+  }, [repositoryActive, repositoryId, refreshRepository, showConsole, undoMoving]);
   useEffect(() => {
     const keydown = event => {
       if (dialog || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z'
@@ -258,7 +269,7 @@ export default function App() {
       const next = await window.twig.openRepository();
       setWorkspace(next);
       if (next.activeId) { setActive(`repository:${next.activeId}`); setConsoleOpen(true); }
-    } catch (error) { setStartupError(error.message || 'Could not open this repository.'); setConsoleOpen(true); }
+    } catch (error) { setStartupError(error.message || 'Could not open this repository.'); showConsole(); }
   }
   async function selectRepository(id) {
     const request = ++selectionRequest.current;
@@ -289,7 +300,7 @@ export default function App() {
     if (open) setDialog(null);
   }
   function showManagerOutput() {
-    setConsoleOpen(true);
+    showConsole();
     if (!dialogBusy) setDialog(null);
   }
   const focusSearch = useCallback(() => {
@@ -365,12 +376,12 @@ export default function App() {
         {(!item.sandbox || active === `repository:${item.id}`) && (item.available
           ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} mod={mod} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} toolbarSlot={bugHunterSlot} toolbarBusyReason={syncing ? `${syncing} is running` : undoMoving ? 'Reversing the action…' : undefined}
             filterRef={node => { if (node) repositoryFilters.current.set(item.id, node); else repositoryFilters.current.delete(item.id); }}
-            onConsole={() => setConsoleOpen(true)} onRepositoryChanged={refreshRepository} />
+            onConsole={showConsole} onRepositoryChanged={refreshRepository} />
           : <RepositoryReady repository={item} onOpen={openRepository} />)}
       </div>)}
       {active === 'new' && <main className="welcome"><div className="welcome-mark"><img src="./twig-logo.png" alt="" width="96" height="96" /></div><span className="eyebrow">YOUR NEXT WORKSPACE</span><h1>A clear view of your code.</h1><p>Open a folder, clone a repository, or choose one you have connected.</p><div className="welcome-actions"><Button icon={FolderOpen} className="primary" onClick={openRepository}>Open repository</Button><Button icon={ArrowDown} onClick={() => setDialog('Clone repository')}>Clone repository</Button><Button icon={GitBranch} onClick={() => setDialog('Repositories')}>Connected repositories</Button></div><div className="welcome-demo"><span className="demo-pill">DEMO</span><p>The <strong>workspace-demo</strong> tab is a real sandbox repository — every command runs against it.</p>{sandboxId && <Button icon={GitBranch} className="primary" onClick={() => setActive(`repository:${sandboxId}`)}>Open workspace-demo</Button>}</div></main>}
     </div>}
-    <Console expanded={consoleOpen} onToggle={() => setConsoleOpen(!consoleOpen)} mod={mod} entries={entries}
+    <Console expanded={consoleOpen} onToggle={() => setConsoleOpen(!consoleOpen)} mod={mod} entries={entries} focus={consoleFocus}
       repositoryId={workspace?.repositories.find(item => item.available && active === `repository:${item.id}`)?.id || null} />
     {dialog && <Dialog title={dialog} wide={['Git profile', 'Repositories', 'Clone repository', 'Remotes', 'SSH'].includes(dialog)} closeReason={dialogBusy || resetting ? 'Wait for the action to finish or cancel it first' : undefined} onClose={() => setDialog(null)}>
       {dialog === 'Settings' && <><p className="muted">Make this workspace feel like yours.</p>
@@ -398,7 +409,7 @@ export default function App() {
         <div className="dialog-actions"><Button onClick={() => setDialog('Settings')} reason={resetting ? 'Resetting…' : undefined}>Cancel</Button><Button className="danger" icon={RefreshCw} onClick={resetDemo} reason={resetting ? 'Resetting the demo workspace…' : undefined}>Reset demo workspace</Button></div>
       </div>}
       {dialog === 'SSH' && <SshSettings entries={entries} onBusyChange={setDialogBusy} onConsole={showManagerOutput} />}
-      {dialog === 'Git profile' && <GitProfile repository={repositoryActive ? repository : null} onConsole={() => { setDialog(null); setConsoleOpen(true); }} />}
+      {dialog === 'Git profile' && <GitProfile repository={repositoryActive ? repository : null} onConsole={() => { setDialog(null); showConsole(); }} />}
       {dialog === 'Repositories' && <Repositories workspace={workspace} onWorkspace={acceptWorkspace} onBusyChange={setDialogBusy} onConsole={showManagerOutput} onOpen={async () => { await openRepository(); setDialog(null); }} onClone={() => setDialog('Clone repository')} />}
       {dialog === 'Clone repository' && <CloneRepository entries={entries} onWorkspace={acceptWorkspace} onBusyChange={setDialogBusy} onConsole={showManagerOutput} />}
       {dialog === 'Remotes' && repository && <Remotes repository={repository} entries={entries} onBusyChange={setDialogBusy} onConsole={showManagerOutput} onChanged={async () => {
