@@ -14,6 +14,8 @@ on:
     paths:
       - 'site/**'
       - 'package.json'
+      - 'CHANGELOG.md'
+      - 'scripts/changelog.mjs'
       - 'renderer/src/ui/tokens.css'
       - '.github/workflows/site.yml'
   workflow_dispatch:

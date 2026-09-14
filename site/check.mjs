@@ -32,8 +32,16 @@ try {
     assert.equal(await page.locator('.download-link').count(), manifest.downloads.length);
     await page.locator('.hero-actions .primary').click();
     assert.equal(new URL(page.url()).hash, '#download');
-    await page.locator('summary').click();
-    assert.equal(await page.locator('details').getAttribute('open'), '');
+    await page.locator('.install-help summary').click();
+    assert.equal(await page.locator('.install-help').getAttribute('open'), '');
+    // Version and release date sit in the hero; the patch notes are their own
+    // section, with older releases folded away.
+    assert.match(await page.locator('.hero-copy > .eyebrow').innerText(), new RegExp(`v${manifest.version.replace(/\./g, '\\.')}`));
+    assert.equal(await page.locator('.hero-copy > .eyebrow time').getAttribute('datetime'), manifest.releaseDate);
+    assert.match(await page.locator('#whats-new-title').innerText(), new RegExp(manifest.version.replace(/\./g, '\\.')));
+    assert.ok(await page.locator('#whats-new .release-notes li').count() > 0, 'The release lists what appeared in it');
+    await page.locator('.release-history summary').click();
+    assert.equal(await page.locator('.release-history').getAttribute('open'), '');
     for (const img of await page.locator('img').all()) {
       await img.scrollIntoViewIfNeeded();
       assert.equal(await img.evaluate((element) => element.complete && element.naturalWidth > 0), true);
@@ -109,7 +117,7 @@ try {
   if (!/javascript/.test(scriptResponse.headers()['content-type'] || '')) console.warn('Preview server needs a restart to serve site.js. Interactive checks use the built file directly.');
   assert.deepEqual(errors, []);
   assert.deepEqual(external, []);
-  console.log(`Site checks passed: 375/768/1024/1440px without JS over HTTP and with JS from built HTML, no overflow, local assets, anchors, keyboard tabs, stable demo height, motion preferences, FAQ, ${manifest.downloads.length} download links. Installer responses are test fixtures.`);
+  console.log(`Site checks passed: 375/768/1024/1440px without JS over HTTP and with JS from built HTML, no overflow, local assets, anchors, keyboard tabs, version and release notes, stable demo height, motion preferences, FAQ, ${manifest.downloads.length} download links. Installer responses are test fixtures.`);
 } finally {
   await browser.close();
 }

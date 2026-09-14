@@ -19,12 +19,12 @@
   <a class="skip-link" href="#main">К содержимому</a>
   <header class="header wrap">
     <a class="brand" href="#" aria-label="🌱 Twig — на главную"><img src="assets/twig-small.png" width="40" height="40" alt=""><span>🌱 Twig</span></a>
-    <nav aria-label="Главная навигация"><a href="#features">Особенности</a><a href="#workspace">Интерфейс</a><a href="#bughunter">BugHunter</a><a href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#download">Скачать <span aria-hidden="true">↗</span></a></nav>
+    <nav aria-label="Главная навигация"><a href="#features">Особенности</a><a href="#workspace">Интерфейс</a><a href="#bughunter">BugHunter</a><a href="#whats-new">Что нового</a><a href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#download">Скачать <span aria-hidden="true">↗</span></a></nav>
   </header>
   <main id="main">
     <section class="hero wrap" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> ДЕСКТОПНЫЙ GIT-КЛИЕНТ · v{{version}}</p>
+        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> <span class="release-line">ДЕСКТОПНЫЙ GIT-КЛИЕНТ · v{{version}} · {{released}}</span></p>
         <h1 id="hero-title">Ветки, команды,<br><span>проверки.</span><br>В одном окне.</h1>
         <p class="hero-description">Настройте проверки перед commit и push. Оставляйте личные заметки на коммитах. Просматривайте команды перед изменением истории.</p>
         <div class="hero-actions"><a class="button primary" href="#download">Скачать 🌱 Twig <span aria-hidden="true">↓</span></a><a class="text-link" href="#workspace">Посмотреть интерфейс <span aria-hidden="true">↗</span></a></div>
@@ -114,6 +114,10 @@
           <article data-reveal><span class="feature-number">04 / BLAME</span><h3>История конкретной строки</h3><p>Посмотрите, кто изменил строку. Перейдите к версии до правки и её диффу. История файла учитывает переименования.</p></article>
         </div>
         <div class="local-note" data-reveal><img src="assets/twig-small.png" width="48" height="48" alt="" loading="lazy"><div><h3>Локальная работа без аккаунта 🌱 Twig</h3><p>Репозитории, марки и журнал остаются на компьютере. Телеметрии нет. Сеть используют синхронизация Git и те настроенные вами команды, которым она нужна.</p></div></div>
+      </section>
+      <section class="whats-new wrap section-space" id="whats-new" aria-labelledby="whats-new-title" data-reveal>
+        {{whatsnew}}
+        <p class="release-note-link">Полный список выпусков — в <a href="https://github.com/kitarasenka/twig/blob/main/CHANGELOG.md">CHANGELOG</a> и на странице <a href="https://github.com/kitarasenka/twig/releases">Releases</a>.</p>
       </section>
       <section class="downloads wrap section-space" id="download" aria-labelledby="download-title">
         <div class="download-heading"><div><p class="eyebrow">MACOS / WINDOWS / LINUX</p><h2 id="download-title">Скачать 🌱 Twig</h2><p class="download-intro">Установщики для macOS, Windows и Debian / Ubuntu, AppImage для остальных Linux.<br>Демо-репозиторий доступен при первом запуске.</p></div><p class="release-label"><span class="status-dot" aria-hidden="true"></span> Версия {{version}}<small>Предварительная версия</small></p></div>

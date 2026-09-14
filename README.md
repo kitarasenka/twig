@@ -6,7 +6,8 @@ history in the center, repository navigation on the left, commit details on the
 right, and a command console below — everything the app runs against Git is
 visible there, exactly as it was invoked.
 
-**Current version: 0.8.4.** This repository was split out of the private
+**Current version: 0.8.4.** Released 2026-09-14 — what appeared in each release
+is listed in [CHANGELOG.md](CHANGELOG.md). This repository was split out of the private
 `nodes-managers` monorepo (`modules/git_desk`) with `git subtree split`; the
 M0…M6 history is preserved. `PROMPT.md` is the full specification and `CLAUDE.md`
 records the current handoff state.

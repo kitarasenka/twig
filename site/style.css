@@ -32,7 +32,7 @@ code { font-family: ui-monospace, monospace; }
 .nav-download:hover { background: var(--surface-raised); border-color: var(--accent); }
 .hero { display: grid; grid-template-columns: 1.05fr 1fr; align-items: start; gap: 64px; padding-block: 76px 68px; }
 .hero-copy, .product-demo { min-width: 0; }
-.eyebrow { font-size: 11px; letter-spacing: 1.5px; font-weight: 500; color: var(--muted); display: flex; align-items: center; gap: 10px; }
+.eyebrow { font-size: 11px; letter-spacing: 1.5px; font-weight: 500; color: var(--muted); display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
 .status-dot { display: inline-block; width: 7px; height: 7px; background: var(--accent); border-radius: 50%; flex: 0 0 auto; }
 h1 { font-size: clamp(48px, 4.8vw, 69px); letter-spacing: -2.9px; line-height: 1.06; margin-top: 26px; }
 h1 > span { color: var(--accent); }
@@ -299,3 +299,19 @@ figcaption { display: flex; justify-content: space-between; gap: 12px; color: va
   html { scroll-behavior: auto; }
   *, *:before, *:after { animation: none !important; transition: none !important; }
 }
+
+.whats-new { display: flex; flex-direction: column; gap: 12px; }
+.whats-new h2 { font-size: 28px; letter-spacing: -0.5px; }
+.release-date { color: var(--muted); font-size: 13px; }
+.release-notes { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 0; padding: 0; list-style: none; max-width: 70ch; }
+.release-notes li { position: relative; padding-left: 20px; color: var(--text); line-height: 1.55; }
+.release-notes li::before { content: ''; position: absolute; left: 2px; top: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.release-history { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 16px; }
+.release-history summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+.release-history summary:hover { color: var(--text); }
+.release-history h3 { margin-top: 20px; font-size: 15px; }
+.release-history h3 small { color: var(--muted); font-weight: 400; margin-left: 8px; }
+/* Only the date needs casing: the rest of the line is uppercase in the markup. */
+.release-line time { text-transform: uppercase; }
+.release-note-link { margin-top: 8px; color: var(--muted); font-size: 13px; }
+.release-note-link a { color: var(--text); }
