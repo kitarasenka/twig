@@ -9,6 +9,9 @@
   background: none; border: 0; border-radius: var(--radius-sm); color: var(--text); font: inherit; font-size: var(--text-sm);
   text-align: left; cursor: pointer; }
 .menu button svg { width: var(--icon-size); height: var(--icon-size); flex: none; color: var(--muted); }
+/* A checkbox item reserves its check column whether checked or not, so
+ * unchecked items don't jump left when the mark disappears. */
+.menu button svg.menu-check-empty { visibility: hidden; }
 .menu button span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .menu button small { color: var(--muted); font-size: var(--text-xs); }
 .menu button:hover:not(:disabled) { background: var(--surface-hover); }

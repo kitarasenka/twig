@@ -132,14 +132,15 @@ sandbox reset. Screenshots land in the ignored `artifacts/`.
 ## Packaging and the landing site
 
 ```sh
-npm run pack:mac    # dmg (arm64 + x64) and portable zip
-npm run pack:win    # nsis (x64) and a portable .exe
-npm run pack:linux  # AppImage and deb (x64)
+npm run pack:mac    # dmg installers (arm64 + x64)
+npm run pack:win    # nsis installer (x64)
+npm run pack:linux  # deb installer for Debian / Ubuntu (x64)
 ```
 
-Builds write into `release/` without publishing. Portable builds run without
-installation and keep all state in a `twig-data/` folder next to the binary
-(`main/portable.js`), so a copy on a USB stick carries its settings along.
+Builds write into `release/` without publishing. Install Twig by dragging the
+app from the macOS DMG into Applications, running the Windows installer, or
+installing the Linux DEB package. Settings and app state use the standard
+per-user OS directory.
 
 No signing or notarization is planned for v1: macOS Gatekeeper will warn about
 the unsigned app — only open a build whose origin you trust.

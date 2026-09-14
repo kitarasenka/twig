@@ -274,6 +274,35 @@ try {
   assert.equal(await colVar('--graph-width'), beforeGraph, 'double-click restores the automatic graph width');
   await list.evaluate(node => { node.scrollTop = 0; });
 
+  // Column visibility: right-click the header to hide/show Branch, Author and Date.
+  await page.locator('.real-history-columns').click({ button: 'right' });
+  const columnMenu = page.getByRole('menu', { name: 'Show columns' });
+  await columnMenu.waitFor();
+  const authorItem = columnMenu.getByRole('menuitemcheckbox', { name: 'Author' });
+  assert.equal(await authorItem.getAttribute('aria-checked'), 'true');
+  await authorItem.click();
+  assert.equal(await colVar('--col-author'), 0, 'unchecking Author collapses the column');
+  assert.equal(await authorItem.getAttribute('aria-checked'), 'false');
+  await columnMenu.getByRole('menuitemcheckbox', { name: 'Date' }).click();
+  assert.equal(await colVar('--col-date'), 0, 'unchecking Date collapses the column');
+  await page.keyboard.press('Escape');
+  await columnMenu.waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('.real-commit-row .author-col').first().innerText(), '', 'author text is gone from rows too');
+  await page.reload();
+  await list.waitFor();
+  await list.getByRole('option').first().waitFor();
+  assert.equal(await colVar('--col-author'), 0, 'hidden columns survive a restart');
+  assert.equal(await colVar('--col-date'), 0, 'hidden columns survive a restart');
+  await page.locator('.real-history-columns').click({ button: 'right' });
+  await columnMenu.waitFor();
+  await columnMenu.getByRole('menuitemcheckbox', { name: 'Author' }).click();
+  await columnMenu.getByRole('menuitemcheckbox', { name: 'Date' }).click();
+  await page.keyboard.press('Escape');
+  await columnMenu.waitFor({ state: 'hidden' });
+  assert.ok((await colVar('--col-author')) > 0, 'Author comes back on toggle');
+  assert.ok((await colVar('--col-date')) > 0, 'Date comes back on toggle');
+  await list.evaluate(node => { node.scrollTop = 0; });
+
   // Auto-refresh: a commit made in a terminal shows up on its own. `main` watches
   // the git directory; the workspace reloads on the event, with no Refresh click
   // and no polling timer.
@@ -293,7 +322,7 @@ try {
   await page.screenshot({ path: 'artifacts/m2-compact.png', animations: 'disabled' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, console command bar, adjustable columns, external-change auto-refresh, themes.');
+  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, console command bar, adjustable columns, column visibility, external-change auto-refresh, themes.');
 } finally {
   if (app) await app.close();
   await rm(root, { recursive: true, force: true });

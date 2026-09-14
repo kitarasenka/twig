@@ -3,8 +3,9 @@ import { Check, GitBranch, Globe, Tag, FilePenLine, Archive, Bookmark } from 'lu
 import { LANE_WIDTH, ROW_HEIGHT, authorInitials, segmentPath, visibleRange } from './layout.js';
 import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
 import { markClass } from './mark-color.js';
-import { HISTORY_COLUMNS, dragColumnWidth, nudgeColumnWidth, readColumnWidths, writeColumnWidths } from './column-widths.js';
+import { HISTORY_COLUMNS, TOGGLABLE_COLUMNS, dragColumnWidth, nudgeColumnWidth, readColumnWidths, writeColumnWidths, readColumnVisibility, writeColumnVisibility } from './column-widths.js';
 import { refEndpoint, rowEndpoint } from './useGitDrag.js';
+import Menu from '../../ui/Menu.jsx';
 
 const EMPTY_SELECTION = new Set();
 
@@ -17,7 +18,7 @@ export function relativeDate(value) {
   return format.format(Math.round(seconds / 86400), 'day');
 }
 
-const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, member, head, stashes, stashX, onStashes, refs, mark, onSelect, onMenu, dayStart, age, drag, headBranch }) {
+const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, member, head, stashes, stashX, onStashes, refs, mark, onSelect, onMenu, dayStart, age, drag, headBranch, visibility }) {
   // In age mode a row paints its own age onto every lane crossing it, so the
   // graph reads as one gradient down the page instead of per-branch colours.
   const stroke = age === null ? null : ageStrokeClass(age);
@@ -29,11 +30,13 @@ const CommitRow = memo(function CommitRow({ commit, layout, index, total, select
     style={{ top: index * ROW_HEIGHT }} onClick={event => onSelect(commit.oid, { shift: event.shiftKey, toggle: event.metaKey || event.ctrlKey })}
     onContextMenu={event => { event.preventDefault(); onMenu(commit.oid, event.clientX, event.clientY); }}>
     <span className="ref-cell">
+      {visibility.branch && <>
       {mark && <span className="mark-chip" title={mark.note || 'Marked'}><Bookmark aria-label={mark.note ? `Marked: ${mark.note}` : 'Marked'} /></span>}
       {head && <Check aria-label="HEAD" />}{refs?.slice(0, 2).map(ref => <span key={ref.fullName} title={`${ref.fullName} · Drag or Alt+D, then Alt+Enter on a target`} tabIndex={0}
         {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
-    {refs?.length > 2 && <span className="ref-badge ref-more" title={refs.slice(2).map(ref => ref.fullName).join('\n')}>+{refs.length - 2}</span>}</span>
+    {refs?.length > 2 && <span className="ref-badge ref-more" title={refs.slice(2).map(ref => ref.fullName).join('\n')}>+{refs.length - 2}</span>}
+      </>}</span>
     <span className="lane-cell">
       <svg className="real-lane" aria-hidden="true" height={ROW_HEIGHT}>
         {stashes && <path className="stash-link" d={`M${laneX} 15H${stashX}`} />}
@@ -49,8 +52,8 @@ const CommitRow = memo(function CommitRow({ commit, layout, index, total, select
         <Archive />{stashes.length > 1 && <span>{stashes.length}</span>}</button>}
     </span>
     <span className="commit-subject" title={`${commit.subject}\n${commit.body}`}><span>{commit.subject || '(no subject)'}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
-    <span className="author-col" title={commit.author.email}>{commit.author.name}</span>
-    <span className={`date-cell ${age === null ? '' : ageTextClass(age)}`} title={commit.committedAt}>{relativeDate(commit.committedAt)}</span>
+    <span className="author-col" title={visibility.author ? commit.author.email : undefined}>{visibility.author && commit.author.name}</span>
+    <span className={`date-cell ${age === null ? '' : ageTextClass(age)}`} title={visibility.date ? commit.committedAt : undefined}>{visibility.date && relativeDate(commit.committedAt)}</span>
   </div>;
 });
 
@@ -60,10 +63,23 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
   const [focusIndex, setFocusIndex] = useState(0);
   const [columns, setColumns] = useState(() => readColumnWidths(window.localStorage));
+  const [visibility, setVisibility] = useState(() => readColumnVisibility(window.localStorage));
+  const [columnMenu, setColumnMenu] = useState(null);
   const [resizing, setResizing] = useState(null);
   const colResize = useRef(null);
   const columnsRef = useRef(null);
   const KEY_STEP = 12;
+  function toggleColumn(key) {
+    setVisibility(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      writeColumnVisibility(window.localStorage, next);
+      return next;
+    });
+  }
+  function openColumnMenu(event) {
+    event.preventDefault();
+    setColumnMenu({ x: event.clientX, y: event.clientY });
+  }
   // A stash is parked work, not a commit: it hangs off the commit it was based
   // on by a dashed link into an extra lane on the right, keyed by that base oid.
   const stashesByBase = useMemo(() => {
@@ -193,16 +209,24 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   // One clock reading per render, shared by every visible row: age is a property
   // of the moment the graph is drawn, not of each row on its own.
   const now = commitColors === 'age' ? Date.now() : null;
+  // A hidden column keeps its grid track but shrinks to nothing, rather than
+  // dropping the track: that would shift every later column into the wrong slot.
+  const visibleWidth = key => (visibility[key] ? columns[key] : 0);
   return <div className={`history real-history ${resizing ? 'col-resizing' : ''}`} data-colors={commitColors} style={{
     '--graph-width': `${graphWidth}px`,
-    '--col-branch': `${columns.branch}px`, '--col-message': `${columns.message}px`,
-    '--col-author': `${columns.author}px`, '--col-date': `${columns.date}px`,
+    '--col-branch': `${visibleWidth('branch')}px`, '--col-message': `${columns.message}px`,
+    '--col-author': `${visibleWidth('author')}px`, '--col-date': `${visibleWidth('date')}px`,
   }}>
-    <div className="real-history-columns" ref={columnsRef}>
-      <span>Branch / tag{columnHandle('branch')}</span><span>Graph{columnHandle('graph')}</span>
+    <div className="real-history-columns" ref={columnsRef} onContextMenu={openColumnMenu}>
+      <span>{visibility.branch && <>Branch / tag{columnHandle('branch')}</>}</span><span>Graph{columnHandle('graph')}</span>
       <span>Commit message{columnHandle('message')}</span>
-      <span className="author-col">Author{columnHandle('author')}</span><span>Date{columnHandle('date')}</span>
+      <span className="author-col">{visibility.author && <>Author{columnHandle('author')}</>}</span>
+      <span>{visibility.date && <>Date{columnHandle('date')}</>}</span>
     </div>
+    {columnMenu && <Menu x={columnMenu.x} y={columnMenu.y} label="Show columns" onClose={() => setColumnMenu(null)}
+      items={TOGGLABLE_COLUMNS.map(key => ({
+        key, text: HISTORY_COLUMNS[key].label, checked: visibility[key], stayOpen: true, run: () => toggleColumn(key),
+      }))} />}
     {changes > 0 && <button className={`worktree-row ${selected === 'worktree' ? 'selected' : ''}`} onClick={onWorktree}><FilePenLine />Uncommitted changes, {changes} files</button>}
     <div className="real-history-scroll" ref={scroller} role="listbox" aria-label="Commit history" aria-multiselectable="true" tabIndex={0}
       onDragOverCapture={event => { if (dragging) dragY.current = event.clientY; }}
@@ -219,7 +243,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
       <div className="virtual-commits" style={{ height: commits.length * ROW_HEIGHT }}>
         {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
           selected={selected === commit.oid} member={selectionSet.has(commit.oid)} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} age={now === null ? null : ageStop(commit.committedAt, now)}
-          mark={marks[commit.oid] || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch}
+          mark={marks[commit.oid] || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch} visibility={visibility}
           dayStart={start + offset > 0 && commit.committedAt.slice(0, 10) !== commits[start + offset - 1].committedAt.slice(0, 10)} />)}
       </div>
     </div>

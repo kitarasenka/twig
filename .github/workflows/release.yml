@@ -1,7 +1,7 @@
 # Собирает нативные установщики Twig и публикует их как ассеты GitHub Release.
 #
 # Триггер — push тега вида twig-v<version> (напр. twig-v0.8.0). Тег обязан
-# совпадать с "version" из package.json. Одна машина все восемь сборок не даёт
+# совпадать с "version" из package.json. Одна машина все четыре сборки не даёт
 # (Windows-таргеты требуют Windows, Linux — Linux, macOS — mac), поэтому три
 # раннера в матрице собирают свою часть и догружают файлы в общий релиз.
 #
@@ -61,13 +61,13 @@ jobs:
         include:
           - os: macos-latest
             script: 'pack:mac'
-            assets: 'release/*.dmg release/*.zip'
+            assets: 'release/*.dmg'
           - os: windows-latest
             script: 'pack:win'
-            assets: 'release/*.exe'
+            assets: 'release/Twig-*-windows-x64.exe'
           - os: ubuntu-latest
             script: 'pack:linux'
-            assets: 'release/*.AppImage release/*.deb'
+            assets: 'release/*.deb'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

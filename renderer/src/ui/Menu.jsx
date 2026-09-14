@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Check } from 'lucide-react';
 
 /**
  * A context menu that works without a mouse. Pointer users get it on
@@ -72,9 +73,12 @@ export default function Menu({ x, y, label, items, onClose, className = '' }) {
     <div className={`menu ${className}`} role="menu" aria-label={label} ref={list} onKeyDown={keydown}>
       {items.map((item, index) => item.separator
         ? <hr key={`separator-${index}`} role="separator" />
-        : <button key={item.key} role="menuitem" type="button" disabled={Boolean(item.reason)} className={item.danger ? 'destructive' : undefined}
+        : <button key={item.key} role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} type="button"
+          disabled={Boolean(item.reason)} className={item.danger ? 'destructive' : undefined}
+          aria-checked={item.checked === undefined ? undefined : item.checked}
           title={item.reason || undefined} aria-label={item.reason ? `${item.text}: ${item.reason}` : undefined}
-          onClick={() => { onClose(); item.run(); }}>
+          onClick={() => { if (!item.stayOpen) onClose(); item.run(); }}>
+          {item.checked !== undefined && <Check aria-hidden="true" className={item.checked ? '' : 'menu-check-empty'} />}
           {item.icon && <item.icon aria-hidden="true" />}<span>{item.text}</span>
           {item.hint && <small>{item.hint}</small>}
         </button>)}

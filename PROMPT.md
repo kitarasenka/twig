@@ -238,7 +238,7 @@ sender/frame/аргументы, репозиторий — только из с
   неочевидна.
 - **Граф рисуй сам** — SVG/canvas поверх виртуализованного списка. Готовые библиотеки графов
   коммитов не тянуть: раскладка дорожек — 200 строк кода и полный контроль над рендером.
-- **electron-builder** — `dmg` (mac x64 + arm64), `nsis` (Windows x64), `AppImage` + `deb`
+- **electron-builder** — `dmg` (mac x64 + arm64), `nsis` (Windows x64), `deb`
   (Linux x64). Подписи и нотаризации нет — в README честно про предупреждение Gatekeeper.
 - **Никаких обёрток над git** (`simple-git`, `isomorphic-git`): только системный `git` через
   `child_process.spawn`, причина в §6.

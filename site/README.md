@@ -47,20 +47,12 @@ npm run pack:linux
 | --- | --- |
 | macOS Apple Silicon | `Twig-VERSION-macos-arm64.dmg` |
 | macOS Intel | `Twig-VERSION-macos-x64.dmg` |
-| macOS Apple Silicon, портативный | `Twig-VERSION-macos-arm64.zip` |
-| macOS Intel, портативный | `Twig-VERSION-macos-x64.zip` |
 | Windows x64 | `Twig-VERSION-windows-x64.exe` |
-| Windows x64, портативный | `Twig-VERSION-windows-x64-portable.exe` |
-| Linux x64 | `Twig-VERSION-linux-x86_64.AppImage` |
 | Debian / Ubuntu x64 | `Twig-VERSION-linux-amd64.deb` |
 
-Портативные сборки (`.zip` для macOS, `-portable.exe` для Windows, а также
-`.AppImage` для Linux) запускаются без установки. По умолчанию настройки и
-демо-песочница хранятся в стандартном пользовательском каталоге ОС. Автономный
-режим: `TWIG_DATA_DIR=<абсолютный путь>` в окружении, либо пустой файл-маркер
-`.twig-portable` рядом с приложением (Windows-portable включает его сам) —
-тогда весь `userData` уезжает в папку `twig-data` рядом с бинарём.
-Логика — `main/portable.js`, проверка — `scripts/checks/portable.mjs`.
+Доступны только установщики: DMG для macOS, NSIS для Windows и DEB для
+Debian / Ubuntu. Настройки и демо-песочница хранятся в стандартном
+пользовательском каталоге ОС.
 
 Источник имён и архитектур один: `build.mac/win/linux` в `package.json`.
 Сайт читает те же `artifactName` и `target`, которые использует упаковщик.
@@ -92,11 +84,7 @@ npm run pack:linux
   downloads/
     Twig-VERSION-macos-arm64.dmg
     Twig-VERSION-macos-x64.dmg
-    Twig-VERSION-macos-arm64.zip
-    Twig-VERSION-macos-x64.zip
     Twig-VERSION-windows-x64.exe
-    Twig-VERSION-windows-x64-portable.exe
-    Twig-VERSION-linux-x86_64.AppImage
     Twig-VERSION-linux-amd64.deb
 ```
 
@@ -124,12 +112,12 @@ GitHub Pages для приватного репозитория требует �
 Один раз в настройках репозитория: **Settings → Pages → Build and deployment →
 Source: GitHub Actions**.
 
-Установщики на Pages не кладутся — лимит около 1 ГБ на сайт, восемь сборок
-Electron больше. Порядок выпуска версии:
+Установщики хранятся в GitHub Release, отдельно от сайта на Pages.
+Порядок выпуска версии:
 
 1. Собрать установщики на трёх ОС (`pack:mac` / `pack:win` / `pack:linux`).
 2. Создать GitHub Release с тегом `twig-v<version>` (та же версия, что в
-   `package.json`) и приложить все восемь файлов из `release/` с исходными
+   `package.json`) и приложить все четыре файла из `release/` с исходными
    именами из `downloads.json`.
 3. Слить изменение версии в `main` — воркфлоу пересоберёт сайт, и кнопки
    начнут указывать на ассеты этого Release.

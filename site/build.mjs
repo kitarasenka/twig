@@ -16,10 +16,9 @@ const downloadBase = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
 if (downloadBase !== DEFAULT_DOWNLOAD_BASE && !/^https:\/\/[a-z0-9.-]+(?:\/[a-z0-9._~-]+)*\/$/i.test(downloadBase)) {
   throw new Error(`Unsafe site download base: ${downloadBase}`);
 }
-const formats = { dmg: 'dmg', zip: 'zip', nsis: 'exe', portable: 'exe', AppImage: 'AppImage', deb: 'deb' };
-// electron-builder rewrites ${arch} per target: AppImage keeps the GNU triplet,
-// deb uses the Debian name. Everything else takes the plain Arch enum value.
-const archNames = { AppImage: { x64: 'x86_64' }, deb: { x64: 'amd64' } };
+const formats = { dmg: 'dmg', nsis: 'exe', deb: 'deb' };
+// electron-builder uses Debian architecture names for deb artifacts.
+const archNames = { deb: { x64: 'amd64' } };
 const platforms = { mac: 'macOS', win: 'Windows', linux: 'Linux' };
 const downloads = [];
 const cards = Object.entries(platforms).map(([platform, title]) => {
@@ -27,7 +26,7 @@ const cards = Object.entries(platforms).map(([platform, title]) => {
   const links = config.target.flatMap(({ target, arch }) => arch.map((architecture) => {
     const ext = formats[target];
     if (!ext) throw new Error(`Unsupported installer target: ${target}`);
-    const template = target === 'portable' ? pkg.build.portable.artifactName : config.artifactName;
+    const template = config.artifactName;
     const archName = archNames[target]?.[architecture] || architecture;
     const filename = template.replace(/\$\{(version|arch|ext)\}/g, (_, key) => ({ version: pkg.version, arch: archName, ext })[key]);
     if (!/^[a-zA-Z0-9._-]+$/.test(filename)) throw new Error(`Unsafe or unresolved artifact name: ${filename}`);
@@ -35,10 +34,8 @@ const cards = Object.entries(platforms).map(([platform, title]) => {
     downloads.push({ platform, arch: architecture, format: ext, filename, href });
     const macArch = architecture === 'arm64' ? 'Apple Silicon' : 'Intel';
     const label = platform === 'mac'
-      ? `${macArch}${target === 'zip' ? ' · портативный' : ''}`
-      : target === 'AppImage' ? 'AppImage · x64'
+      ? macArch
       : target === 'deb' ? 'Debian / Ubuntu · x64'
-      : target === 'portable' ? 'Портативная версия · x64'
       : 'Установщик · x64';
     return `<a class="download-link" href="${href}" download><span>${label}<small>.${ext}</small></span><span aria-hidden="true">↓</span></a>`;
   }));

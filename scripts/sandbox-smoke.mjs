@@ -32,9 +32,16 @@ try {
   assert.deepEqual(await branchNames(), ['feature/command-log', 'feature/repository-tabs', 'main']);
 
   // A real mutation: pop the seeded stash from the toolbar.
+  assert.equal(await page.getByRole('button', { name: 'Pop', exact: true }).isDisabled(), false, 'Pop is available while a stash exists');
   await page.getByRole('button', { name: 'Pop', exact: true }).click();
   await page.getByText('Stash popped.').waitFor();
   assert.equal(await stashCount(), 0, 'the stash is gone after Pop');
+
+  // An empty list leaves nothing to restore: the button goes disabled and says why.
+  const emptyPop = page.getByRole('button', { name: 'Pop: there are no stashes to restore' });
+  await emptyPop.waitFor();
+  assert.equal(await emptyPop.isDisabled(), true, 'Pop is disabled without a stash');
+  assert.equal(await emptyPop.getAttribute('title'), 'Pop: there are no stashes to restore', 'the disabled Pop explains itself on hover');
 
   // Reinit: Settings -> Reset demo workspace -> confirm.
   await page.getByRole('button', { name: 'Settings', exact: true }).click();

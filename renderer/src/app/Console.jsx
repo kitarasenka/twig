@@ -5,6 +5,7 @@ import { checkReadOnly, tokenize } from '../../../main/git/read-only-command.js'
 
 function commandText(entry) { return `$ ${entry.executable || 'git'} ${entry.argv.join(' ')}`; }
 function elapsed(entry) { return entry.ms === null ? 'running' : `${entry.ms}ms`; }
+function startedText(entry) { return entry.startedAt.replace('T', ' ').replace(/\.\d+/, '').replace('Z', ''); }
 
 export function Console({ expanded, onToggle, mod, entries, repositoryId = null }) {
   const [query, setQuery] = useState('');
@@ -73,7 +74,7 @@ export function Console({ expanded, onToggle, mod, entries, repositoryId = null 
       <div className="console-tools"><div className="segmented" aria-label="Command filter"><button aria-pressed={mode === 'all'} onClick={() => setMode('all')}>All</button><button aria-pressed={mode === 'mine'} onClick={() => setMode('mine')}>My actions</button></div><label className="console-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands" aria-label="Search command log" /></label><kbd>{mod}+J</kbd></div>
       {visible.length === 0 && <div className="console-empty"><Terminal /><div><strong>Your commands, in plain sight.</strong><p>{entries.length ? 'No commands match this filter.' : 'Git checks, repository status and future actions appear here.'}</p></div></div>}
       {visible.map(entry => <article key={entry.id} className={`console-entry ${entry.code !== null && entry.code !== 0 ? 'failed' : ''}`}>
-        <button className="console-entry-summary" onClick={() => setExpandedId(value => value === entry.id ? null : entry.id)} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} /><code>{commandText(entry)}</code><span>(cwd: {entry.cwd})</span><small>{entry.startedAt.replace('T', ' ').replace('Z', '')} · {entry.code ?? '…'} · {elapsed(entry)}</small></button>
+        <button className="console-entry-summary" onClick={() => setExpandedId(value => value === entry.id ? null : entry.id)} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} /><code>{commandText(entry)}</code><span>(cwd: {entry.cwd})</span><small>{startedText(entry)} · {entry.code ?? '…'} · {elapsed(entry)}</small></button>
         {expandedId === entry.id && <div className="console-output"><div className="console-copy"><Button icon={Clipboard} onClick={() => copy(`${commandText(entry)}\n(cwd: ${entry.cwd})\n${entry.stdout}${entry.stderr}`)}>Copy entry</Button></div>{entry.stdout && <pre>{entry.stdout}</pre>}{entry.stderr && <pre className="stderr">{entry.stderr}</pre>}{!entry.stdout && !entry.stderr && <p className="muted">Waiting for output…</p>}</div>}
       </article>)}
       <div className="console-dock">

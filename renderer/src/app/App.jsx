@@ -50,6 +50,7 @@ export default function App() {
   const [entries, setEntries] = useState([]);
   const [startupError, setStartupError] = useState('');
   const [divergence, setDivergence] = useState({ ahead: 0, behind: 0, upstream: null });
+  const [stashCount, setStashCount] = useState(null);
   const [syncing, setSyncing] = useState(null);
   const [syncNote, setSyncNote] = useState('');
   const [pushGate, setPushGate] = useState(null);
@@ -62,6 +63,7 @@ export default function App() {
   const repositoryFilters = useRef(new Map());
   const selectionRequest = useRef(0);
   const divergenceRequest = useRef(0);
+  const stashRequest = useRef(0);
   const mod = info?.platform === 'darwin' || (!info && /Mac/.test(navigator.platform)) ? 'Cmd' : 'Ctrl';
   const ready = (info !== null && workspace !== null) || Boolean(startupError);
   const repository = workspace?.repositories.find(item => active === `repository:${item.id}`)
@@ -102,6 +104,14 @@ export default function App() {
       .then(next => { if (request === divergenceRequest.current) setDivergence(next); })
       .catch(() => { if (request === divergenceRequest.current) setDivergence({ ahead: 0, behind: 0, upstream: null }); });
   }, [repositoryActive, repository?.id, repository?.available, branchName, worktreeVersion]);
+  /** Pop restores the newest stash, so the button is only useful while the repository has one. */
+  useEffect(() => {
+    const request = ++stashRequest.current;
+    if (!repositoryActive || !repository?.available) { setStashCount(null); return; }
+    window.twig.stashList(repository.id)
+      .then(list => { if (request === stashRequest.current) setStashCount(list.length); })
+      .catch(() => { if (request === stashRequest.current) setStashCount(null); });
+  }, [repositoryActive, repository?.id, repository?.available, worktreeVersion]);
 
   function runPushGate() {
     return new Promise(resolve => {
@@ -325,7 +335,8 @@ export default function App() {
       </div>
       <div className="tool-group"><Button className="tool" icon={GitBranch} reason={unavailable}>Branch</Button>
         <Button className="tool" icon={Layers} onClick={() => runStash('stash')} reason={syncReason}>Stash</Button>
-        <Button className="tool" icon={Upload} onClick={() => runStash('pop')} reason={syncReason}>Pop</Button></div>
+        <Button className="tool" icon={Upload} onClick={() => runStash('pop')}
+          reason={syncReason || (stashCount === 0 ? 'Pop: there are no stashes to restore' : undefined)}>Pop</Button></div>
       <div className="tool-group"><Button className={`tool ${consoleOpen ? 'pressed' : ''}`} icon={SquareTerminal} title={`${mod}+J`} aria-pressed={consoleOpen} onClick={() => setConsoleOpen(!consoleOpen)}>Terminal</Button>
         <span className="bughunter-tool-slot" ref={setBugHunterSlot}>
           {!workspace?.repositories.some(item => item.available && active === `repository:${item.id}`) &&

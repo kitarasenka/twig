@@ -23,7 +23,13 @@ export const HISTORY_COLUMNS = {
 
 export const HISTORY_COLUMN_KEYS = Object.keys(HISTORY_COLUMNS);
 
+/** Columns a right-click on the header can hide/show. Graph and Commit
+ * message stay put: the graph is the point of the screen, and a message-less
+ * row is just noise. */
+export const TOGGLABLE_COLUMNS = ['branch', 'author', 'date'];
+
 export const HISTORY_COLUMNS_KEY = 'twig:history-columns';
+export const HISTORY_COLUMNS_VISIBLE_KEY = 'twig:history-columns-visible';
 
 export function clampColumnWidth(key, width) {
   const size = HISTORY_COLUMNS[key];
@@ -61,6 +67,38 @@ export function readColumnWidths(storage) {
 export function writeColumnWidths(storage, widths) {
   try {
     storage.setItem(HISTORY_COLUMNS_KEY, JSON.stringify(normalizeColumnWidths(widths)));
+  } catch { /* Preference stays session-local when storage is unavailable. */ }
+}
+
+export function defaultColumnVisibility() {
+  const visibility = {};
+  for (const key of TOGGLABLE_COLUMNS) visibility[key] = true;
+  return visibility;
+}
+
+/** Fill any missing or malformed entry with the default (visible), drop everything else. */
+export function normalizeColumnVisibility(raw) {
+  const visibility = defaultColumnVisibility();
+  if (raw && typeof raw === 'object') {
+    for (const key of TOGGLABLE_COLUMNS) {
+      if (typeof raw[key] === 'boolean') visibility[key] = raw[key];
+    }
+  }
+  return visibility;
+}
+
+export function readColumnVisibility(storage) {
+  try {
+    const stored = storage.getItem(HISTORY_COLUMNS_VISIBLE_KEY);
+    return normalizeColumnVisibility(stored ? JSON.parse(stored) : null);
+  } catch {
+    return defaultColumnVisibility();
+  }
+}
+
+export function writeColumnVisibility(storage, visibility) {
+  try {
+    storage.setItem(HISTORY_COLUMNS_VISIBLE_KEY, JSON.stringify(normalizeColumnVisibility(visibility)));
   } catch { /* Preference stays session-local when storage is unavailable. */ }
 }
 

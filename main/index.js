@@ -1,6 +1,5 @@
 import { app, BrowserWindow, Menu, session, shell } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { registerIpc } from './ipc.js';
 import { isExternalLink, isLocalAsset, isTrustedPage } from './security.js';
@@ -14,22 +13,11 @@ import { runGit } from './git/exec.js';
 import { createRepositoryService } from './git/repository.js';
 import { SANDBOX_DIRNAME, SANDBOX_MARKER_FILE, SANDBOX_REMOTE_DIRNAME } from './git/sandbox.js';
 import { UndoService } from './undo.js';
-import { resolvePortableDataDir } from './portable.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const iconPath = path.join(root, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
 const development = !app.isPackaged && process.env.TWIG_DEV === '1';
 
-// Redirect every store to a folder next to the binary when this is a portable
-// copy. Must run before the app is ready and before any `getPath('userData')`.
-const portableDataDir = resolvePortableDataDir({
-  env: process.env, platform: process.platform, packaged: app.isPackaged,
-  execPath: app.getPath('exe'), exists: existsSync
-});
-if (portableDataDir) {
-  mkdirSync(portableDataDir, { recursive: true });
-  app.setPath('userData', portableDataDir);
-}
 const entryUrl = development ? 'http://127.0.0.1:5188/'
   : pathToFileURL(path.join(root, 'dist/renderer/index.html')).href;
 let window;
