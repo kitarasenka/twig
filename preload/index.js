@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('twig', Object.freeze({
   getAppInfo: () => ipcRenderer.invoke('app:info'),
+  checkForUpdate: () => ipcRenderer.invoke('app:check-update'),
   getSshKeys: () => ipcRenderer.invoke('ssh:keys'),
   secureSshKey: name => ipcRenderer.invoke('ssh:secure-key', name),
   getSshConfig: () => ipcRenderer.invoke('ssh:config'),

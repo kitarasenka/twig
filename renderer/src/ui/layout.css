@@ -203,6 +203,7 @@ dialog h2 { font-size: var(--text-lg); }
 .dialog-content { padding: var(--space-6); }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin: var(--space-6) 0; }
 .setting-row small { display: block; color: var(--muted); margin-top: var(--space-1); }
+.update-note { margin: 0; color: var(--text); font-size: var(--text-sm); line-height: 1.6; }
 .settings-note { border-top: 1px solid var(--border); padding-top: var(--space-4); color: var(--muted); font-size: var(--text-xs); line-height: 1.8; }
 .dialog-empty { text-align: center; }
 .dialog-empty > svg { width: 28px; height: 28px; margin-bottom: var(--space-4); color: var(--accent); }

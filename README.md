@@ -191,5 +191,8 @@ from the journal.
 
 External HTTP(S) links (and bare `mailto:`) open in the system browser; window
 navigation, embedded webviews, permission requests and renderer network requests
-are blocked. No telemetry, updater, remote fonts or credential storage. Colors
+are blocked. No telemetry, remote fonts or credential storage. The only request
+the app makes for itself is the manual update check in Settings: one call to the
+GitHub Releases API when you press the button, compared against the running
+version — nothing is checked in the background, downloaded or installed. Colors
 come only from `design/TOKENS.md`.

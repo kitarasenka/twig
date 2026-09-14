@@ -41,6 +41,8 @@ export default function App() {
   const [active, setActive] = useState('');
   const [emptyOpen, setEmptyOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [update, setUpdate] = useState(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [bugHunterSlot, setBugHunterSlot] = useState(null);
   const [dialog, setDialog] = useState(null);
@@ -164,6 +166,14 @@ export default function App() {
       setSyncNote(error.message || 'The operation failed.');
       setConsoleOpen(true);
     } finally { setSyncing(null); }
+  }
+
+  /** The only network call the app makes for itself, and only on this click. */
+  async function checkUpdate() {
+    setCheckingUpdate(true);
+    try { setUpdate(await window.twig.checkForUpdate()); }
+    catch { setUpdate({ status: 'error', message: 'The update check could not run.', url: 'https://github.com/kitarasenka/twig/releases' }); }
+    finally { setCheckingUpdate(false); }
   }
 
   async function resetDemo() {
@@ -367,6 +377,13 @@ export default function App() {
         <label className="setting-row" htmlFor="theme"><span><strong>Appearance</strong><small>System follows your device setting.</small></span><select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
         <label className="setting-row" htmlFor="commit-colors"><span><strong>Commit colors</strong><small>Age shades the graph and the dates from brown roots to green new work.</small></span><select id="commit-colors" value={commitColors} onChange={(e) => setCommitColors(e.target.value)}><option value="age">Commit age</option><option value="lanes">Branch lanes</option></select></label>
         {commitColors === 'age' && <ul className="age-legend" aria-label="Commit age colors">{AGE_STOPS.map((stop, index) => <li key={stop.key} className={ageTextClass(index)}>{stop.label}</li>)}</ul>}
+        <div className="setting-row"><span><strong>Updates</strong><small>Reads the latest release on GitHub once, when you press the button. Nothing is checked in the background, downloaded or installed.</small></span><Button icon={RefreshCw} reason={checkingUpdate ? 'Checking…' : undefined} onClick={checkUpdate}>Check for updates</Button></div>
+        {update && <p className="update-note" role="status">{
+          update.status === 'update' ? `Version ${update.latest} is available. You have ${update.current}.`
+            : update.status === 'current' ? `🌱 Twig ${update.current} is the latest release.`
+              : update.status === 'unknown' ? 'Could not tell which release is the latest.'
+                : update.message || 'The update check did not finish.'
+        } <a className="text-link" href={update.url} rel="noreferrer">Releases on GitHub</a></p>}
         <div className="settings-note">🌱 Twig {info?.version || '…'}<br />Local fonts. No telemetry. No automatic updates.</div></>}
       {dialog === 'Settings' && <div className="manager-actions"><Button icon={FolderOpen} onClick={() => setDialog('Repositories')}>Manage repositories</Button><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : 'Open a repository first'} onClick={() => setDialog('Remotes')}>Manage remotes</Button></div>}
       {dialog === 'Settings' && <Button onClick={() => setDialog('SSH')}>SSH keys and config</Button>}

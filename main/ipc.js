@@ -12,6 +12,7 @@ import { registerMarksIpc } from './marks-ipc.js';
 import { registerAutomationsIpc } from './automations-ipc.js';
 import { registerConsoleIpc } from './console-ipc.js';
 import { createRepositoryWatcher } from './repo-watch.js';
+import { checkForUpdate } from './update-check.js';
 
 function validSender(event, getWindow, entryUrl, args, count) {
   const window = getWindow();
@@ -46,6 +47,17 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
   ipcMain.handle('app:info', (event, ...args) => {
     if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid app information request');
     return { name: '🌱 Twig', version: app.getVersion(), platform: process.platform };
+  });
+  // The one network request this app makes on its own behalf, and only when the
+  // person presses the button: read the latest release tag and compare it with
+  // the running version. Nothing is downloaded, installed or sent anywhere.
+  let updateCheck = null;
+  ipcMain.handle('app:check-update', (event, ...args) => {
+    if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid update request');
+    // A second press while the first request is still open reuses it rather
+    // than opening another connection.
+    updateCheck ??= checkForUpdate({ currentVersion: app.getVersion() }).finally(() => { updateCheck = null; });
+    return updateCheck;
   });
   ipcMain.handle('workspace:startup', (event, ...args) => {
     if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid workspace request');

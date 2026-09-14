@@ -37,7 +37,7 @@ try {
   // exposed to the renderer has to fail this check rather than ship.
   assert.deepEqual(await page.evaluate(() => Object.keys(window.twig).sort()), [
     'applySelection', 'cancelSync', 'checkoutRef', 'cherryPick', 'compareCommits', 'copyText', 'createBranch',
-    'createCommit', 'createTag', 'getAppInfo', 'getCommit', 'getCommitFiles', 'getConsoleEntries',
+    'checkForUpdate', 'createCommit', 'createTag', 'getAppInfo', 'getCommit', 'getCommitFiles', 'getConsoleEntries',
     'getDivergence', 'getFileDiff', 'getFileHistory', 'getGitProfile', 'getHistoryPage', 'getOperationState', 'getRebaseCandidates', 'getRefs',
     'getWorkspace', 'getWorktreeDiff', 'markConflictResolved', 'searchHistory', 'mergeRevision', 'onConsoleUpdate', 'openRepository',
     'readConflict', 'readWorktree', 'rebaseOnto', 'resetTo', 'revertCommit', 'rewordCommit', 'runSequencer', 'runSync',
@@ -94,6 +94,13 @@ try {
   await page.getByText(/git --no-pager -c color.ui=false --version/).first().waitFor();
   await page.keyboard.press(`${info.platform === 'darwin' ? 'Meta' : 'Control'}+j`);
   assert.equal(await page.getByRole('textbox', { name: 'Search command log' }).isVisible(), false);
+  // The update check is manual: the button is there, and nothing presses it for
+  // the person. It stays unclicked here — this run must make no network call.
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const updateButton = page.getByRole('button', { name: 'Check for updates', exact: true });
+  await updateButton.waitFor();
+  assert.equal(await updateButton.isDisabled(), false, 'the update check is available from Settings');
+  await page.keyboard.press('Escape');
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByLabel('Appearance').selectOption(theme);
@@ -109,7 +116,7 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.equal(await page.evaluate(async () => { try { await fetch('https://example.com'); return true; } catch { return false; } }), false);
   assert.deepEqual(errors, []);
-  console.log('Electron smoke passed: sandbox, bridge, selection, keyboard, tabs, search, panel divider, console, themes, compact layout, network block.');
+  console.log('Electron smoke passed: sandbox, bridge, selection, keyboard, tabs, search, panel divider, console, manual update check, themes, compact layout, network block.');
 } finally {
   if (app) await app.close();
   if (server) await server.close();
