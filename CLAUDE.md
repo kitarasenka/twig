@@ -17,6 +17,36 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+macOS-сборка ad-hoc подписывается (2026-09-15, вне вех): DMG 0.8.6 и всех
+более ранних версий устанавливался как «App is damaged and can't be opened»
+на Apple Silicon (arm64) — не обходимое предупреждение Gatekeeper, а жёсткий
+отказ ядра запускать полностью неподписанный код (на этот счёт с macOS 11
+на arm64 действует более строгое правило, чем на Intel, где неподписанный
+билд обычно ещё можно открыть через ПКМ → Open). Причина — `build.mac.identity`
+в `package.json` явно `null` (платного Apple Developer ID нет), а
+`release.yml` дополнительно ставит `CSC_IDENTITY_AUTO_DISCOVERY=false`;
+`identity: null` — по коду `macPackager.js` electron-builder — значит «не
+подписывать вовсе», без отката на ad-hoc, и по той же причине `afterSign`
+electron-builder никогда не срабатывает (`doSignAfterPack` вызывает его,
+только если реальная подпись произошла). Лечение — в `scripts/after-pack.mjs`
+(этот хук выполняется всегда, независимо от того, подписал ли electron-builder
+приложение сам): для `electronPlatformName === 'darwin'` запускается
+`codesign --force --deep --sign - <appOutDir>/<productFilename>.app` —
+ad-hoc-подпись без identity и entitlements, только чтобы ядро приняло код.
+После неё `codesign --verify --deep --strict` отвечает «valid on disk», а
+Gatekeeper переходит к обычной проверке Developer ID/нотаризации и показывает
+привычное преодолимое предупреждение вместо отказа. `identity: null` в
+конфиге остался как есть — платной подписи по-прежнему нет, изменилось
+только то, что происходит после неудачи её найти. Живая проверка:
+`npm run pack:mac` на macOS arm64 — оба архива (`mac-arm64`, `mac`) получили
+`flags=0x2(adhoc)` и прошли `codesign --verify --deep --strict`. Проверка
+`scripts/checks/after-pack.mjs` (в `npm test`) собирает фейковый `.app`-бандл
+(валидный `Info.plist` + Mach-O `/usr/bin/true` вместо бинаря) и требует,
+чтобы `codesign --verify --deep` его принял; на не-macOS хосте эта часть
+пропускается (`codesign` есть только на macOS, а собрать mac-таргет тоже
+можно только на macOS). Версия 0.8.6 → **0.8.7** (patch, тем же тегом
+уезжает и фикс).
+
 Linux-сборки запускаются на хосте с более новым fontconfig (2026-09-14, вне вех):
 AppImage на Gentoo падал сразу после старта — `Could not find any font: Sans, sans`
 и `FATAL:SkFontMgr_FontConfigInterface.cpp: Not implemented`. Причина не в сборке:

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,7 +7,8 @@ import afterPack, { launcherScript } from '../after-pack.mjs';
 
 const tmp = await mkdtemp(path.join(os.tmpdir(), 'twig-after-pack-'));
 const context = (platform, dir) => ({
-  electronPlatformName: platform, appOutDir: dir, packager: { executableName: 'twig' }
+  electronPlatformName: platform, appOutDir: dir,
+  packager: { executableName: 'twig', appInfo: { productFilename: '🌱 Twig' } }
 });
 
 async function stagePack(name) {
@@ -54,13 +55,37 @@ await afterPack(context('linux', linux));
 assert.equal(await readFile(path.join(linux, 'twig.bin'), 'utf8'), 'ELF-not-really');
 assert.equal(await readFile(path.join(linux, 'twig'), 'utf8'), launcher);
 
-// Other platforms are packed exactly as before.
-for (const platform of ['darwin', 'win32']) {
-  const dir = await stagePack(platform);
-  await afterPack(context(platform, dir));
+// Windows is packed exactly as before — no launcher swap, no signing.
+{
+  const dir = await stagePack('win32');
+  await afterPack(context('win32', dir));
   assert.equal(await readFile(path.join(dir, 'twig'), 'utf8'), 'ELF-not-really');
   await assert.rejects(stat(path.join(dir, 'twig.bin')));
   await assert.rejects(stat(path.join(dir, 'etc/fonts/fonts.conf')));
+}
+
+// macOS: the .app gets an ad-hoc signature (no identity, just enough for the
+// kernel to accept it) — that's the difference between a normal Gatekeeper
+// warning and arm64's hard "app is damaged" refusal for wholly unsigned code.
+// build.mac.identity is null, so electron-builder's own afterSign hook never
+// fires (see the comment on adHocSignMac); this only proves our afterPack
+// step reaches a real `codesign` and it accepts the result.
+if (process.platform === 'darwin') {
+  const dir = await stagePack('darwin');
+  const contentsDir = path.join(dir, '🌱 Twig.app', 'Contents');
+  await mkdir(path.join(contentsDir, 'MacOS'), { recursive: true });
+  await copyFile('/usr/bin/true', path.join(contentsDir, 'MacOS', 'twig'));
+  await writeFile(path.join(contentsDir, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>twig</string>
+<key>CFBundleIdentifier</key><string>app.nodex.twig</string>
+</dict></plist>
+`, 'utf8');
+  await afterPack(context('darwin', dir));
+  execFileSync('codesign', ['--verify', '--deep', path.join(dir, '🌱 Twig.app')]);
+} else {
+  console.log('after-pack check: skipping macOS ad-hoc signing (codesign unavailable on this platform)');
 }
 
 // The executable name is not hardcoded: it comes from the packager.
