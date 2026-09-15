@@ -85,6 +85,21 @@ Shortcuts use Cmd on macOS and Ctrl elsewhere: `J` console, `F` filter,
 `T` new tab, `W` close tab, `,` settings. Tab / Shift+Tab moves between controls,
 arrows / Home / End move in the history, Escape closes dialogs.
 
+## Gentoo Linux
+
+Community-maintained ebuilds for **amd64 with glibc** are available in
+[Vitaly Zdanevich's Gentoo overlay](https://github.com/vitaly-zdanevich/gentoo-overlay):
+
+- [`dev-vcs/twig`](https://github.com/vitaly-zdanevich/gentoo-overlay/tree/main/dev-vcs/twig)
+  builds Twig's JavaScript from source and bundles the matching upstream Electron runtime.
+- [`dev-vcs/twig-bin`](https://github.com/vitaly-zdanevich/gentoo-overlay/tree/main/dev-vcs/twig-bin)
+  installs the prebuilt upstream Linux release.
+
+Follow the [overlay setup instructions](https://github.com/vitaly-zdanevich/gentoo-overlay#add-the-overlay),
+then install one of the packages with `emerge --ask dev-vcs/twig` or
+`emerge --ask dev-vcs/twig-bin`. Check the package ebuilds for available versions and
+their license requirements.
+
 ## Run locally
 
 Requires Node **20.19+ (Node 20 LTS)** and npm. From the repository root:
