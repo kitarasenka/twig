@@ -54,9 +54,12 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
   }
 
   async function refresh() {
-    const repositories = [];
-    for (const repository of state.repositories) repositories.push(await statusFor(repository));
-    await refreshSandbox();
+    // Each repository's status is an independent pair of `git` spawns; running them
+    // one after another serialized N repositories behind N round-trips at startup.
+    const [repositories] = await Promise.all([
+      Promise.all(state.repositories.map(statusFor)),
+      refreshSandbox()
+    ]);
     state = { ...state, repositories };
     return decorate(state);
   }

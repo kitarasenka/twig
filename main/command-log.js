@@ -40,7 +40,12 @@ export class CommandLog {
   #entries = new Map();
   #listeners = new Set();
   #pending = Promise.resolve();
-  #bytes = 0;
+  // Bytes appended since the last compaction — not the file's total size. Kept
+  // entries can themselves add up to more than COMPACT_BYTES (a page of `git log`
+  // output alone can be past it); comparing against the total would then trip
+  // compaction on every single append forever, turning each command into a full
+  // rewrite of the journal.
+  #appended = 0;
 
   constructor(directory) {
     this.#file = path.join(directory, 'command-log.jsonl');
@@ -95,8 +100,8 @@ export class CommandLog {
       if (!stored) return; // The chunk was past the cap: nothing to remember, nothing to write.
       const line = `${JSON.stringify(stored)}\n`;
       await appendFile(this.#file, line, 'utf8');
-      this.#bytes += Buffer.byteLength(line);
-      if (this.#bytes > COMPACT_BYTES) await this.#compact();
+      this.#appended += Buffer.byteLength(line);
+      if (this.#appended > COMPACT_BYTES) await this.#compact();
     });
   }
 
@@ -120,7 +125,9 @@ export class CommandLog {
       stored = { ...event, result: { ...event.result, stdout: entry.stdout, stderr: entry.stderr } };
     }
     this.#trim();
-    if (publish) for (const listener of this.#listeners) listener(stored, this.list());
+    // `list()` copies every kept entry's full stdout/stderr (up to 256 KB each) — too
+    // expensive to build on every streamed output chunk when no listener asks for it.
+    if (publish) for (const listener of this.#listeners) listener(stored);
     return stored;
   }
 
@@ -145,7 +152,7 @@ export class CommandLog {
     const temporary = `${this.#file}.tmp`;
     await writeFile(temporary, text, 'utf8');
     await rename(temporary, this.#file);
-    this.#bytes = Buffer.byteLength(text);
+    this.#appended = 0;
   }
 
   #trim() {

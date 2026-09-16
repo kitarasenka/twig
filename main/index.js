@@ -76,15 +76,15 @@ app.whenReady().then(async () => {
   ]));
   const userData = app.getPath('userData');
   const journal = new CommandLog(userData);
-  await journal.load();
+  const undo = new UndoService({ directory: userData, log: journal });
+  const marks = new MarksStore(userData);
+  // These three read their own files and don't touch git, so nothing here depends
+  // on the others finishing first — sequencing them only added up their wait times.
+  await Promise.all([journal.load(), undo.load(), marks.load()]);
   const git = await detectGit(journal);
   journal.onChange((event) => {
     if (window && !window.isDestroyed()) window.webContents.send('console:update', event);
   });
-  const undo = new UndoService({ directory: userData, log: journal });
-  await undo.load();
-  const marks = new MarksStore(userData);
-  await marks.load();
   const sandbox = {
     dir: path.join(userData, SANDBOX_DIRNAME),
     remoteDir: path.join(userData, SANDBOX_REMOTE_DIRNAME),
