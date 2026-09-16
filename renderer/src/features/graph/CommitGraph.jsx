@@ -1,6 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Check, GitBranch, Globe, Tag, FilePenLine, Archive, Bookmark } from 'lucide-react';
-import { LANE_WIDTH, ROW_HEIGHT, authorInitials, segmentPath, visibleRange } from './layout.js';
+import { LANE_WIDTH, ROW_HEIGHT, authorInitials, createRowMetrics, segmentPath } from './layout.js';
+import { HEAD_WIDTH, MARK_WIDTH, badgeWidth, extraHeight, packRefLines } from './ref-lines.js';
 import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
 import { markClass } from './mark-color.js';
 import { HISTORY_COLUMNS, TOGGLABLE_COLUMNS, dragColumnWidth, nudgeColumnWidth, readColumnWidths, writeColumnWidths, readColumnVisibility, writeColumnVisibility } from './column-widths.js';
@@ -8,6 +9,33 @@ import { refEndpoint, rowEndpoint } from './useGitDrag.js';
 import Menu from '../../ui/Menu.jsx';
 
 const EMPTY_SELECTION = new Set();
+const EMPTY_LINES = [[]];
+/** The Branch / tag cell keeps a gap to the graph column (`padding-right`). */
+const REF_CELL_PADDING = 8;
+
+/** Measures ref names in the badge font (10px of --font-ui) on an offscreen
+ * canvas: no layout, no reflow, one measurement per distinct name. Without a
+ * canvas (an old engine, a headless stub) it falls back to a per-character
+ * estimate, which only costs a slightly loose line break. */
+function makeTextMeasure() {
+  const cache = new Map();
+  let context = null;
+  try {
+    context = document.createElement('canvas').getContext('2d');
+    const family = getComputedStyle(document.documentElement).getPropertyValue('--font-ui').trim();
+    context.font = `10px ${family || 'sans-serif'}`;
+  } catch {
+    context = null;
+  }
+  return text => {
+    let width = cache.get(text);
+    if (width === undefined) {
+      width = context ? context.measureText(text).width : text.length * 5.6;
+      cache.set(text, width);
+    }
+    return width;
+  };
+}
 
 export function relativeDate(value) {
   const seconds = Math.round((Date.parse(value) - Date.now()) / 1000);
@@ -18,7 +46,7 @@ export function relativeDate(value) {
   return format.format(Math.round(seconds / 86400), 'day');
 }
 
-const CommitRow = memo(function CommitRow({ commit, layout, index, total, selected, member, head, stashes, stashX, onStashes, refs, mark, onSelect, onMenu, dayStart, age, drag, headBranch, visibility }) {
+const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, index, selected, member, head, stashes, stashX, onStashes, refs, refLines, mark, onSelect, onMenu, dayStart, age, drag, headBranch, visibility }) {
   // In age mode a row paints its own age onto every lane crossing it, so the
   // graph reads as one gradient down the page instead of per-branch colours.
   const stroke = age === null ? null : ageStrokeClass(age);
@@ -27,23 +55,23 @@ const CommitRow = memo(function CommitRow({ commit, layout, index, total, select
   return <div role="option" id={`commit-${commit.oid}`} aria-selected={selected || member} aria-posinset={index + 1} aria-setsize={total}
     {...drag?.bind(endpoint)}
     className={`real-commit-row ${selected ? 'selected' : member ? 'multi-selected' : ''} ${dayStart ? 'new-day' : ''} ${mark ? `marked ${markClass(mark.color)}` : ''} ${drag?.className(endpoint) || ''} ${drag?.state?.source.oid === commit.oid ? 'drag-source-row' : ''} ${drag?.state?.target?.oid === commit.oid ? 'drag-target-row' : ''}`}
-    style={{ top: index * ROW_HEIGHT }} onClick={event => onSelect(commit.oid, { shift: event.shiftKey, toggle: event.metaKey || event.ctrlKey })}
+    style={{ top, height }} onClick={event => onSelect(commit.oid, { shift: event.shiftKey, toggle: event.metaKey || event.ctrlKey })}
     onContextMenu={event => { event.preventDefault(); onMenu(commit.oid, event.clientX, event.clientY); }}>
     <span className="ref-cell">
-      {visibility.branch && <>
-      {mark && <span className="mark-chip" title={mark.note || 'Marked'}><Bookmark aria-label={mark.note ? `Marked: ${mark.note}` : 'Marked'} /></span>}
-      {head && <Check aria-label="HEAD" />}{refs?.slice(0, 2).map(ref => <span key={ref.fullName} title={`${ref.fullName} · Drag or Alt+D, then Alt+Enter on a target`} tabIndex={0}
-        {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
-      {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
-    {refs?.length > 2 && <span className="ref-badge ref-more" title={refs.slice(2).map(ref => ref.fullName).join('\n')}>+{refs.length - 2}</span>}
-      </>}</span>
+      {visibility.branch && refLines.map((line, lineIndex) => <span className="ref-line" key={lineIndex}>
+        {lineIndex === 0 && mark && <span className="mark-chip" title={mark.note || 'Marked'}><Bookmark aria-label={mark.note ? `Marked: ${mark.note}` : 'Marked'} /></span>}
+        {lineIndex === 0 && head && <Check aria-label="HEAD" />}
+        {line.map(refIndex => refs[refIndex]).map(ref => <span key={ref.fullName} title={`${ref.fullName} · Drag or Alt+D, then Alt+Enter on a target`} tabIndex={0}
+          {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
+          {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
+      </span>)}</span>
     <span className="lane-cell">
-      <svg className="real-lane" aria-hidden="true" height={ROW_HEIGHT}>
-        {stashes && <path className="stash-link" d={`M${laneX} 15H${stashX}`} />}
-        {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment)} />)}
-        <circle className={stroke || `graph-color-${layout.color}`} cx={laneX} cy={15} r={8} />
-        {mark && <circle className="mark-node" cx={laneX} cy={15} r={8} />}
-        <text className="commit-initials" x={laneX} y={15}>{authorInitials(commit.author.name)}</text>
+      <svg className="real-lane" aria-hidden="true" height={height}>
+        {stashes && <path className="stash-link" d={`M${laneX} ${height / 2}H${stashX}`} />}
+        {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment, height)} />)}
+        <circle className={stroke || `graph-color-${layout.color}`} cx={laneX} cy={height / 2} r={8} />
+        {mark && <circle className="mark-node" cx={laneX} cy={height / 2} r={8} />}
+        <text className="commit-initials" x={laneX} y={height / 2}>{authorInitials(commit.author.name)}</text>
       </svg>
       {stashes && <button className="stash-node" style={{ '--stash-x': `${stashX}px` }}
         title={`${stashes.length === 1 ? 'Stash' : `${stashes.length} stashes`} on this commit:\n${stashes.map(item => item.message).join('\n')}`}
@@ -68,7 +96,45 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   const [resizing, setResizing] = useState(null);
   const colResize = useRef(null);
   const columnsRef = useRef(null);
+  const [fontsReady, setFontsReady] = useState(false);
   const KEY_STEP = 12;
+  // Badge widths are measured with the very font the badges are drawn in, so
+  // the lines we lay out are the lines the browser paints. One canvas, one
+  // measurement per distinct ref name; no DOM is touched per row.
+  const measure = useMemo(() => {
+    void fontsReady; // re-measure once the web font has replaced the fallback
+    return makeTextMeasure();
+  }, [fontsReady]);
+  useEffect(() => {
+    // Fira Sans arrives after the first paint; re-measure once it has.
+    let live = true;
+    document.fonts?.ready.then(() => { if (live) setFontsReady(true); });
+    return () => { live = false; };
+  }, []);
+  // A hidden column keeps its grid track but shrinks to nothing, rather than
+  // dropping the track: that would shift every later column into the wrong slot.
+  const visibleWidth = key => (visibility[key] ? columns[key] : 0);
+  // Badges wrap instead of collapsing into `+N`, so a row with many refs is
+  // taller than the rest. The wrapping is computed here, ahead of the render,
+  // because virtualization needs every row's height before it draws any row.
+  const { refLines, metrics } = useMemo(() => {
+    const available = (visibility.branch ? columns.branch : 0) - REF_CELL_PADDING;
+    const lines = new Map();
+    const extras = [];
+    if (available > 0) {
+      for (let index = 0; index < commits.length; index += 1) {
+        const oid = commits[index].oid;
+        const refs = refMap.get(oid);
+        if (!refs?.length) continue;
+        const lead = (marks[oid] ? MARK_WIDTH : 0) + (head === oid ? HEAD_WIDTH : 0);
+        const packed = packRefLines(refs.map(ref => badgeWidth(ref.name, measure)), available, lead);
+        lines.set(oid, packed);
+        const extra = extraHeight(packed.length);
+        if (extra) extras.push([index, extra]);
+      }
+    }
+    return { refLines: lines, metrics: createRowMetrics(extras) };
+  }, [commits, refMap, marks, head, visibility.branch, columns.branch, measure]);
   function toggleColumn(key) {
     setVisibility(prev => {
       const next = { ...prev, [key]: !prev[key] };
@@ -171,11 +237,13 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
     previousSelection.current = selected;
     setFocusIndex(index);
     const node = scroller.current;
-    if (index * ROW_HEIGHT < node.scrollTop) node.scrollTop = index * ROW_HEIGHT;
-    else if ((index + 1) * ROW_HEIGHT > node.scrollTop + node.clientHeight) node.scrollTop = (index + 1) * ROW_HEIGHT - node.clientHeight;
+    const top = metrics.top(index);
+    const bottom = top + metrics.height(index);
+    if (top < node.scrollTop) node.scrollTop = top;
+    else if (bottom > node.scrollTop + node.clientHeight) node.scrollTop = bottom - node.clientHeight;
     setViewport({ top: node.scrollTop, height: node.clientHeight || 600 });
-  }, [selected, indexMap]);
-  const { start, end } = visibleRange(commits.length, viewport.top, viewport.height);
+  }, [selected, indexMap, metrics]);
+  const { start, end } = metrics.range(commits.length, viewport.top, viewport.height);
   const focused = focusIndex >= start && focusIndex < end ? commits[focusIndex]?.oid : null;
   function keyboard(event) {
     if (event.altKey && (event.code === 'KeyD' || event.key === 'Enter')) {
@@ -209,9 +277,6 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   // One clock reading per render, shared by every visible row: age is a property
   // of the moment the graph is drawn, not of each row on its own.
   const now = commitColors === 'age' ? Date.now() : null;
-  // A hidden column keeps its grid track but shrinks to nothing, rather than
-  // dropping the track: that would shift every later column into the wrong slot.
-  const visibleWidth = key => (visibility[key] ? columns[key] : 0);
   return <div className={`history real-history ${resizing ? 'col-resizing' : ''}`} data-colors={commitColors} style={{
     '--graph-width': `${graphWidth}px`,
     '--col-branch': `${visibleWidth('branch')}px`, '--col-message': `${columns.message}px`,
@@ -240,8 +305,9 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
         if (columnsRef.current) columnsRef.current.style.transform = `translateX(${-node.scrollLeft}px)`;
         if (node.scrollHeight - node.scrollTop - node.clientHeight < ROW_HEIGHT * 15 && hasMore && !loading) loadMore();
       }}>
-      <div className="virtual-commits" style={{ height: commits.length * ROW_HEIGHT }}>
+      <div className="virtual-commits" style={{ height: metrics.totalHeight(commits.length) }}>
         {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
+          top={metrics.top(start + offset)} height={metrics.height(start + offset)} refLines={refLines.get(commit.oid) || EMPTY_LINES}
           selected={selected === commit.oid} member={selectionSet.has(commit.oid)} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} age={now === null ? null : ageStop(commit.committedAt, now)}
           mark={marks[commit.oid] || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch} visibility={visibility}
           dayStart={start + offset > 0 && commit.committedAt.slice(0, 10) !== commits[start + offset - 1].committedAt.slice(0, 10)} />)}

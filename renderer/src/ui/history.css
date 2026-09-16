@@ -15,16 +15,19 @@
 .real-history-scroll:focus-visible, .diff-lines:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .virtual-commits { position: relative; min-width: var(--table-min-width); }
 .real-commit-row { position: absolute; width: 100%; height: var(--row-height); font-size: var(--text-sm); cursor: pointer; }
+/* A row with more refs than fit on one line grows instead of hiding them
+   behind a count: the badges wrap and the row gets the height back. */
+.real-commit-row .ref-cell { align-self: stretch; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; padding-block: var(--space-1); }
+.real-commit-row .ref-line { display: flex; align-items: center; gap: var(--space-1); max-width: 100%; min-width: 0; overflow: hidden; }
 .real-commit-row:hover { background: var(--surface-hover); }
 .real-commit-row.selected, .worktree-row.selected { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); }
 .real-commit-row.multi-selected { background: color-mix(in srgb, var(--accent-bg) 60%, transparent); box-shadow: inset 2px 0 color-mix(in srgb, var(--accent) 45%, transparent); }
 .real-commit-row.new-day { box-shadow: inset 0 1px var(--border); }
-.real-commit-row .ref-cell { gap: var(--space-1); }
-.real-commit-row .ref-cell > svg { color: var(--accent); }
+.real-commit-row .ref-line > svg { color: var(--accent); }
 .real-commit-row .date-cell, .real-commit-row .author-col { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lane-cell { position: relative; width: var(--graph-width); height: var(--row-height); }
+.lane-cell { position: relative; align-self: stretch; width: var(--graph-width); height: 100%; }
 .lane-cell .real-lane { position: absolute; inset: 0; }
-.real-lane { width: var(--graph-width); height: var(--row-height); overflow: visible; }
+.real-lane { width: var(--graph-width); height: 100%; overflow: visible; }
 .real-lane path { fill: none; stroke-width: 2; }
 .real-lane circle { fill: var(--bg); stroke-width: 2.5; }
 .commit-initials { fill: var(--text); font: 600 8px var(--font-ui); text-anchor: middle; dominant-baseline: central; pointer-events: none; }

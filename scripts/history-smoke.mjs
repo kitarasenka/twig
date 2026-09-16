@@ -43,6 +43,9 @@ try {
   await git(['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', 'commit', '-m', 'Real history 🌱', '-m', 'Full body\nWith another line.']);
   const tip = await git(['rev-parse', 'HEAD']);
   await git(['-c', 'tag.gpgsign=false', 'tag', '-a', 'v-test', '-m', 'Annotated tag']);
+  // More refs than fit on one line of the Branch / tag column: the graph has to
+  // wrap them, not hide the names behind a count.
+  for (const name of ['release/2026-09', 'hotfix/fontconfig']) await git(['branch', name, tip]);
   await writeFile(path.join(cwd, 'untracked.txt'), 'Pending changes\n');
   const page1 = await loadHistoryPage({ cwd, log, limit: 250 });
   const page2 = await loadHistoryPage({ cwd, log, limit: 250, skip: page1.nextSkip });
@@ -64,6 +67,24 @@ try {
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Terminal', exact: true }).click();
   assert.ok(await list.getByRole('option').count() < 60);
+  // Wrapped refs: every ref on the tip is named, the badges sit on more than one
+  // line, and the row is taller than a plain one so nothing is clipped.
+  const tipRow = list.getByRole('option').first();
+  await tipRow.locator('.ref-badge').first().waitFor();
+  const tipNames = await tipRow.locator('.ref-badge > span').allTextContents();
+  for (const name of ['main', 'v-test', 'release/2026-09', 'hotfix/fontconfig']) {
+    assert.ok(tipNames.includes(name), `${name} is named in the graph, not folded into a count`);
+  }
+  assert.equal(await tipRow.getByText(/^\+\d+$/).count(), 0, 'no "+N" stub is left');
+  assert.ok(await tipRow.locator('.ref-line').count() > 1, 'the badges wrap onto several lines');
+  const tipBox = await tipRow.boundingBox();
+  const plainBox = await list.getByRole('option').nth(1).boundingBox();
+  assert.ok(tipBox.height > plainBox.height, `the wrapped row grew: ${tipBox.height} > ${plainBox.height}`);
+  assert.ok(Math.abs(plainBox.y - (tipBox.y + tipBox.height)) < 1, 'the next row starts below it, without overlap');
+  for (const badge of await tipRow.locator('.ref-badge').all()) {
+    const box = await badge.boundingBox();
+    assert.ok(box.y >= tipBox.y - 0.5 && box.y + box.height <= tipBox.y + tipBox.height + 0.5, 'every badge stays inside its row');
+  }
   await page.getByRole('button', { name: 'Modified hello.txt', exact: true }).click();
   await page.getByRole('region', { name: 'File diff' }).waitFor().catch(() => {});
   await page.getByText('+Hello real history', { exact: true }).waitFor();
@@ -331,7 +352,7 @@ try {
   await page.screenshot({ path: 'artifacts/m2-compact.png', animations: 'disabled' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, console command bar, adjustable columns, column visibility, external-change auto-refresh, themes.');
+  console.log('M2 Electron passed: real repository, two pages, merge, annotated tag, selection, keyboard, tabs, files, diff, worktree, IPC validation, age colours, commit marks, console command bar, wrapped ref badges, adjustable columns, column visibility, external-change auto-refresh, themes.');
 } finally {
   if (app) await app.close();
   await rm(root, { recursive: true, force: true });

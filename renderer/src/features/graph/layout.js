@@ -59,15 +59,65 @@ export function authorInitials(name) {
   return raw.toUpperCase();
 }
 
-export function segmentPath({ from, to, half }) {
+/** The node sits in the middle of its row, whatever that row's height is:
+ * a row grows downwards when its refs wrap, and the lanes have to follow. */
+export function segmentPath({ from, to, half }, height = ROW_HEIGHT) {
   const x1 = 12 + from * LANE_WIDTH;
   const x2 = 12 + to * LANE_WIDTH;
-  if (half === 'top') return `M${x1} 0V15`;
-  if (half === 'full') return `M${x1} 0V30`;
-  return `M${x1} 15C${x1} 24 ${x2} 21 ${x2} 30`;
+  const middle = height / 2;
+  if (half === 'top') return `M${x1} 0V${middle}`;
+  if (half === 'full') return `M${x1} 0V${height}`;
+  return `M${x1} ${middle}C${x1} ${middle + 9} ${x2} ${height - 9} ${x2} ${height}`;
 }
 
-export function visibleRange(count, scrollTop, height, overscan = 8) {
-  const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - overscan);
-  return { start: Math.min(start, count), end: Math.min(count, Math.ceil((scrollTop + height) / ROW_HEIGHT) + overscan) };
+/** Row geometry for a list where most rows are ROW_HEIGHT tall and a few are
+ * taller. `extras` is the sparse, index-ascending list of the taller ones
+ * (`[index, extraPixels]`), so a hundred thousand commits still cost one
+ * binary search per lookup instead of a hundred thousand-entry prefix sum. */
+export function createRowMetrics(extras = []) {
+  const before = [];
+  let total = 0;
+  for (const [, extra] of extras) { before.push(total); total += extra; }
+  // How many pixels of extra height sit above row `index`.
+  function extraBefore(index) {
+    let low = 0;
+    let high = extras.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (extras[middle][0] < index) low = middle + 1; else high = middle;
+    }
+    return low ? before[low - 1] + extras[low - 1][1] : 0;
+  }
+  function height(index) {
+    let low = 0;
+    let high = extras.length - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      if (extras[middle][0] === index) return ROW_HEIGHT + extras[middle][1];
+      if (extras[middle][0] < index) low = middle + 1; else high = middle - 1;
+    }
+    return ROW_HEIGHT;
+  }
+  const top = index => index * ROW_HEIGHT + extraBefore(index);
+  function indexAt(y, count) {
+    let low = 0;
+    let high = count - 1;
+    let found = 0;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      if (top(middle) <= y) { found = middle; low = middle + 1; } else high = middle - 1;
+    }
+    return found;
+  }
+  return {
+    top,
+    height,
+    totalHeight: count => count * ROW_HEIGHT + (count ? extraBefore(count) : 0),
+    range(count, scrollTop, viewHeight, overscan = 8) {
+      if (!count) return { start: 0, end: 0 };
+      const start = Math.max(0, indexAt(scrollTop, count) - overscan);
+      const end = Math.min(count, indexAt(scrollTop + viewHeight, count) + 1 + overscan);
+      return { start, end };
+    },
+  };
 }
