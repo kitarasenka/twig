@@ -76,7 +76,7 @@ assert.equal(rebuild(hunkSegments[4], 'add'), 'beta two extended');
 // A pure addition block is never paired.
 assert.deepEqual(segmentHunkLines([{ kind: 'add', text: 'a' }, { kind: 'add', text: 'b' }]), [null, null]);
 
-// annotatePatch keeps the existing line classes and only pairs inside a hunk.
+// annotatePatch drops the per-file header and only pairs inside a hunk.
 const patch = [
   'diff --git a/poem.txt b/poem.txt',
   'index 111..222 100644',
@@ -89,22 +89,101 @@ const patch = [
   ' last line'
 ].join('\n');
 const rows = annotatePatch(patch);
+assert.deepEqual(rows.map(row => row.text), [
+  '@@ -1,2 +1,2 @@', ' first line', '-сорока', '+сорок', ' last line'
+], 'diff --git, index and ---/+++ are not changes to the file');
+assert.equal(rows[0].cls, 'diff-hunk');
 assert.equal(rows[2].cls, 'diff-deleted');
-assert.equal(rows[2].segments, null, 'the --- header line is never paired');
-assert.equal(rows[3].cls, 'diff-added');
-assert.equal(rows[3].segments, null, 'the +++ header line is never paired');
-assert.equal(rows[4].cls, 'diff-hunk');
-assert.equal(rows[6].cls, 'diff-deleted');
-assert.deepEqual(rows[6].segments, [{ type: 'same', text: 'сорок' }, { type: 'del', text: 'а' }]);
-assert.deepEqual(rows[7].segments, [{ type: 'same', text: 'сорок' }]);
-assert.equal(rows[5].segments, null);
+assert.deepEqual(rows[2].segments, [{ type: 'same', text: 'сорок' }, { type: 'del', text: 'а' }]);
+assert.deepEqual(rows[3].segments, [{ type: 'same', text: 'сорок' }]);
+assert.equal(rows[1].segments, null);
+
+// Every file of a multi-file patch loses its header, hunks keep their order.
+const multi = annotatePatch([
+  'diff --git a/one.txt b/one.txt',
+  'index 1..2 100644',
+  '--- a/one.txt',
+  '+++ b/one.txt',
+  '@@ -1 +1 @@',
+  '-one',
+  '+ONE',
+  'diff --git a/two.txt b/two.txt',
+  'new file mode 100644',
+  'index 0000000..3 100644',
+  '--- /dev/null',
+  '+++ b/two.txt',
+  '@@ -0,0 +1 @@',
+  '+two'
+].join('\n')).map(row => row.text);
+assert.deepEqual(multi, ['@@ -1 +1 @@', '-one', '+ONE', '@@ -0,0 +1 @@', '+two']);
+
+// A removed line that looks like a header survives: it is inside a hunk.
+assert.deepEqual(annotatePatch([
+  'diff --git a/m.txt b/m.txt',
+  '--- a/m.txt',
+  '+++ b/m.txt',
+  '@@ -1 +1 @@',
+  '--- a/m.txt',
+  '+++ b/m.txt'
+].join('\n')).map(row => row.text), ['@@ -1 +1 @@', '--- a/m.txt', '+++ b/m.txt']);
+
+// A header-only patch (a mode change) keeps its lines: an empty body says less.
+assert.deepEqual(annotatePatch([
+  'diff --git a/run.sh b/run.sh',
+  'old mode 100644',
+  'new mode 100755'
+].join('\n')).map(row => row.text), ['diff --git a/run.sh b/run.sh', 'old mode 100644', 'new mode 100755']);
 
 // A patch with no hunk header pairs nothing.
 for (const row of annotatePatch('-just\n+text')) assert.equal(row.segments, null);
 
-// The renderer and this check agree on the segment class names.
+// Line numbers: context advances both sides, a removal only the old side, an
+// addition only the new one; the hunk header itself carries no number.
+const numbered = annotatePatch([
+  'diff --git a/poem.txt b/poem.txt',
+  '--- a/poem.txt',
+  '+++ b/poem.txt',
+  '@@ -10,4 +20,5 @@ def build(x):',
+  ' context',
+  '-gone',
+  '+kept',
+  '+added',
+  ' tail'
+].join('\n')).map(row => [row.oldLine, row.newLine]);
+assert.deepEqual(numbered, [[null, null], [10, 20], [11, null], [null, 21], [null, 22], [12, 23]]);
+
+// A second hunk restarts the count from its own header, and `\ No newline at
+// end of file` is not a line of either side.
+const twoHunks = annotatePatch([
+  '@@ -1 +1 @@',
+  '-one',
+  '+ONE',
+  '\\ No newline at end of file',
+  '@@ -40,2 +41,2 @@',
+  ' forty',
+  '+forty one'
+].join('\n')).map(row => [row.oldLine, row.newLine]);
+assert.deepEqual(twoHunks, [[null, null], [1, null], [null, 1], [null, null], [null, null], [40, 41], [null, 42]]);
+
+// A new file (`-0,0`) numbers only the side that exists.
+assert.deepEqual(annotatePatch('@@ -0,0 +1,2 @@\n+first\n+second').map(row => [row.oldLine, row.newLine]),
+  [[null, null], [null, 1], [null, 2]]);
+
+// The newline that ends a patch is not a line of the file.
+assert.deepEqual(annotatePatch('@@ -1 +1 @@\n-one\n+ONE\n').map(row => row.text), ['@@ -1 +1 @@', '-one', '+ONE']);
+
+// Lines outside any hunk (a header-only patch) are never numbered.
+for (const row of annotatePatch('diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755')) {
+  assert.equal(row.oldLine, null);
+  assert.equal(row.newLine, null);
+}
+
+// The renderer and this check agree on the segment and gutter class names.
 const css = await read('renderer/src/ui/history.css');
 assert.match(css, /\.diff-seg-add\b/);
 assert.match(css, /\.diff-seg-del\b/);
+for (const name of ['diff-gutter', 'diff-line-old', 'diff-line-new']) assert.match(css, new RegExp(`\\.${name}\\b`), `${name} is styled`);
+const jsx = await read('renderer/src/features/diff/DiffLines.jsx');
+for (const name of ['diff-gutter', 'diff-line-old', 'diff-line-new']) assert.ok(jsx.includes(name), `${name} is rendered`);
 
-console.log('intraline check passed: character diff, similarity and length guards, hunk pairing, patch annotation, CSS parity.');
+console.log('intraline check passed: character diff, similarity and length guards, hunk pairing, patch annotation, line numbers, CSS parity.');

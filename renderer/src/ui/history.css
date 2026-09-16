@@ -154,7 +154,15 @@
 .file-history-subject { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .file-history-meta { color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
 .diff-lines { flex: 1; overflow: auto; font: var(--text-sm)/1.35 var(--font-mono); padding-block: var(--space-2); }
-.diff-lines > div { white-space: pre; min-width: max-content; padding-inline: var(--space-4); }
+.diff-lines > div { white-space: pre; min-width: max-content; padding-inline: 0 var(--space-4); }
+/* Old/new line numbers, as wide as the longest number in this diff so the code
+   starts at one column. The strip sticks to the left edge while the line scrolls
+   sideways under it, and is not selected when the diff text is copied. */
+.diff-gutter { position: sticky; left: 0; z-index: 1; display: inline-block; margin-right: var(--space-2); padding-inline: var(--space-3) var(--space-2);
+  background: var(--surface); border-right: 1px solid var(--border); color: var(--muted); user-select: none; }
+.diff-line-number { display: inline-block; text-align: right; }
+.diff-line-old { width: calc(var(--diff-old-digits, 1) * 1ch); }
+.diff-line-new { width: calc(var(--diff-new-digits, 1) * 1ch); margin-left: var(--space-2); }
 .diff-added { color: var(--accent); background: var(--accent-bg); }
 .diff-deleted { color: var(--danger); background: var(--surface); }
 .diff-hunk { color: var(--lane-mint); background: var(--surface-raised); }

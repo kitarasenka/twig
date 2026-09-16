@@ -149,29 +149,76 @@ export function segmentHunkLines(lines) {
 
 /**
  * @typedef {{ cls: '' | 'diff-added' | 'diff-deleted' | 'diff-hunk',
- *   text: string, segments: Segment[] | null }} PatchRow
+ *   text: string, segments: Segment[] | null,
+ *   oldLine: number | null, newLine: number | null }} PatchRow
  */
+
+/** Git's per-file preamble: machine bookkeeping, not a change to the file. */
+const HEADER = /^(diff --git |index |--- |\+\+\+ |old mode |new mode |new file mode |deleted file mode |similarity index |dissimilarity index |rename from |rename to |copy from |copy to )/;
+
+/**
+ * Drop the `diff --git` / `index` / `---` / `+++` preamble of every file in the
+ * patch, keeping only hunks and their lines. Header lines are recognised only
+ * outside a hunk, so a removed line that happens to read `--- a/x` survives.
+ * A patch that is nothing but a header (a mode change) is returned untouched —
+ * an empty body would say less than the header does.
+ * @param {string[]} lines
+ * @returns {string[]}
+ */
+function stripHeaders(lines) {
+  let inHunk = false;
+  const kept = lines.filter(line => {
+    if (line.startsWith('diff --git ')) inHunk = false;
+    else if (line.startsWith('@@')) inHunk = true;
+    return inHunk || !HEADER.test(line);
+  });
+  return kept.length ? kept : lines;
+}
+
+/** Start line numbers of a hunk header: `@@ -12,7 +12,9 @@` → [12, 12]. Its
+ *  counts are not read — the lines themselves say how far each side runs. */
+const HUNK = /^@@+ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
 /**
  * Split raw unified-diff text into rows for rendering, attaching intra-line
- * segments to paired -/+ lines. Lines before the first `@@` (the `diff --git`,
- * `index`, `---`/`+++` header) keep their current colour but are never paired.
+ * segments to paired -/+ lines. The per-file header is stripped: only hunks
+ * and their lines are rendered.
  * @param {string} patch
  * @returns {PatchRow[]}
  */
 export function annotatePatch(patch) {
-  const lines = patch.split('\n');
+  const raw = patch.split('\n');
+  // A patch ends with a newline, so the split leaves one empty tail element.
+  // It is not a line of the file and must not take a line number.
+  if (raw.length > 1 && raw[raw.length - 1] === '') raw.pop();
+  const lines = stripHeaders(raw);
   let firstHunk = lines.findIndex(line => line.startsWith('@@'));
   if (firstHunk < 0) firstHunk = lines.length;
 
-  const rows = lines.map(text => ({
-    cls: text.startsWith('@@') ? 'diff-hunk'
-      : text.startsWith('+') ? 'diff-added'
-        : text.startsWith('-') ? 'diff-deleted'
-          : '',
-    text,
-    segments: null
-  }));
+  // Line numbers are counted from the hunk header, the only place the patch
+  // states them: a removed line advances the old side, an added one the new
+  // side, context both. Everything else (the header itself, `\ No newline`,
+  // a header-only patch) has no number on either side.
+  let oldNext = 0;
+  let newNext = 0;
+  const rows = lines.map(text => {
+    if (text.startsWith('@@')) {
+      const hunk = HUNK.exec(text);
+      oldNext = hunk ? Number(hunk[1]) : 0;
+      newNext = hunk ? Number(hunk[2]) : 0;
+      return { cls: 'diff-hunk', text, segments: null, oldLine: null, newLine: null };
+    }
+    const cls = text.startsWith('+') ? 'diff-added' : text.startsWith('-') ? 'diff-deleted' : '';
+    const counts = oldNext > 0 || newNext > 0;
+    const numbered = counts && (cls !== '' || text.startsWith(' ') || text === '');
+    return {
+      cls,
+      text,
+      segments: null,
+      oldLine: numbered && cls !== 'diff-added' ? oldNext++ : null,
+      newLine: numbered && cls !== 'diff-deleted' ? newNext++ : null
+    };
+  });
 
   let k = firstHunk + 1;
   while (k < rows.length) {

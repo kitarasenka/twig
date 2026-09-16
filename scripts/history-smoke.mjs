@@ -94,6 +94,15 @@ try {
   // changed, not the whole line.
   assert.ok(await fileDiff.locator('.diff-seg-add').count() > 0, 'added characters are highlighted inside the line');
   assert.ok(await fileDiff.locator('.diff-seg-del').count() > 0, 'removed characters are highlighted inside the line');
+  // Every line of the diff is numbered on the side it belongs to: a removed
+  // line on the old side only, an added one on the new side only.
+  const removedRow = fileDiff.locator('.diff-deleted').first();
+  const addedRow = fileDiff.locator('.diff-added').first();
+  assert.match(await removedRow.locator('.diff-line-old').innerText(), /^\d+$/, 'the removed line has an old line number');
+  assert.equal((await removedRow.locator('.diff-line-new').innerText()).trim(), '', 'the removed line has no new line number');
+  assert.match(await addedRow.locator('.diff-line-new').innerText(), /^\d+$/, 'the added line has a new line number');
+  assert.equal((await addedRow.locator('.diff-line-old').innerText()).trim(), '', 'the added line has no old line number');
+  assert.equal((await fileDiff.locator('.diff-hunk').first().locator('.diff-line-old').innerText()).trim(), '', 'the hunk header itself is not numbered');
   await fileDiff.getByRole('button', { name: 'Go to commit', exact: true }).click();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
   assert.equal(await fileHistory.count(), 0);
