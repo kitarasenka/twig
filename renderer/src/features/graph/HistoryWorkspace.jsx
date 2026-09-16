@@ -188,14 +188,24 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     } finally { if (epoch === generation.current) { busy.current = false; setLoading(false); } }
   }, [repository.id]);
 
-  const reload = useCallback(async () => {
+  // `keepView: true` is for refreshes the user did not ask for (the git-directory
+  // watcher, regaining focus): they must not close what is open on screen. The
+  // commit panel, diff and file history address their content by oid and path
+  // and re-read it themselves, so leaving them mounted is safe even if the
+  // commit they show has just been rewritten away — they report that, and the
+  // graph simply stops highlighting a row. Our own actions still reload the
+  // plain way, because after a checkout or a rebase the old selection is stale
+  // on purpose.
+  const reload = useCallback(async ({ keepView = false } = {}) => {
     lastReload.current = Date.now();
     const epoch = ++generation.current;
     // Reloading history must not throw the user out of the working tree
     // screen: staging refreshes history, and the screen lives in `selected`.
     busy.current = true; setLoading(true); setError('');
-    setSelected(current => (SCREENS.includes(current) ? current : null));
-    setSelection([]); setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
+    if (!keepView) {
+      setSelected(current => (SCREENS.includes(current) ? current : null));
+      setSelection([]); setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
+    }
     try {
       const [refs, stashList, remoteList, markMap] = await Promise.all([
         window.twig.getRefs(repository.id),
@@ -251,7 +261,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     const run = () => {
       timer = null;
       if (!alive || refreshBusy.current || Date.now() - lastReload.current < 1200) return;
-      void reload();
+      void reload({ keepView: true });
       void refreshOperation();
       onRepositoryChanged?.();
     };

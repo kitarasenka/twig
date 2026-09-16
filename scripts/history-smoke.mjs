@@ -336,12 +336,16 @@ try {
   // Auto-refresh: a commit made in a terminal shows up on its own. `main` watches
   // the git directory; the workspace reloads on the event, with no Refresh click
   // and no polling timer.
-  await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
+  const openCommit = page.getByRole('heading', { name: 'Real history 🌱', exact: true });
+  await openCommit.waitFor();
   await page.waitForTimeout(1500); // clear the short guard that skips a reload right after one
   await writeFile(path.join(cwd, 'external.txt'), 'made outside Twig\n');
   await git(['add', '--', 'external.txt']);
   await git(['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', 'commit', '-m', 'Committed from a terminal']);
-  await page.getByRole('heading', { name: 'Committed from a terminal', exact: true }).waitFor();
+  await page.locator('.real-commit-row', { hasText: 'Committed from a terminal' }).first().waitFor();
+  // A refresh nobody asked for must not close what is open: the commit panel
+  // still shows the commit the user had selected before the outside commit.
+  await openCommit.waitFor();
 
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
