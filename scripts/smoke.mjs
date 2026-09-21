@@ -46,7 +46,7 @@ try {
     'stashFiles', 'stashDiff', 'stashAction', 'pushRef', 'runDrop', 'deleteBranch', 'renameBranch', 'setUpstream', 'deleteTag',
     'getBisectState', 'runBisect', 'listMarks', 'setMark', 'clearMark',
     'getBlame', 'getReverseBlame', 'getBlameBefore', 'cancelBlame',
-    'cloneRepository', 'getRemotes', 'removeRepository', 'resetDemoWorkspace', 'getUndoState', 'moveUndo', 'onUndoUpdate',
+    'cloneRepository', 'getRemotes', 'removeRepository', 'resetDemoWorkspace', 'setDemoWorkspaceVisible', 'getUndoState', 'moveUndo', 'onUndoUpdate',
     'watchRepository', 'onRepositoryChange',
     'getSshKeys', 'getSshConfig', 'generateSshKey', 'saveSshConfig', 'testSshConnection', 'cancelSshConnection', 'secureSshKey',
     'getAutomationConfig', 'saveAutomationConfig', 'trustAutomations', 'runAutomation', 'cancelAutomation', 'getAutomationRuns', 'getAutomationRun', 'onAutomationStep',
@@ -77,9 +77,9 @@ try {
   assert.equal(Math.round(await panelWidth()), Math.round(started) + 44);
   await splitter.dblclick();
   assert.equal(Math.round(await panelWidth()), Math.round(started));
-  // The demo tab has no close control; opening the New repository tab and coming
-  // back keeps its selection.
-  assert.equal(await page.getByRole('button', { name: 'Close workspace-demo tab' }).count(), 0);
+  // The demo tab closes like any other; opening the New repository tab and
+  // coming back keeps its selection.
+  assert.equal(await page.getByRole('button', { name: 'Close workspace-demo tab' }).count(), 1);
   await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
   await page.getByRole('heading', { name: 'A clear view of your code.' }).waitFor();
   await page.getByRole('button', { name: 'Open workspace-demo', exact: true }).click();

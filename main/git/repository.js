@@ -33,8 +33,12 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
     return next;
   };
 
-  /** The sandbox is always the first tab; it is derived, never persisted. */
-  const decorate = current => sandboxEntry
+  /**
+   * The sandbox is the first tab; it is derived, never persisted as a repository.
+   * Closing it persists one flag (`sandboxHidden`) instead: the files stay on
+   * disk, so showing it again is the same sandbox, not a fresh seed.
+   */
+  const decorate = current => sandboxEntry && !current.sandboxHidden
     ? { ...current, repositories: [sandboxEntry, ...current.repositories] }
     : current;
 
@@ -49,7 +53,7 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
   }
 
   async function refreshSandbox() {
-    if (!sandbox) return;
+    if (!sandbox || state.sandboxHidden) return;
     sandboxEntry = await statusFor({ id: sandbox.dir, path: sandbox.dir, name: SANDBOX_NAME, sandbox: true });
   }
 
@@ -92,6 +96,17 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
     return refresh();
   }
 
+  /** Close or reopen the demo tab. Nothing on disk is touched either way. */
+  async function setSandboxVisible(visible) {
+    if (!sandbox) throw new Error('No demo workspace to show or hide.');
+    state = await store.save(state.repositories, state.activeId, !visible);
+    if (visible) {
+      await ensureSandbox({ ...sandbox, log });
+      await refreshSandbox();
+    }
+    return decorate(state);
+  }
+
   async function remove(id) {
     if (sandbox && id === sandbox.dir) throw new Error('The demo workspace cannot be removed.');
     if (!state.repositories.some(item => item.id === id)) throw new Error('Unknown repository.');
@@ -103,6 +118,7 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
 
   async function reset() {
     if (!sandbox) throw new Error('No demo workspace to reset.');
+    if (state.sandboxHidden) throw new Error('The demo workspace is closed.');
     await resetSandbox({ dir: sandbox.dir, remoteDir: sandbox.remoteDir, log });
     await undo?.forget(sandbox.dir);
     await marks?.forget(sandbox.dir);
@@ -113,10 +129,12 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
   return {
     load: serialize(async () => {
       state = await store.load();
-      if (sandbox) await ensureSandbox({ ...sandbox, log });
+      // A closed demo costs nothing at startup: no seeding, no status, no git.
+      if (sandbox && !state.sandboxHidden) await ensureSandbox({ ...sandbox, log });
       return refresh();
     }),
     add: serialize(add), select: serialize(select), remove: serialize(remove), resetSandbox: serialize(reset),
+    setSandboxVisible: serialize(setSandboxVisible),
     snapshot: () => decorate(state)
   };
 }

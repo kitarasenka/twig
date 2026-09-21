@@ -92,7 +92,11 @@ export default function App() {
         if (!alive) return;
         setInfo(appInfo); setWorkspace(initialWorkspace); setEntries(initialEntries);
         const startId = initialWorkspace.activeId || initialWorkspace.repositories[0]?.id;
+        // Nothing to show — no connected repository and a closed demo — is a
+        // real state now, and it starts on the New repository tab, not on a
+        // blank window.
         if (startId) setActive(`repository:${startId}`);
+        else { setEmptyOpen(true); setActive('new'); }
       })
       .catch(() => { if (alive) setStartupError('Desktop connection unavailable. Restart 🌱 Twig.'); });
     const unsubscribe = window.twig.onConsoleUpdate((update) => { if (alive) setEntries(current => applyConsoleUpdate(current, update)); });
@@ -207,6 +211,37 @@ export default function App() {
     } finally { setResetting(false); }
   }
 
+  /**
+   * Closing the demo tab is remembered across restarts — a closed demo costs
+   * nothing on startup — and it deletes nothing: showing it again reopens the
+   * same sandbox with its history intact.
+   */
+  const demoVisibleRef = useRef(null);
+  async function setDemoVisible(visible) {
+    try {
+      const next = await window.twig.setDemoWorkspaceVisible(visible);
+      ++selectionRequest.current;
+      setWorkspace(next);
+      const demo = next.repositories.find(item => item.sandbox);
+      if (visible && demo) {
+        setActive(`repository:${demo.id}`);
+        setDialog(null);
+        setSyncNote('');
+      } else if (!visible) {
+        const open = next.repositories.filter(item => !closedTabs.has(item.id));
+        if (open[0]) setActive(`repository:${open[0].id}`); else openEmpty();
+        setSyncNote('Demo workspace closed. Settings brings it back.');
+      }
+    } catch (error) {
+      setSyncNote(error.message || 'Could not change the demo workspace.');
+      showConsole();
+    }
+  }
+
+  // Cmd+W fires from a subscription that must not be torn down on every render,
+  // so it reaches this handler through a ref rather than the dependency list.
+  demoVisibleRef.current = setDemoVisible;
+
   const syncReason = !repositoryActive || !repository?.available ? unavailable
     : syncing ? `${syncing} is running` : undefined;
 
@@ -319,7 +354,8 @@ export default function App() {
       if (key === 'w') {
         event.preventDefault();
         if (active === 'new') { setEmptyOpen(false); if (sandboxId) setActive(`repository:${sandboxId}`); }
-        else if (repositoryActive && active.slice(11) !== sandboxId) {
+        else if (repositoryActive && active.slice(11) === sandboxId) void demoVisibleRef.current(false);
+        else if (repositoryActive) {
           const id = active.slice(11);
           setClosedTabs(current => new Set(current).add(id));
           const remaining = (workspace?.repositories || []).filter(item => item.id !== id && !closedTabs.has(item.id));
@@ -335,7 +371,7 @@ export default function App() {
   return <div className="app-shell">
     <header className="tab-bar"><div className="brand"><img className="brand-logo" src="./twig-logo.png" alt="" width="36" height="36" /><strong>🌱 Twig</strong></div>
       <nav className="tabs" aria-label="Repository tabs">
-        {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{item.sandbox ? <small>DEMO</small> : !item.available && <small>OFFLINE</small>}</button>{!item.sandbox && <Button icon={X} aria-label={`Close ${item.name} tab`} title={`${mod}+W`} onClick={() => closeRepositoryTab(item.id)} />}</div>)}
+        {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{item.sandbox ? <small>DEMO</small> : !item.available && <small>OFFLINE</small>}</button><Button icon={X} aria-label={`Close ${item.name} tab`} title={item.sandbox ? `Close the demo workspace · ${mod}+W` : `${mod}+W`} onClick={() => { if (item.sandbox) void setDemoVisible(false); else closeRepositoryTab(item.id); }} /></div>)}
         {emptyOpen && <div className={`tab ${active === 'new' ? 'active' : ''}`}><button aria-current={active === 'new' ? 'page' : undefined} onClick={() => setActive('new')}><FolderOpen />New repository</button><Button icon={X} aria-label="Close new tab" onClick={() => { setEmptyOpen(false); if (sandboxId) setActive(`repository:${sandboxId}`); }} /></div>}
         <Button icon={Plus} aria-label="New repository tab" title={`${mod}+T`} onClick={openEmpty} />
       </nav>
@@ -381,7 +417,9 @@ export default function App() {
             onConsole={showConsole} onRepositoryChanged={refreshRepository} />
           : <RepositoryReady repository={item} onOpen={openRepository} />)}
       </div>)}
-      {active === 'new' && <main className="welcome"><div className="welcome-mark"><img src="./twig-logo.png" alt="" width="96" height="96" /></div><span className="eyebrow">YOUR NEXT WORKSPACE</span><h1>A clear view of your code.</h1><p>Open a folder, clone a repository, or choose one you have connected.</p><div className="welcome-actions"><Button icon={FolderOpen} className="primary" onClick={openRepository}>Open repository</Button><Button icon={ArrowDown} onClick={() => setDialog('Clone repository')}>Clone repository</Button><Button icon={GitBranch} onClick={() => setDialog('Repositories')}>Connected repositories</Button></div><div className="welcome-demo"><span className="demo-pill">DEMO</span><p>The <strong>workspace-demo</strong> tab is a real sandbox repository — every command runs against it.</p>{sandboxId && <Button icon={GitBranch} className="primary" onClick={() => setActive(`repository:${sandboxId}`)}>Open workspace-demo</Button>}</div></main>}
+      {active === 'new' && <main className="welcome"><div className="welcome-mark"><img src="./twig-logo.png" alt="" width="96" height="96" /></div><span className="eyebrow">YOUR NEXT WORKSPACE</span><h1>A clear view of your code.</h1><p>Open a folder, clone a repository, or choose one you have connected.</p><div className="welcome-actions"><Button icon={FolderOpen} className="primary" onClick={openRepository}>Open repository</Button><Button icon={ArrowDown} onClick={() => setDialog('Clone repository')}>Clone repository</Button><Button icon={GitBranch} onClick={() => setDialog('Repositories')}>Connected repositories</Button></div><div className="welcome-demo"><span className="demo-pill">DEMO</span><p>The <strong>workspace-demo</strong> tab is a real sandbox repository — every command runs against it.</p>{sandboxId
+        ? <Button icon={GitBranch} className="primary" onClick={() => setActive(`repository:${sandboxId}`)}>Open workspace-demo</Button>
+        : <Button icon={GitBranch} className="primary" onClick={() => setDemoVisible(true)}>Show workspace-demo</Button>}</div></main>}
     </div>}
     <Console expanded={consoleOpen} onToggle={() => setConsoleOpen(!consoleOpen)} mod={mod} entries={entries} focus={consoleFocus}
       repositoryId={workspace?.repositories.find(item => item.available && active === `repository:${item.id}`)?.id || null} />
@@ -400,7 +438,9 @@ export default function App() {
         <div className="settings-note">🌱 Twig {info?.version || '…'}<br />Local fonts. No telemetry. No automatic updates.</div></>}
       {dialog === 'Settings' && <div className="manager-actions"><Button icon={FolderOpen} onClick={() => setDialog('Repositories')}>Manage repositories</Button><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : 'Open a repository first'} onClick={() => setDialog('Remotes')}>Manage remotes</Button></div>}
       {dialog === 'Settings' && <Button onClick={() => setDialog('SSH')}>SSH keys and config</Button>}
-      {dialog === 'Settings' && <div className="setting-row"><span><strong>Demo workspace</strong><small>Restore the <strong>workspace-demo</strong> sandbox to its sample history.</small></span><Button icon={RefreshCw} onClick={() => setDialog('Reset demo workspace')}>Reset demo workspace</Button></div>}
+      {dialog === 'Settings' && (sandboxId
+        ? <div className="setting-row"><span><strong>Demo workspace</strong><small>Restore the <strong>workspace-demo</strong> sandbox to its sample history.</small></span><Button icon={RefreshCw} onClick={() => setDialog('Reset demo workspace')}>Reset demo workspace</Button></div>
+        : <div className="setting-row"><span><strong>Demo workspace</strong><small>The <strong>workspace-demo</strong> tab is closed. Its sandbox is still on disk — showing it again opens the same repository.</small></span><Button icon={GitBranch} onClick={() => setDemoVisible(true)}>Show demo workspace</Button></div>)}
       {dialog === 'Reset demo workspace' && <div className="confirm-dialog">
         <p className="confirm-consequence"><AlertTriangle aria-hidden="true" /><span>Deletes the <strong>workspace-demo</strong> sandbox and its local demo remote, then recreates them with the sample history.</span></p>
         <ul>

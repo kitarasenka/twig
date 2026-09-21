@@ -74,5 +74,37 @@ try {
   await restored.remove(result.path); assert.equal(restored.snapshot().activeId, null);
   await access(path.join(result.path, '.git'));
   assert.throws(() => parseRemotes('remote.origin.url\ntruncated'));
-  console.log('Repository checks passed: remotes, stale state, fetch, clone, cancellation, existing-directory refusal, persistence, concurrent list mutations, no disk deletion.');
+
+  // --- closing and reopening the demo workspace ------------------------------
+  // The demo tab is derived, so closing it is one stored flag. It must survive a
+  // restart, cost no git at startup while closed, and give back the same
+  // sandbox — not a fresh seed — when it is shown again.
+  const demoDir = path.join(root, 'state', 'demo-sandbox');
+  const demo = { dir: demoDir, remoteDir: path.join(root, 'state', 'demo-sandbox-remote.git'), markerFile: path.join(root, 'state', 'demo-sandbox.json') };
+  const withDemo = () => createRepositoryService({ log, store: new RepositoryStore(stateDir), sandbox: demo });
+  const seeded = withDemo(); await seeded.load();
+  assert.equal(seeded.snapshot().repositories[0]?.sandbox, true, 'the demo is the first tab');
+  assert.equal(seeded.snapshot().repositories[0].available, true, 'the demo is seeded and readable');
+  const demoHead = await git(['rev-parse', 'HEAD'], demoDir);
+  await assert.rejects(seeded.remove(demoDir), /cannot be removed/);
+
+  await seeded.setSandboxVisible(false);
+  assert.deepEqual(seeded.snapshot().repositories.filter(item => item.sandbox), [], 'closing hides the demo tab');
+  await access(path.join(demoDir, '.git')); // closing deletes nothing
+
+  const spawnsBefore = log.list().length;
+  const restarted = withDemo(); await restarted.load();
+  assert.deepEqual(restarted.snapshot().repositories.filter(item => item.sandbox), [], 'the demo stays closed across a restart');
+  assert.equal(log.list().length, spawnsBefore, 'a closed demo runs no git at startup');
+  await assert.rejects(restarted.resetSandbox(), /closed/);
+
+  await restarted.setSandboxVisible(true);
+  const reopened = restarted.snapshot().repositories[0];
+  assert.equal(reopened?.sandbox, true, 'showing it again puts the demo back first');
+  assert.equal(reopened.available, true);
+  assert.equal(await git(['rev-parse', 'HEAD'], demoDir), demoHead, 'the same sandbox comes back, not a new seed');
+  const shown = withDemo(); await shown.load();
+  assert.equal(shown.snapshot().repositories[0]?.sandbox, true, 'and an open demo survives a restart too');
+
+  console.log('Repository checks passed: remotes, stale state, fetch, clone, cancellation, existing-directory refusal, persistence, concurrent list mutations, no disk deletion, demo close/show.');
 } finally { await rm(root, { recursive: true, force: true }); }

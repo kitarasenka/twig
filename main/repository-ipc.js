@@ -21,6 +21,12 @@ export function registerRepositoryIpc(getWindow, entryUrl, { journal, repositori
     return item;
   }
   register('sandbox:reset', 0, () => repositories.resetSandbox());
+  // Closing the demo tab is a stored preference, not a repository mutation: it
+  // deletes nothing, and the same sandbox comes back when it is shown again.
+  register('sandbox:visible', 1, visible => {
+    if (typeof visible !== 'boolean') throw new TypeError('Invalid demo workspace visibility');
+    return repositories.setSandboxVisible(visible);
+  });
   register('repositories:remove', 1, id => {
     repository(id, false);
     if (remoteJobs.has(id)) throw new Error('Wait for the remote action before removing this repository.');

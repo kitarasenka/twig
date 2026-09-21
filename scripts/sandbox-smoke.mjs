@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { _electron as electron } from 'playwright';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -63,8 +63,44 @@ try {
     await page.screenshot({ path: `artifacts/sandbox-${theme}.png`, animations: 'disabled' });
   }
 
+  // Closing the demo tab: it is the only tab here, so the app falls back to the
+  // New repository screen and Settings is where it comes back from.
+  await page.getByRole('button', { name: 'Close workspace-demo tab', exact: true }).click();
+  await page.getByRole('heading', { name: 'A clear view of your code.' }).waitFor();
+  await page.getByText('Demo workspace closed. Settings brings it back.').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Close workspace-demo tab' }).count(), 0, 'the demo tab is gone');
+  assert.equal(await page.evaluate(() => window.twig.getWorkspace().then(w => w.repositories.length)), 0);
+  await access(path.join(profile, 'demo-sandbox', '.git')); // closing deletes nothing
+  await page.screenshot({ path: 'artifacts/sandbox-closed.png', animations: 'disabled' });
+
+  // It stays closed across a restart, and 🌱 Twig runs no git for it on the way up.
   assert.deepEqual(errors, []);
-  console.log('Sandbox smoke passed: seeded demo repo, real stash pop, reset demo workspace restores the sample history, both themes.');
+  const demoCommands = journal => journal.filter(entry => entry.cwd.includes('demo-sandbox')).length;
+  const beforeRestart = demoCommands(await page.evaluate(() => window.twig.getConsoleEntries()));
+  await app.close();
+  app = await electron.launch({ args: ['.', `--user-data-dir=${profile}`], env, timeout: 30000 });
+  const second = await app.firstWindow();
+  second.setDefaultTimeout(15000);
+  second.on('pageerror', e => errors.push(e.message));
+  await second.getByRole('heading', { name: 'A clear view of your code.' }).waitFor();
+  assert.equal(await second.evaluate(() => window.twig.getWorkspace().then(w => w.repositories.length)), 0, 'the demo is still closed after a restart');
+  // The journal survives restarts, so the proof is that it did not grow: not one
+  // new command ran in the sandbox on the way up.
+  const journal = await second.evaluate(() => window.twig.getConsoleEntries());
+  assert.equal(demoCommands(journal), beforeRestart, 'a closed demo runs no git at startup');
+
+  // Settings shows it again: the same sandbox, with the history from before.
+  await second.getByRole('button', { name: 'Settings', exact: true }).click();
+  assert.equal(await second.getByRole('button', { name: 'Reset demo workspace' }).count(), 0, 'nothing to reset while it is closed');
+  await second.getByRole('button', { name: 'Show demo workspace', exact: true }).click();
+  await second.getByRole('listbox', { name: 'Commit history', exact: true }).waitFor();
+  await second.getByRole('heading', { name: 'Refine the workspace layout' }).waitFor();
+  const restored = await second.evaluate(() => window.twig.getWorkspace().then(w => w.repositories.find(r => r.sandbox)));
+  assert.equal(restored.id, demoId, 'the same sandbox comes back');
+  assert.equal(await second.evaluate(id => window.twig.stashList(id).then(list => list.length), demoId), 1, 'its seeded stash is still there');
+
+  assert.deepEqual(errors, []);
+  console.log('Sandbox smoke passed: seeded demo repo, real stash pop, reset demo workspace restores the sample history, closing the demo tab persists and shows again, both themes.');
 } finally {
   if (app) await app.close();
   await rm(profile, { recursive: true, force: true });

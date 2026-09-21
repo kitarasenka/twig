@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   selectRepository: (id) => ipcRenderer.invoke('repositories:select', id),
   removeRepository: (id) => ipcRenderer.invoke('repositories:remove', id),
   resetDemoWorkspace: () => ipcRenderer.invoke('sandbox:reset'),
+  setDemoWorkspaceVisible: (visible) => ipcRenderer.invoke('sandbox:visible', visible),
   getRemotes: (id) => ipcRenderer.invoke('remotes:read', id),
   changeRemote: (id, action, name, url = null, expected = null) => ipcRenderer.invoke('remotes:change', id, action, name, url, expected),
   cancelRemote: (id) => ipcRenderer.invoke('remotes:cancel', id),
