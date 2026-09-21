@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Clipboard, CornerDownLeft, Search, Terminal } from 'lucide-react';
 import Button from '../ui/Button.jsx';
+import { isUserCommand } from './command-source.js';
 import { checkReadOnly, tokenize } from '../../../main/git/read-only-command.js';
 
 function commandText(entry) { return `$ ${entry.executable || 'git'} ${entry.argv.join(' ')}`; }
@@ -9,7 +10,9 @@ function startedText(entry) { return entry.startedAt.replace('T', ' ').replace(/
 
 export function Console({ expanded, onToggle, mod, entries, repositoryId = null, focus = null }) {
   const [query, setQuery] = useState('');
-  const [mode, setMode] = useState('all');
+  // "My" is the default view: the journal is mostly the app reading state for
+  // itself, and the question a person opens the console with is "what did I do".
+  const [mode, setMode] = useState('mine');
   const [expandedId, setExpandedId] = useState(null);
   const [command, setCommand] = useState('');
   const [error, setError] = useState('');
@@ -78,7 +81,7 @@ export function Console({ expanded, onToggle, mod, entries, repositoryId = null,
 
   const visible = entries.filter(entry => {
     const source = `${entry.operation} ${entry.argv.join(' ')} ${entry.cwd}`.toLowerCase();
-    return (mode === 'all' || !entry.operation.startsWith('Background')) && source.includes(query.toLowerCase());
+    return (mode === 'all' || isUserCommand(entry.operation)) && source.includes(query.toLowerCase());
   }).slice().reverse();
   const latest = entries.at(-1);
   async function copy(value) { try { await navigator.clipboard.writeText(value); } catch { /* Clipboard access may be unavailable in a locked-down desktop session. */ } }
@@ -88,8 +91,11 @@ export function Console({ expanded, onToggle, mod, entries, repositoryId = null,
       <span>{latest ? `${commandText(latest)} · ${latest.code ?? '…'} · ${elapsed(latest)}` : 'No commands run yet'}</span><span className="console-tail">{latest?.state === 'running' ? 'Running' : '🌱 Twig'}</span>
     </button>
     {expanded && <div className="console-body">
-      <div className="console-tools"><div className="segmented" aria-label="Command filter"><button aria-pressed={mode === 'all'} onClick={() => setMode('all')}>All</button><button aria-pressed={mode === 'mine'} onClick={() => setMode('mine')}>My actions</button></div><label className="console-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands" aria-label="Search command log" /></label><kbd>{mod}+J</kbd></div>
-      {visible.length === 0 && <div className="console-empty"><Terminal /><div><strong>Your commands, in plain sight.</strong><p>{entries.length ? 'No commands match this filter.' : 'Git checks, repository status and future actions appear here.'}</p></div></div>}
+      <div className="console-tools"><div className="segmented" aria-label="Command filter"><button aria-pressed={mode === 'all'} onClick={() => setMode('all')} title="Every git command, including the ones 🌱 Twig runs on its own">Full History</button><button aria-pressed={mode === 'mine'} onClick={() => setMode('mine')} title="Only the commands you asked for">My</button></div><label className="console-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands" aria-label="Search command log" /></label><kbd>{mod}+J</kbd></div>
+      {visible.length === 0 && <div className="console-empty"><Terminal /><div><strong>Your commands, in plain sight.</strong><p>{entries.length === 0 ? 'Git checks, repository status and future actions appear here.'
+        : query ? 'No commands match this search.'
+          : mode === 'mine' ? 'Nothing you ran yet. Full History also shows what 🌱 Twig runs on its own.'
+            : 'No commands match this filter.'}</p></div></div>}
       {visible.map(entry => <article key={entry.id} ref={node => { if (node) entryNodes.current.set(entry.id, node); else entryNodes.current.delete(entry.id); }}
         className={`console-entry ${entry.code !== null && entry.code !== 0 ? 'failed' : ''} ${focusedId === entry.id ? 'focused' : ''}`}>
         <button className="console-entry-summary" onClick={() => { setFocusedId(null); setExpandedId(value => value === entry.id ? null : entry.id); }} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} /><code>{commandText(entry)}</code><span>(cwd: {entry.cwd})</span><small>{startedText(entry)} · {entry.code ?? '…'} · {elapsed(entry)}</small></button>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, RefreshCw, Settings, SquareTerminal, Undo2, Upload, UserRound, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, RefreshCw, Settings, Undo2, Upload, UserRound, X } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
 import { Console } from './Console.jsx';
@@ -358,7 +358,9 @@ export default function App() {
         <Button className="tool" icon={Layers} onClick={() => runStash('stash')} reason={syncReason}>Stash</Button>
         <Button className="tool" icon={Upload} onClick={() => runStash('pop')}
           reason={syncReason || (stashCount === 0 ? 'Pop: there are no stashes to restore' : undefined)}>Pop</Button></div>
-      <div className="tool-group"><Button className={`tool ${consoleOpen ? 'pressed' : ''}`} icon={SquareTerminal} title={`${mod}+J`} aria-pressed={consoleOpen} onClick={() => setConsoleOpen(!consoleOpen)}>Terminal</Button>
+      {/* The console lives at the bottom of the window and opens from its own
+          status bar (or {mod}+J); a second switch in the toolbar only took room. */}
+      <div className="tool-group">
         <span className="bughunter-tool-slot" ref={setBugHunterSlot}>
           {!workspace?.repositories.some(item => item.available && active === `repository:${item.id}`) &&
             <Button className="tool bughunter-tool" reason={unavailable}>🌱 BugHunter (bisect)</Button>}

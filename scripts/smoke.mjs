@@ -89,9 +89,18 @@ try {
   await search.fill('repository-tabs');
   await page.getByRole('button', { name: 'repository-tabs', exact: true }).waitFor();
   await search.fill('');
-  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  // The console lives at the bottom and opens from its own status bar; the
+  // toolbar has no second switch for it.
+  assert.equal(await page.locator('.toolbar').getByRole('button', { name: /Terminal/ }).count(), 0);
+  await page.locator('.console-status').click();
   await page.getByRole('textbox', { name: 'Search command log' }).waitFor();
-  await page.getByText(/git --no-pager -c color.ui=false --version/).first().waitFor();
+  // It opens on "My": the startup Git check is 🌱 Twig's own command, so it is
+  // in Full History only.
+  const versionCheck = page.getByText(/git --no-pager -c color.ui=false --version/);
+  assert.equal(await page.getByRole('button', { name: 'My', exact: true }).getAttribute('aria-pressed'), 'true', 'the console opens on My');
+  assert.equal(await versionCheck.count(), 0, 'the startup check is not one of the user actions');
+  await page.getByRole('button', { name: 'Full History', exact: true }).click();
+  await versionCheck.first().waitFor();
   await page.keyboard.press(`${info.platform === 'darwin' ? 'Meta' : 'Control'}+j`);
   assert.equal(await page.getByRole('textbox', { name: 'Search command log' }).isVisible(), false);
   // The update check is manual: the button is there, and nothing presses it for

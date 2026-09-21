@@ -139,7 +139,7 @@ try {
 
   // Reviewed with the console collapsed: that is the height the editor really
   // gets when someone is working in it.
-  const terminal = page.getByRole('button', { name: /^Terminal/ });
+  const terminal = page.locator('.console-status');
   await terminal.click();
   await shot('conflict');
   await terminal.click();

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { FOCUS_WINDOW_MS, entryFinishedAt, pickFailedEntry } from '../../renderer/src/app/console-focus.js';
+import { isUserCommand } from '../../renderer/src/app/command-source.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const read = (name) => readFile(path.join(root, name), 'utf8');
@@ -44,4 +45,47 @@ const app = await read('renderer/src/app/App.jsx');
 assert.ok(app.includes('pickFailedEntry(entriesRef.current)'), 'App picks the failed entry from the freshest journal');
 assert.ok(!/onConsole=\{\(\) => setConsoleOpen\(true\)\}/.test(app), 'every "Show output" path goes through showConsole');
 
-console.log('Console focus checks passed: newest failure, staleness window, running commands, render parity.');
+// --- what the "My" filter keeps -------------------------------------------
+// Commands a person asked for.
+for (const label of ['Console command', 'Commit', 'Amend the last commit', 'Check out branch', 'Check out commit',
+  'Create and check out branch', 'Merge', 'Rebase', 'Cherry-pick', 'Revert', 'Reset --hard', 'Stage file',
+  'Stage all tracked changes', 'Unstage everything', 'Stash changes', 'Pop stash', 'Delete branch',
+  'Delete tag v1', 'Rename branch a to b', 'Remote push: origin', 'Fetch and prune: origin', 'Clone repository',
+  'Blame file', 'Reverse blame file', 'Mark conflict resolved', 'Take ours version', 'Undo commit',
+  'Automation: npm test', 'Generate SSH key', 'Update global Git profile: user.name']) {
+  assert.equal(isUserCommand(label), true, `"${label}" is something the user did`);
+}
+// Commands 🌱 Twig runs for itself: they belong in Full History only.
+for (const label of ['Background: check Git installation', 'Background: read working tree status',
+  'Read commit history', 'Read branches and tags', 'Read working tree', 'Read remotes', 'Read file history',
+  'Read conflict stage 2', 'Read staged diff', 'Read the commit being amended', 'Resolve commit id',
+  'Resolve blame revision', 'Verify repository', 'Check file at start', 'Check reverse-blame range',
+  'Search commit history', 'Seed demo workspace']) {
+  assert.equal(isUserCommand(label), false, `"${label}" is the app's own command`);
+}
+// A missing label is not a reason to hide the entry: an unnamed command still ran.
+assert.equal(isUserCommand(undefined), true);
+assert.equal(isUserCommand(''), true);
+
+// Parity: every operation label main gives runGit is classified deliberately —
+// a new automatic read must not silently land in "My".
+const main = await Promise.all(['main/git/history.js', 'main/git/refs.js', 'main/git/worktree.js', 'main/git/commit.js',
+  'main/git/repository.js', 'main/git/blame.js'].map(read));
+for (const source of main) {
+  for (const [, label] of source.matchAll(/operation: '([^']+)'/g)) {
+    const automatic = label.startsWith('Background') || label.startsWith('Read ') || label.startsWith('Resolve ')
+      || label.startsWith('Verify ') || label.startsWith('Check ') || label.startsWith('Search ');
+    if (automatic && label !== 'Check out branch') {
+      assert.equal(isUserCommand(label), false, `"${label}" reads state and belongs in Full History`);
+    }
+  }
+}
+
+// Parity: the console renders the two named filters and starts on "My".
+assert.ok(console_.includes("useState('mine')"), 'the console opens on My');
+assert.ok(console_.includes('>Full History<') && console_.includes('>My<'), 'the filters are named Full History and My');
+assert.ok(console_.includes('isUserCommand(entry.operation)'), 'the console filters through the shared rule');
+// The toolbar no longer carries a second switch for the console.
+assert.ok(!/>Terminal</.test(app), 'the toolbar has no Terminal button');
+
+console.log('Console focus checks passed: newest failure, staleness window, running commands, My/Full History split, render parity.');

@@ -107,7 +107,7 @@ try {
   // Reviewed with the console collapsed: that is the height the lists really
   // get, and both sections carry a bulk button at this point.
   await mkdir('artifacts', { recursive: true });
-  const terminal = page.getByRole('button', { name: /^Terminal/ });
+  const terminal = page.locator('.console-status');
   await terminal.click();
   for (const theme of ['dark', 'light']) {
     await setTheme(theme);

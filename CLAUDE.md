@@ -17,6 +17,39 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Консоль открывается на «My» и живёт только внизу (2026-09-21, вне вех): кнопка
+`Terminal` из тулбара убрана — консоль и так всегда на виду своей статус-строкой
+внизу окна, а `Cmd/Ctrl+J` никуда не делся; второй выключатель наверху только
+занимал место. Фильтр журнала переименован: `All` → **Full History**,
+`My actions` → **My**, и по умолчанию теперь выбран **My**. Правило «чьё это»
+переехало из инлайнового `!operation.startsWith('Background')` в чистый модуль
+без импортов `renderer/src/app/command-source.js` (грузят Vite и Node-проверка):
+`isUserCommand(operation)` отбрасывает `Background: …`, `Read …`, `Resolve …`,
+`Verify …` и поимённо `Check file at start`, `Check reverse-blame range`,
+`Search commit history`, `Seed demo workspace`. Префикса `Check ` быть не может —
+`Check out branch` это настоящее действие; пустая подпись остаётся в «My»
+(команда всё-таки выполнялась). В «My» остаются commit/amend, checkout, merge,
+rebase, cherry-pick, revert, reset, staging, stash, ветки и теги, pull/push,
+clone, blame, автоматизации, Undo/Redo и всё, что набрано в строке консоли; все
+чтения, которыми 🌱 Twig сам рисует граф, refs и рабочее дерево, видны только в
+Full History. Пустой экран под «My» так и говорит: «Nothing you ran yet. Full
+History also shows what 🌱 Twig runs on its own.» «Show output» по-прежнему
+переключает фильтр на Full History — иначе нужная запись могла бы быть отфильтрована.
+Git не вызывается, новых IPC/таймеров/сети нет: изменился только рендер уже
+полученного журнала. Проверки: `scripts/checks/console-focus.mjs` (в `npm test`)
+— классификация ~50 подписей, паритет с подписями из `main/git/*.js` (новое
+автоматическое чтение обязано быть названо явно), старт на `mine`, имена кнопок
+и отсутствие `Terminal` в тулбаре; `smoke.mjs` — в тулбаре кнопки нет, консоль
+открывается на My, стартовая проверка Git не показана и появляется по Full
+History; `history-smoke.mjs` — набранная команда видна в «My», чтение графа
+(`--topo-order`) — только в Full History. Смоук-скрипты жмут консоль за её
+статус-строку (`.console-status`), а не за кнопку тулбара. Заодно починены два
+устаревших локатора в `blame-smoke.mjs` (`M code.txt` → `Modified code.txt`):
+бейдж статуса файла получил `aria-label` ещё в 2026-09-08, а тест остался
+со старым именем и падал независимо от этой правки.
+Версия 0.8.9 → **0.9.0** (minor, по поручению пользователя): тем же тегом
+`twig-v0.9.0` уезжает и эта правка.
+
 Журнал больше не растёт без предела (2026-09-16, вне вех): приложение
 перестало запускаться — `🌱 Twig failed to start: Invalid string length`.
 `command-log.jsonl` в `userData` дорос до 882 МБ, а `CommandLog.load()` читал его

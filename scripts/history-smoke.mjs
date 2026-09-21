@@ -65,7 +65,7 @@ try {
   const list = page.getByRole('listbox', { name: 'Commit history', exact: true });
   await list.waitFor();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  await page.locator('.console-status').click();
   assert.ok(await list.getByRole('option').count() < 60);
   // Wrapped refs: every ref on the tip is named, the badges sit on more than one
   // line, and the row is taller than a plain one so nothing is clipped.
@@ -203,17 +203,29 @@ try {
   // Console command bar: a read-only command runs and joins the journal; a
   // mutating one is refused in place and never reaches git; ↑ recalls history.
   const consoleInput = page.getByRole('textbox', { name: 'Run a read-only git command' });
-  if (await consoleInput.count() === 0) await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  if (await consoleInput.count() === 0) await page.locator('.console-status').click();
   await consoleInput.fill('log --oneline -3');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await page.getByRole('article').filter({ hasText: 'log --oneline -3' }).first().waitFor();
-  assert.equal(await consoleInput.inputValue(), '');
+  // The entry is journalled the moment git starts; the field clears when the
+  // call returns, so wait for that rather than racing it.
+  await page.waitForFunction(() => document.querySelector('.console-command')?.value === '');
   await consoleInput.fill('commit -m nope');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: 'not an allowed read-only git command' }).waitFor();
   assert.equal(await page.getByRole('article').filter({ hasText: 'git commit -m nope' }).count(), 0);
   await consoleInput.press('ArrowUp');
   assert.equal(await consoleInput.inputValue(), 'log --oneline -3');
+
+  // "My" keeps the command that was typed and drops the reads 🌱 Twig runs to
+  // draw the graph; Full History holds both.
+  const graphRead = page.getByRole('article').filter({ hasText: '--topo-order' });
+  await page.getByRole('button', { name: 'My', exact: true }).click();
+  assert.equal(await graphRead.count(), 0, 'reading the history is not one of my actions');
+  await page.getByRole('button', { name: 'Full History', exact: true }).click();
+  await graphRead.first().waitFor();
+  await page.getByRole('button', { name: 'My', exact: true }).click();
+  await page.getByRole('article').filter({ hasText: 'log --oneline -3' }).first().waitFor();
 
   const rejected = await page.evaluate(async () => {
     const workspace = await window.twig.getWorkspace();

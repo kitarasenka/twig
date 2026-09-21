@@ -175,7 +175,7 @@ try {
   assert.equal(await hunterTool.isDisabled(), true, 'the branch screen has no selected commit');
 
   // --- bisect ----------------------------------------------------------------
-  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  await page.locator('.console-status').click();
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   const history = page.getByRole('listbox', { name: 'Commit history', exact: true });
   await history.waitFor();

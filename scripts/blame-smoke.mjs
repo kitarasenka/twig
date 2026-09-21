@@ -61,7 +61,7 @@ try {
   // Open blame from the changed-file context menu on the "Delete doomed line" commit.
   await page.locator(`#commit-${deleteOid}`).click();
   await page.getByRole('heading', { name: 'Delete doomed line', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'M code.txt', exact: true }).click({ button: 'right' });
+  await page.getByRole('button', { name: 'Modified code.txt', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Blame history' }).click();
   const blame = page.getByRole('region', { name: 'Blame', exact: true });
   await blame.waitFor();
@@ -123,13 +123,13 @@ try {
   // A unicode filename with a space blames without losing lines.
   await page.locator(`#commit-${unicodeOid}`).click();
   await page.getByRole('heading', { name: 'Add a unicode filename', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'A файл with space.txt', exact: true }).click({ button: 'right' });
+  await page.getByRole('button', { name: 'Added файл with space.txt', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Blame history' }).click();
   await grid.getByText('unicode one', { exact: true }).waitFor();
   await grid.getByText('unicode two', { exact: true }).waitFor();
 
   await mkdir('artifacts', { recursive: true });
-  await page.getByRole('button', { name: 'Terminal', exact: true }).click(); // collapse the console for the review shot
+  await page.locator('.console-status').click(); // collapse the console for the review shot
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 640));
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
