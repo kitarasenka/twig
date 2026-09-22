@@ -66,6 +66,8 @@ try {
   // --- a real commit is blocked, then bypassed --------------------------
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   await page.getByRole('button', { name: /Uncommitted changes/ }).click();
+  await page.getByRole('complementary', { name: 'Uncommitted changes', exact: true })
+    .getByRole('button', { name: 'Open staging', exact: true }).click();
   await page.getByRole('region', { name: 'Untracked files', exact: true }).getByRole('button', { name: 'Stage all', exact: true }).click();
   await page.getByRole('textbox', { name: 'Commit message' }).fill('add a note');
   await page.getByRole('button', { name: /^Commit 1 file/ }).click();

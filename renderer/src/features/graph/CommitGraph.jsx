@@ -6,9 +6,12 @@ import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
 import { markClass } from './mark-color.js';
 import { HISTORY_COLUMNS, TOGGLABLE_COLUMNS, dragColumnWidth, nudgeColumnWidth, readColumnWidths, writeColumnWidths, readColumnVisibility, writeColumnVisibility } from './column-widths.js';
 import { refEndpoint, rowEndpoint } from './useGitDrag.js';
+import { summaryChips } from '../worktree/worktree-summary.js';
 import Menu from '../../ui/Menu.jsx';
 
 const EMPTY_SELECTION = new Set();
+/** What `selected` holds while the uncommitted row, not a commit, is chosen. */
+export const UNCOMMITTED = 'uncommitted';
 const EMPTY_LINES = [[]];
 /** The Branch / tag cell keeps a gap to the graph column (`padding-right`). */
 const REF_CELL_PADDING = 8;
@@ -85,7 +88,7 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
   </div>;
 });
 
-export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, loadMore, hasMore, loading, changes, stashes = [], marks = {}, onWorktree, onStashes, active, commitColors = 'lanes', drag, headBranch }) {
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, onUncommitted, onStashes, active, commitColors = 'lanes', drag, headBranch }) {
   const selectionSet = selection || EMPTY_SELECTION;
   const scroller = useRef(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
@@ -292,7 +295,14 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
       items={TOGGLABLE_COLUMNS.map(key => ({
         key, text: HISTORY_COLUMNS[key].label, checked: visibility[key], stayOpen: true, run: () => toggleColumn(key),
       }))} />}
-    {changes > 0 && <button className={`worktree-row ${selected === 'worktree' ? 'selected' : ''}`} onClick={onWorktree}><FilePenLine />Uncommitted changes, {changes} files</button>}
+    {summary && summary.paths > 0 && <button className={`worktree-row ${selected === UNCOMMITTED ? 'selected' : ''}`}
+      aria-pressed={selected === UNCOMMITTED} title="Show the uncommitted files in the details panel"
+      onClick={onUncommitted}>
+      <span className="worktree-row-icon"><FilePenLine aria-hidden="true" /></span>
+      <span className="worktree-row-text">Uncommitted changes, {summary.paths} files</span>
+      <span className="worktree-row-chips">{summaryChips(summary).map(chip =>
+        <span className={`worktree-chip chip-${chip.key}`} key={chip.key}>{chip.text}</span>)}</span>
+    </button>}
     <div className="real-history-scroll" ref={scroller} role="listbox" aria-label="Commit history" aria-multiselectable="true" tabIndex={0}
       onDragOverCapture={event => { if (dragging) dragY.current = event.clientY; }}
       onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) dragY.current = null; }}

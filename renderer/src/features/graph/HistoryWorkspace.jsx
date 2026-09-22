@@ -6,8 +6,10 @@ import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
 import Splitter from '../../ui/Splitter.jsx';
 import { PANEL_DEFAULT, SIDEBAR_SIZE, FILE_HISTORY_PANEL_SIZE } from '../../ui/panel-width.js';
-import CommitGraph from './CommitGraph.jsx';
+import CommitGraph, { UNCOMMITTED } from './CommitGraph.jsx';
 import WorktreeScreen from '../worktree/WorktreeScreen.jsx';
+import WorktreePanel from '../worktree/WorktreePanel.jsx';
+import { conflictCount, summarizeStatus } from '../worktree/worktree-summary.js';
 import ConflictEditor from '../conflicts/ConflictEditor.jsx';
 import OperationBanner from '../ops/OperationBanner.jsx';
 import BisectBanner from '../ops/BisectBanner.jsx';
@@ -34,8 +36,10 @@ const NOOP = () => {};
 const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
 const NO_BISECT = { active: false, terms: { bad: 'bad', good: 'good' }, start: null, bad: null, goods: [],
   skipped: [], expected: null, remaining: null, steps: null, done: false, firstBad: null };
-/** The three centre-pane screens that replace the graph instead of selecting a commit. */
+/** The four centre-pane screens that replace the graph instead of selecting a commit. */
 const SCREENS = ['worktree', 'branches', 'stashes', 'automations'];
+/** Values of `selected` that are not a commit oid and so have no commit to read. */
+const isCommitSelection = value => Boolean(value) && !SCREENS.includes(value) && value !== UNCOMMITTED;
 
 function BranchTree({ refs, onSelect, drag, headBranch }) {
   const folders = new Map();
@@ -57,10 +61,11 @@ function BranchTree({ refs, onSelect, drag, headBranch }) {
 
 function Diff({ diff, onClose, onCommit, onBlame }) {
   return <section className="diff-view" aria-label="File diff"><header className="panel-heading"><code>{diff.file}</code>
+    {diff.section && <span className="pill">{diff.section === 'staged' ? 'Staged' : diff.section === 'untracked' ? 'Untracked' : 'Not staged'}</span>}
     {onBlame && <Button icon={AlignLeft} onClick={onBlame}>Blame</Button>}
     <Button icon={X} aria-label="Close diff" onClick={onClose} /></header>
     {onCommit && <div className="file-history-diff-heading"><code>{diff.oid.slice(0, 8)}</code><Button icon={GitBranch} onClick={onCommit}>Go to commit</Button></div>}
-    {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : diff.patch ? <DiffLines patch={diff.patch} /> : <p className="empty-inline">No changes for this file in this comparison.</p>}
+    {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : diff.note ? <p className="empty-inline">{diff.note}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : diff.patch ? <DiffLines patch={diff.patch} /> : <p className="empty-inline">No changes for this file in this comparison.</p>}
   </section>;
 }
 
@@ -107,6 +112,12 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState(null);
   const [diff, setDiff] = useState(null);
+  // The open diff, read by the staging handlers: they are asynchronous, so a
+  // closure over `diff` would re-read whatever was open when the click landed.
+  const diffRef = useRef(null);
+  const [staging, setStaging] = useState(false);
+  const [stagingError, setStagingError] = useState('');
+  useEffect(() => { diffRef.current = diff; }, [diff]);
   const [fileHistory, setFileHistory] = useState(null);
   const [blame, setBlame] = useState(null);
   const [blameSel, setBlameSel] = useState(null);
@@ -133,7 +144,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       setMenu(null); setFileMenu(null); setSelection([]);
       if (!conflict) {
         setDiff(null); setFileHistory(null); diffRequest.current++;
-        setSelected(value => SCREENS.includes(value) ? data.commits[0]?.oid || null : value);
+        setSelected(value => SCREENS.includes(value) || value === UNCOMMITTED ? data.commits[0]?.oid || null : value);
       }
     },
     onDrop: (source, target, x, y) => { setMenu(null); setDropMenu({ source, target, x, y }); } });
@@ -203,7 +214,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     // screen: staging refreshes history, and the screen lives in `selected`.
     busy.current = true; setLoading(true); setError('');
     if (!keepView) {
-      setSelected(current => (SCREENS.includes(current) ? current : null));
+      setSelected(current => (SCREENS.includes(current) || current === UNCOMMITTED ? current : null));
       setSelection([]); setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
     }
     try {
@@ -649,7 +660,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
 
   useEffect(() => {
     let alive = true;
-    if (!selected || selected === 'worktree') { setCommitState({ commit: null, loading: false, error: '' }); return; }
+    if (!isCommitSelection(selected)) { setCommitState({ commit: null, loading: false, error: '' }); return; }
     setCommitState({ commit: null, loading: true, error: '' });
     const timer = setTimeout(() => {
       Promise.all([window.twig.getCommit(repository.id, selected), range ? window.twig.compareCommits(repository.id, range.base, range.oid) : Promise.resolve(null)])
@@ -664,7 +675,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     jumpRequest.current++;
     const commits = dataRef.current.commits;
     const known = new Map(commits.map((commit, index) => [commit.oid, index]));
-    const isCommit = Boolean(oid) && !SCREENS.includes(oid) && known.has(oid);
+    const isCommit = isCommitSelection(oid) && known.has(oid);
 
     if (isCommit && toggle) {
       // Cmd/Ctrl-click adds or removes one commit from the selection.
@@ -715,6 +726,26 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       if (request === diffRequest.current) setDiff({ file, ...result, loading: false });
     } catch { if (request === diffRequest.current) setDiff({ file, error: 'Could not read the diff. Show output in the console.', loading: false }); }
   }
+  /**
+   * The read-only diff of an uncommitted file, opened from its row in the
+   * panel. An untracked file has no diff until Git tracks it, and tracking is a
+   * mutation, so this says so instead of running `git add -N` unasked — the
+   * staging screen is where that choice is made.
+   */
+  async function openWorktreeFile(file, section) {
+    const request = ++diffRequest.current;
+    setFileHistory(null);
+    if (section === 'untracked') {
+      setDiff({ file: file.path, section, loading: false,
+        note: 'Untracked — Git has no diff for this file until it is added. Open staging to add it.' });
+      return;
+    }
+    setDiff({ file: file.path, section, loading: true });
+    try {
+      const result = await window.twig.getWorktreeDiff(repository.id, file.path, section === 'staged');
+      if (request === diffRequest.current) setDiff({ file: file.path, section, patch: result.text, binary: result.binary, loading: false });
+    } catch { if (request === diffRequest.current) setDiff({ file: file.path, section, error: 'Could not read the diff. Show output in the console.', loading: false }); }
+  }
   async function openFileHistory(path) {
     const request = ++diffRequest.current;
     setDiff(null);
@@ -748,12 +779,72 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       if (request === diffRequest.current) setDiff({ file, oid, ...result, loading: false });
     } catch { if (request === diffRequest.current) setDiff({ file, oid, error: 'Could not read the diff. Show output in the console.', loading: false }); }
   }
-  const changes = repository.status?.entries || [];
+  // What is staged, changed and untracked, split from the status the workspace
+  // already holds: the row in the graph and its details panel both read this,
+  // and neither of them runs Git to get it.
+  const statusEntries = repository.status?.entries;
+  const summary = useMemo(() => summarizeStatus(statusEntries), [statusEntries]);
+  // Committing or stashing empties the working tree, and with it the row this
+  // panel describes; the selection follows the row off the graph instead of
+  // leaving an empty panel behind.
+  useEffect(() => {
+    if (summary.paths === 0) setSelected(current => (current === UNCOMMITTED ? dataRef.current.commits[0]?.oid || null : current));
+  }, [summary.paths]);
+
+  /**
+   * Staging straight from the uncommitted panel. It runs the very channels the
+   * staging screen runs — no new IPC, no new Git path — and then re-reads the
+   * status the panel is drawn from. History is deliberately left alone: moving
+   * a file in or out of the index moves no commit and no ref, so a `reload()`
+   * would only throw away whatever is open for nothing. The diff on screen is
+   * re-read instead, because staging is exactly what moves a file between the
+   * two sides it can be read from.
+   */
+  async function runStaging(action, describe) {
+    if (staging) return;
+    setStaging(true); setStagingError('');
+    try {
+      const outcome = await action();
+      await onRepositoryChanged?.();
+      const open = diffRef.current;
+      if (open?.section) await openWorktreeFile({ path: open.file }, open.section);
+      setNote(describe(outcome));
+    } catch (failure) {
+      setStagingError(failure.message || 'Git refused this operation.');
+    } finally { setStaging(false); }
+  }
+  const conflicts = conflictCount(summary);
+  const stageReason = toolbarBusyReason || (staging ? 'Git is working' : undefined)
+    || (working ? 'Git is working' : undefined);
+  /**
+   * A bulk action is refused where the per-file buttons still work, exactly as
+   * on the staging screen: `git add` on a conflicted file would mark it
+   * resolved unseen, and unstaging everything is a mixed reset, which deletes
+   * the marker of a merge, rebase, cherry-pick or revert and so cancels it.
+   * Main refuses both too; the disabled button says why before the click.
+   */
+  const stageAllReason = stageReason
+    || (conflicts ? `Resolve the ${conflicts === 1 ? 'conflict' : 'conflicts'} first` : undefined);
+  const unstageAllReason = stageAllReason
+    || (operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : undefined);
+  const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+  const stagingActions = {
+    busy: staging,
+    reasons: { stage: stageReason, unstage: stageReason, stageAll: stageAllReason, unstageAll: unstageAllReason },
+    stage: file => void runStaging(() => window.twig.stageFile(repository.id, file.path), () => `Staged ${file.path}.`),
+    unstage: file => void runStaging(
+      () => window.twig.unstageFile(repository.id, file.path, Boolean(repository.status?.branch?.unborn)),
+      () => `Unstaged ${file.path}.`),
+    stageAll: scope => void runStaging(() => window.twig.stageAll(repository.id, scope),
+      count => `Staged ${plural(count, scope === 'untracked' ? 'new path' : 'file')}.`),
+    unstageAll: () => void runStaging(() => window.twig.unstageAll(repository.id),
+      count => `Unstaged ${plural(count, 'file')}.`)
+  };
   const dropReason = toolbarBusyReason || (working ? 'Git is working' : undefined)
     || (!operationReady ? 'Repository state is not verified yet. Refresh first.' : undefined)
     || (operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : undefined)
     || (bisect.active ? 'Finish BugHunter first' : undefined)
-    || (changes.length ? 'Commit or stash your changes first' : undefined);
+    || (summary.paths ? 'Commit or stash your changes first' : undefined);
   async function selectDropAction(action, source, target) {
     if (action.key === 'compare') {
       selectionAnchor.current = source.oid; jumpRequest.current++;
@@ -771,6 +862,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     finally { setWorking(false); }
   }
   const screen = SCREENS.includes(selected) ? selected : null;
+  const uncommitted = selected === UNCOMMITTED;
   const hunterCommit = !screen && !range ? data.commits[indexMap.get(selected)] : null;
   const hunterReason = toolbarBusyReason || (working ? 'Git is working' : undefined)
     || (!operationReady ? 'Repository state is not verified yet. Refresh to check it.' : undefined)
@@ -834,14 +926,14 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
           {search.loading ? <div className="loading-shell" aria-label="Searching history">{Array.from({ length: 6 }, (_, i) => <div className="skeleton" key={i} />)}</div>
             : search.error ? <p className="empty-inline">{search.error} <button onClick={onConsole}>Show output</button></p>
             : search.commits.length ? <CommitGraph commits={search.commits} lanes={search.lanes} laneCount={1} refMap={refMap} indexMap={searchIndexMap} selected={selected} head={repository.status?.branch?.oid}
-                onSelect={oid => choose(oid)} onMenu={openMenu} loadMore={NOOP} hasMore={false} loading={false} changes={0} stashes={[]} marks={marks}
-                onWorktree={NOOP} onStashes={NOOP} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />
+                onSelect={oid => choose(oid)} onMenu={openMenu} loadMore={NOOP} hasMore={false} loading={false} summary={null} stashes={[]} marks={marks}
+                onUncommitted={NOOP} onStashes={NOOP} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />
               : <p className="empty-inline">No commit message or hash matches “{search.query}”. The sidebar still shows matching branches and tags.</p>}
         </div>
         : loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
-            onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} changes={changes.length} stashes={stashes} marks={marks}
-            onWorktree={() => choose('worktree')} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
+            onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks}
+            onUncommitted={() => choose(UNCOMMITTED)} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
       </div>
       {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}
         onResolved={state => { setConflict(null); setOperation(state); setNote(`${conflict} marked resolved.`); void reload(); onRepositoryChanged?.(); }} />}
@@ -871,7 +963,10 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         onBlame={() => openBlame(diff.file, diff.oid)} />
         : <p className="empty-inline">Select a commit to view this file’s changes.</p>}
     </aside>}
-    {showDetail && !fileHistory && !blame && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile}
+    {showDetail && !fileHistory && !blame && uncommitted && <WorktreePanel summary={summary} branch={headBranch} open={diff}
+      actions={stagingActions} error={stagingError} onConsole={onConsole} onDismissError={() => setStagingError('')}
+      onFile={openWorktreeFile} onStaging={() => choose('worktree')} onClose={() => setDetail(false)} />}
+    {showDetail && !fileHistory && !blame && !uncommitted && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile}
       onFileMenu={(path, x, y) => setFileMenu({ path, x, y })} onConsole={onConsole} range={range} commitColors={commitColors} remotes={remotes}
       mark={commitState.commit ? marks[commitState.commit.oid] || null : null} onSetMark={applyMark} onClearMark={removeMark} />}
     {fileMenu && <Menu x={fileMenu.x} y={fileMenu.y} label={`Actions for ${fileMenu.path}`} onClose={() => setFileMenu(null)}

@@ -76,8 +76,55 @@ try {
   await page.getByRole('button', { name: 'Open repository', exact: true }).click();
   await page.getByRole('listbox', { name: 'Commit history', exact: true }).waitFor();
 
-  // Enter the working tree through the row at the top of the graph.
+  // The row at the top of the graph selects the working tree into the details
+  // panel; the graph stays, and the panel shows the same files with a read-only
+  // diff behind each one. Staging is one click further, on its own screen.
   await page.getByRole('button', { name: /Uncommitted changes, 2 files/ }).click();
+  const uncommitted = page.getByRole('complementary', { name: 'Uncommitted changes', exact: true });
+  await uncommitted.waitFor();
+  assert.ok(await page.getByRole('listbox', { name: 'Commit history', exact: true }).isVisible(),
+    'the uncommitted row selects instead of replacing the graph');
+  assert.deepEqual((await page.locator('.worktree-row-chips').innerText()).split('\n'), ['1 changed', '1 untracked'],
+    'the row breaks its count down by list instead of only totalling it');
+  // The panel names the file row and its move button separately, so the row is
+  // addressed by its own class rather than by "some button mentioning grid.txt".
+  const panelList = name => uncommitted.getByRole('region', { name, exact: true });
+  const panelFile = (list, file) => panelList(list).locator('.commit-file').filter({ hasText: file });
+  await panelFile('Changed files', 'grid.txt').click();
+  const preview = page.getByRole('region', { name: 'File diff', exact: true });
+  await preview.waitFor();
+  await preview.getByText('Not staged', { exact: true }).waitFor();
+  await preview.locator('.diff-added').first().waitFor();
+  assert.ok((await preview.locator('.diff-deleted').count()) > 0, 'the panel previews the real patch, both sides of it');
+  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+
+  // The plus and the minus move whole files between the lists, and the index
+  // is checked with Git rather than with the panel's own count.
+  const stagedPaths = () => git(['diff', '--cached', '--name-only']);
+  await panelList('Changed files').getByRole('button', { name: 'Stage grid.txt', exact: true }).click();
+  await panelFile('Staged files', 'grid.txt').waitFor();
+  assert.equal(await stagedPaths(), 'grid.txt', 'the plus staged the whole file');
+  await panelList('Staged files').getByRole('button', { name: 'Unstage grid.txt', exact: true }).click();
+  await panelFile('Changed files', 'grid.txt').waitFor();
+  assert.equal(await stagedPaths(), '', 'the minus put it back');
+
+  // The bulk buttons, one per list, and the same refusals the staging screen
+  // makes. Untracked is its own list: `add --update` would never reach it.
+  await panelList('Untracked files').getByRole('button', { name: 'Stage every untracked file', exact: true }).click();
+  await panelFile('Staged files', 'fresh.txt').waitFor();
+  assert.equal(await stagedPaths(), 'fresh.txt', 'Stage all reached the untracked list only');
+  await panelList('Changed files').getByRole('button', { name: 'Stage every changed file', exact: true }).click();
+  await panelFile('Staged files', 'grid.txt').waitFor();
+  assert.equal((await stagedPaths()).split('\n').sort().join(','), 'fresh.txt,grid.txt');
+  await panelList('Staged files').getByRole('button', { name: 'Unstage every staged file', exact: true }).click();
+  await panelFile('Changed files', 'grid.txt').waitFor();
+  assert.equal(await stagedPaths(), '', 'Unstage all emptied the index');
+  assert.equal(await git(['status', '--porcelain', '--', 'fresh.txt']), '?? fresh.txt',
+    'Unstage all leaves the working tree alone: a new file goes back to untracked, not deleted');
+  assert.deepEqual((await page.locator('.worktree-row-chips').innerText()).split('\n'), ['1 changed', '1 untracked'],
+    'the row in the graph follows the panel');
+
+  await uncommitted.getByRole('button', { name: 'Open staging', exact: true }).click();
   await expect('Working tree · 0 staged, 2 not staged', 'entering the working tree');
 
   // Open the modified file and stage only the first hunk.

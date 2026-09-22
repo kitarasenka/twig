@@ -92,5 +92,9 @@ export async function loadWorktreeDiff({ cwd, log, path, staged = false }) {
   const result = await runGit({ argv, cwd, log, operation: staged ? 'Read staged diff' : 'Read working tree diff' });
   if (result.code !== 0) throw new Error('Git could not read this diff.');
   const digest = createHash('sha256').update(result.stdout, 'utf8').digest('hex');
-  return { ...parseFilePatchV1(result.stdout), digest };
+  // `text` is the same patch the hunks were parsed from, carried along for the
+  // read-only view in the uncommitted details panel, which renders a patch the
+  // way the commit panel does. Line staging still works off `hunks`; nothing is
+  // read back from `text`, and no second `git diff` runs to produce it.
+  return { ...parseFilePatchV1(result.stdout), digest, text: result.stdout };
 }

@@ -159,8 +159,22 @@ try {
   await page.getByText('259 loaded', { exact: true }).waitFor();
   await page.getByRole('button', { name: /curves/ }).click();
   await page.getByRole('heading', { name: 'Feature branch', exact: true }).waitFor();
+  // The uncommitted row selects instead of navigating: the graph stays on
+  // screen and the details panel on the right lists what changed.
   await page.getByRole('button', { name: /Uncommitted changes, 1 files/ }).click();
-  await page.getByText('untracked.txt', { exact: true }).waitFor();
+  const uncommitted = page.getByRole('complementary', { name: 'Uncommitted changes', exact: true });
+  await uncommitted.waitFor();
+  assert.ok(await list.isVisible(), 'selecting the uncommitted row keeps the graph on screen');
+  // The file row and its Stage button are named separately, so the row is
+  // addressed by its own class rather than by "some button naming the file".
+  await uncommitted.getByRole('region', { name: 'Untracked files', exact: true })
+    .locator('.commit-file').filter({ hasText: 'untracked.txt' }).click();
+  await page.getByText(/Untracked — Git has no diff/).waitFor();
+  // Reading an untracked file must not have tracked it behind our back.
+  assert.equal(await git(['status', '--porcelain', '--', 'untracked.txt']), '?? untracked.txt');
+  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  await uncommitted.getByRole('button', { name: 'Open staging', exact: true }).click();
+  await page.getByText(/Working tree · 0 staged, 1 not staged/).waitFor();
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
 

@@ -20,7 +20,7 @@
 .real-commit-row .ref-cell { align-self: stretch; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; padding-block: var(--space-1); }
 .real-commit-row .ref-line { display: flex; align-items: center; gap: var(--space-1); max-width: 100%; min-width: 0; overflow: hidden; }
 .real-commit-row:hover { background: var(--surface-hover); }
-.real-commit-row.selected, .worktree-row.selected { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); }
+.real-commit-row.selected { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); }
 .real-commit-row.multi-selected { background: color-mix(in srgb, var(--accent-bg) 60%, transparent); box-shadow: inset 2px 0 color-mix(in srgb, var(--accent) 45%, transparent); }
 .real-commit-row.new-day { box-shadow: inset 0 1px var(--border); }
 .real-commit-row .ref-line > svg { color: var(--accent); }
@@ -78,7 +78,25 @@
 .mark-swatch.active { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--mark-color); }
 .mark-note { display: flex; flex-direction: column; gap: var(--space-2); }
 .mark-note textarea { width: 100%; resize: vertical; font: var(--text-sm) var(--font-ui); }
-.worktree-row { justify-content: flex-start; border-bottom: 1px solid var(--border); border-radius: 0; padding-inline: var(--space-4); color: var(--accent); }
+/* Uncommitted work is the one row a person comes back to all day, so it reads
+   as a band across the top of the graph rather than one more line of text:
+   accent tint, an accent bar down the left, an icon chip and the breakdown of
+   what is staged, changed and untracked. */
+.worktree-row { justify-content: flex-start; gap: var(--space-3); min-height: 44px; border-bottom: 1px solid var(--border);
+  border-radius: 0; padding: var(--space-2) var(--space-4); color: var(--accent); background: var(--accent-bg);
+  box-shadow: inset 3px 0 var(--accent); font-weight: 500; }
+.worktree-row:hover { background: color-mix(in srgb, var(--accent) 16%, var(--accent-bg)); }
+.worktree-row.selected { background: color-mix(in srgb, var(--accent) 22%, var(--accent-bg)); box-shadow: inset 3px 0 var(--accent); }
+.worktree-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.worktree-row-icon { display: flex; align-items: center; justify-content: center; flex: none;
+  width: 26px; height: 26px; border-radius: var(--radius-sm); color: var(--accent-text); background: var(--accent); }
+.worktree-row-icon svg { width: 15px; height: 15px; }
+.worktree-row-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.worktree-row-chips { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
+/* The counts are chips, not colour alone: each one names its list in words. */
+.worktree-chip { flex: none; padding: 1px var(--space-2); border-radius: 999px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--muted); font: var(--text-xs) var(--font-ui); font-weight: 400; }
+.worktree-chip.chip-staged { color: var(--accent); border-color: var(--accent); }
 .history-pagination { display: flex; align-items: center; justify-content: center; min-height: 34px; padding-inline: var(--space-2); color: var(--muted); font-size: var(--text-xs); border-top: 1px solid var(--border); }
 .history-error { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; color: var(--danger); padding: var(--space-2) var(--space-4); }
 .search-results { display: flex; flex-direction: column; min-height: 0; flex: 1; }
@@ -244,3 +262,23 @@
   padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border); font-size: var(--text-xs); color: var(--muted); }
 .blame-multi { color: var(--accent); }
 .blame-detail { display: flex; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); }
+
+/* The uncommitted row's details panel: the commit panel's slot, filled with the
+   three status lists instead of one commit. */
+.worktree-panel .worktree-panel-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-4) 0; }
+.worktree-panel .worktree-panel-conflicts { margin: var(--space-2) 0 0; color: var(--danger); font-size: var(--text-sm); }
+.worktree-panel .worktree-panel-section { margin-bottom: var(--space-2); }
+.worktree-panel .files-heading { margin-top: var(--space-4); padding-top: var(--space-2); }
+.worktree-panel .files-heading .count { margin-left: auto; color: var(--muted); font-size: var(--text-xs); }
+.worktree-panel .commit-file[aria-pressed='true'] { background: var(--accent-bg); color: var(--accent); }
+/* A file row keeps its move button on the right, out of the path's way: the
+   path is what gets read, the plus or minus is what gets aimed at. */
+.worktree-panel-file { display: flex; align-items: center; gap: var(--space-1); }
+.worktree-panel-file .commit-file { flex: 1; min-width: 0; }
+.worktree-panel-file .button-wrap { flex: none; }
+.worktree-panel-file button { min-height: 22px; padding: 0 var(--space-1); color: var(--muted); }
+.worktree-panel-file:hover button { color: var(--text); }
+.worktree-panel-file button svg { width: 14px; height: 14px; }
+.worktree-panel .files-heading .bulk { margin-left: var(--space-2); }
+.worktree-panel .files-heading .bulk button { min-height: 22px; padding: 0 var(--space-2); font-size: var(--text-xs); }
+.worktree-panel .worktree-panel-error { padding: var(--space-2) 0; font-size: var(--text-sm); }
