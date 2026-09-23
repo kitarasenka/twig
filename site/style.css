@@ -110,6 +110,15 @@ h2 > span { color: var(--muted); }
 .app-frame a:focus-visible { outline-offset: -5px; }
 .app-frame img { width: 100%; }
 figcaption { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); padding: 12px 18px; font-size: 11px; border-top: 1px solid var(--border); }
+/* Gallery of real screenshots: two columns, each a framed image over a short caption. */
+.screens { padding-top: 12px; }
+.screen-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px 24px; margin-top: 30px; }
+.screen { border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--surface); min-width: 0; }
+.screen a { display: block; }
+.screen a:focus-visible { outline-offset: -5px; }
+.screen img { width: 100%; border-bottom: 1px solid var(--border); }
+.screen figcaption { display: block; border-top: 0; padding: 16px 18px 18px; font-size: 13px; line-height: 1.5; }
+.screen figcaption strong { display: block; color: var(--text); font-size: 15px; font-weight: 500; margin-bottom: 4px; }
 .light-section { color-scheme: light; background: var(--bg); color: var(--text); }
 .feature-grid { margin-top: 42px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .feature { border: 1px solid var(--border); background: var(--surface-raised); border-radius: 10px; padding: 32px; min-width: 0; }
@@ -251,6 +260,8 @@ figcaption { display: flex; justify-content: space-between; gap: 12px; color: va
   .section-heading > p { font-size: 15px; }
   h2 { font-size: 36px; letter-spacing: -1.2px; }
   figcaption { font-size: 10px; padding: 10px; flex-direction: column; gap: 4px; }
+  .screen-grid { grid-template-columns: 1fr; gap: 18px; }
+  .screen figcaption { font-size: 12px; padding: 12px 14px 14px; }
   .feature-grid { grid-template-columns: 1fr; gap: 14px; margin-top: 30px; }
   .feature { padding: 25px; }
   .feature h3 { font-size: 28px; }

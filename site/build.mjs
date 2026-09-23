@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { formatDate, parseChangelog, pickRelease } from '../scripts/changelog.mjs';
 
@@ -82,7 +82,11 @@ await copyFile(new URL('style.css', source), new URL('style.css', output));
 await copyFile(new URL('site.js', source), new URL('site.js', output));
 const tokens = await readFile(new URL('renderer/src/ui/tokens.css', root), 'utf8');
 await writeFile(new URL('tokens.css', output), tokens.replaceAll(":root[data-theme='light']", "[data-theme='light']"));
-await copyFile(new URL('assets/workspace.png', source), new URL('assets/workspace.png', output));
+// Screenshots come from scripts/site-shots.mjs (the real app on the demo sandbox).
+await mkdir(new URL('assets/shots/', output), { recursive: true });
+for (const file of (await readdir(new URL('assets/shots/', source))).filter((name) => name.endsWith('.webp'))) {
+  await copyFile(new URL(`assets/shots/${file}`, source), new URL(`assets/shots/${file}`, output));
+}
 await copyFile(new URL('renderer/public/twig-logo.png', root), new URL('assets/twig-small.png', output));
 await copyFile(new URL('assets/twig.png', source), new URL('assets/twig.png', output));
 for (const weight of [400, 500, 600, 700]) {

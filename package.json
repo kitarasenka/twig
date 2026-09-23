@@ -18,6 +18,7 @@
     "build": "node scripts/build.mjs",
     "build:site": "node site/build.mjs",
     "preview:site": "node site/preview.mjs",
+    "shots:site": "npm run build && node scripts/site-shots.mjs",
     "pack:mac": "npm run build && env -u PYTHON_PATH electron-builder --mac --publish never",
     "pack:win": "npm run build && electron-builder --win --publish never",
     "pack:linux": "npm run build && env -u PYTHON_PATH electron-builder --linux --publish never",

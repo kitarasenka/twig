@@ -19,7 +19,7 @@
   <a class="skip-link" href="#main">К содержимому</a>
   <header class="header wrap">
     <a class="brand" href="#" aria-label="🌱 Twig — на главную"><img src="assets/twig-small.png" width="40" height="40" alt=""><span>🌱 Twig</span></a>
-    <nav aria-label="Главная навигация"><a href="#features">Особенности</a><a href="#workspace">Интерфейс</a><a href="#bughunter">BugHunter</a><a href="#whats-new">Что нового</a><a href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#download">Скачать <span aria-hidden="true">↗</span></a></nav>
+    <nav aria-label="Главная навигация"><a href="#features">Особенности</a><a href="#workspace">Интерфейс</a><a href="#screens">Экраны</a><a href="#bughunter">BugHunter</a><a href="#whats-new">Что нового</a><a href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#download">Скачать <span aria-hidden="true">↗</span></a></nav>
   </header>
   <main id="main">
     <section class="hero wrap" aria-labelledby="hero-title">
@@ -67,8 +67,19 @@
     </section>
     <div class="facts wrap"><span><span class="status-dot" aria-hidden="true"></span> Без аккаунта 🌱 Twig</span><span>Без телеметрии</span><span>Работает с вашим Git</span><a href="#sandbox">Встроенная Git-песочница <span aria-hidden="true">↗</span></a></div>
     <section class="preview wrap section-space" id="workspace" aria-labelledby="workspace-title">
-      <div class="section-heading compact"><div><p class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p><h2 id="workspace-title">Граф, изменения и команды — рядом.</h2></div><p>Вкладки сохраняют позицию в истории.<br>Ширина столбцов и панелей регулируется.</p></div>
-      <figure class="app-frame" data-reveal><a href="assets/workspace.png" target="_blank" rel="noopener" aria-label="Открыть скриншот 🌱 Twig в полном размере (новая вкладка)"><img src="assets/workspace.png" width="2880" height="1776" alt="🌱 Twig: рабочая демо-песочница с 12 коммитами, ветками и стешем; справа локальные марки, внизу журнал команд." loading="lazy"></a><figcaption><span>🌱 Twig · реальная Git-песочница · тёмная тема</span><span>Нажмите, чтобы рассмотреть <span aria-hidden="true">↗</span></span></figcaption></figure>
+      <div class="section-heading compact"><div><p class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p><h2 id="workspace-title">Граф, изменения и команды — рядом.</h2></div><p>Все ветки и теги коммита видны по именам.<br>Ширина столбцов и панелей регулируется.</p></div>
+      <figure class="app-frame" data-reveal><a href="assets/shots/workspace.webp" target="_blank" rel="noopener" aria-label="Открыть скриншот 🌱 Twig в полном размере (новая вкладка)"><img src="assets/shots/workspace.webp" width="2880" height="1760" alt="🌱 Twig: демо-песочница с 12 коммитами и тремя ветками. Над графом — полоса незакоммиченных изменений, две строки помечены цветом; справа открыт коммит с зелёной маркой и заметкой." loading="lazy"></a><figcaption><span>🌱 Twig {{version}} · реальная Git-песочница · тёмная тема</span><span>Нажмите, чтобы рассмотреть <span aria-hidden="true">↗</span></span></figcaption></figure>
+    </section>
+    <section class="screens wrap section-space" id="screens" aria-labelledby="screens-title">
+      <div class="section-heading compact"><div><p class="eyebrow">ЭКРАНЫ ПРИЛОЖЕНИЯ</p><h2 id="screens-title">Снято в самом 🌱 Twig, не нарисовано.</h2></div><p>Все снимки — демо-репозиторий, который<br>открывается при первом запуске.</p></div>
+      <div class="screen-grid">
+        <figure class="screen" data-reveal><a href="assets/shots/uncommitted.webp" target="_blank" rel="noopener" aria-label="Незакоммиченные изменения — открыть в полном размере (новая вкладка)"><img src="assets/shots/uncommitted.webp" width="2880" height="1760" alt="Полоса «Uncommitted changes, 3 files» с чипами 1 staged, 2 changed, 1 untracked над графом; справа списки Staged, Changed и Untracked с кнопками плюс и минус у каждого файла." loading="lazy"></a><figcaption><strong>Незакоммиченные изменения</strong><span>Полоса над графом с разбивкой, списки справа. Плюс и минус переносят файл в коммит и обратно, граф остаётся на месте.</span></figcaption></figure>
+        <figure class="screen" data-reveal><a href="assets/shots/conflict.webp" target="_blank" rel="noopener" aria-label="Редактор конфликтов — открыть в полном размере (новая вкладка)"><img src="assets/shots/conflict.webp" width="2880" height="1760" alt="Merge in progress: редактор конфликта в app/App.jsx — колонки Ours, Base и Theirs с отмеченными строками, справа результат, который будет записан на диск." loading="lazy"></a><figcaption><strong>Редактор конфликтов</strong><span>Ваша сторона, база и их изменения. Строки выбираются по одной, порядок сторон задаётся, у редактора своя отмена.</span></figcaption></figure>
+        <figure class="screen" data-reveal><a href="assets/shots/automations-blocked.webp" target="_blank" rel="noopener" aria-label="Автоматизации — открыть в полном размере (новая вкладка)"><img src="assets/shots/automations-blocked.webp" width="2880" height="1760" alt="Окно Before Commit checks: Commit blocked, 0 passed, 1 failed — правило «No direct commits» запрещает коммиты в main; кнопки Fix and retry, Run again и Bypass once." loading="lazy"></a><figcaption><strong>Проверки перед коммитом</strong><span>Пайплайн остановил коммит в main и объяснил почему. Разовый обход записывается в историю запусков.</span></figcaption></figure>
+        <figure class="screen" data-reveal><a href="assets/shots/bughunter.webp" target="_blank" rel="noopener" aria-label="BugHunter — открыть в полном размере (новая вкладка)"><img src="assets/shots/bughunter.webp" width="2880" height="1760" alt="Панель BugHunter (bisect): тестируется коммит «Remember selection for each tab», около двух проверок после этой; кнопки Bug absent, Bug present, Cannot test · Skip." loading="lazy"></a><figcaption><strong>🌱 BugHunter</strong><span>Тестовая версия, оценка оставшихся проверок и три ответа. Stop and return возвращает на исходную ветку.</span></figcaption></figure>
+        <figure class="screen" data-reveal><a href="assets/shots/blame.webp" target="_blank" rel="noopener" aria-label="Blame — открыть в полном размере (новая вкладка)"><img src="assets/shots/blame.webp" width="2880" height="1760" alt="Blame файла app/App.jsx: строки сгруппированы по коммитам с автором и датой; справа коммит выбранной строки и дифф этого файла с номерами строк." loading="lazy"></a><figcaption><strong>Blame и история строки</strong><span>Кто и когда изменил строку, дифф этого файла в том коммите и шаг к версии до правки.</span></figcaption></figure>
+        <figure class="screen" data-reveal><a href="assets/shots/console.webp" target="_blank" rel="noopener" aria-label="Журнал команд — открыть в полном размере (новая вкладка)"><img src="assets/shots/console.webp" width="2880" height="1760" alt="Развёрнутая консоль на вкладке My: набранная команда git log --oneline --graph с каталогом, временем и выводом; внизу строка ввода только для команд чтения." loading="lazy"></a><figcaption><strong>Журнал команд</strong><span>«My» — то, что сделали вы, «Full History» — ещё и то, чем 🌱 Twig рисует граф. Строка ввода принимает только команды чтения.</span></figcaption></figure>
+      </div>
     </section>
     <div class="light-section" data-theme="light">
       <section class="features wrap section-space" id="features" aria-labelledby="features-title">
@@ -87,7 +98,7 @@
           </article>
           <article class="feature" data-reveal>
             <span class="feature-number">03 / ЖУРНАЛ КОМАНД</span>
-            <h3>От действия в интерфейсе<br>до фактической команды</h3><p>Консоль показывает команду Git, каталог, вывод, код завершения и длительность. Последние 2 000 записей доступны после перезапуска. Есть поиск, фильтр ваших действий и копирование.</p>
+            <h3>От действия в интерфейсе<br>до фактической команды</h3><p>Консоль показывает команду Git, каталог, вывод, код завершения и длительность. Последние 2 000 записей доступны после перезапуска. Журнал открывается на ваших действиях, всё остальное — во «Full History».</p>
             <div class="log-example"><code><b>$</b> git log --oneline -3</code><span>Код 0 <span aria-hidden="true">·</span> 12 мс <span aria-hidden="true">·</span> пример записи</span></div>
             <p class="feature-footnote">В консоли можно вводить команды чтения: например, <code>log</code>, <code>diff</code> и <code>status</code>.</p>
           </article>
@@ -95,7 +106,7 @@
             <span class="feature-number">04 / РАБОЧАЯ ДЕМО-ПЕСОЧНИЦА</span>
             <h3>Попробуйте merge и rebase<br>на учебном репозитории</h3><p>При первом запуске уже есть 12 коммитов, ветки, теги, стеш и изменённые файлы. Это настоящий Git-репозиторий: действия выполняются, а результат виден в графе и консоли.</p>
             <div class="sandbox-stats"><div><strong>12</strong><span>коммитов</span></div><div><strong>3</strong><span>локальные ветки</span></div><div><strong>0</strong><span>сетевых запросов*</span></div></div>
-            <p class="feature-footnote">Сброс в настройках восстанавливает исходный пример. *Удалённый репозиторий песочницы тоже локальный.</p>
+            <p class="feature-footnote">Сброс в настройках восстанавливает исходный пример. Вкладку можно закрыть — песочница останется на диске и вернётся из настроек. *Удалённый репозиторий песочницы тоже локальный.</p>
           </article>
         </div>
       </section>
@@ -108,7 +119,7 @@
       <section class="everyday wrap section-space" aria-labelledby="everyday-title">
         <div class="section-heading"><div><p class="eyebrow">ЕЖЕДНЕВНАЯ РАБОТА С GIT</p><h2 id="everyday-title">От отдельных строк<br><span>до перестройки истории.</span></h2></div></div>
         <div class="benefits">
-          <article data-reveal><span class="feature-number">01 / STAGING</span><h3>Коммит из выбранных строк</h3><p>Добавляйте файлы, фрагменты или отдельные строки. В изменённой строке дифф выделяет конкретные правки.</p></article>
+          <article data-reveal><span class="feature-number">01 / STAGING</span><h3>Коммит из выбранных строк</h3><p>Добавляйте файлы, фрагменты или отдельные строки. Дифф нумерует строки с обеих сторон и выделяет конкретные правки внутри строки.</p></article>
           <article data-reveal><span class="feature-number">02 / REBASE</span><h3>План до запуска</h3><p>Переставляйте и объединяйте коммиты, меняйте сообщения. Весь план виден до выполнения; при остановке доступны продолжение, пропуск и отмена.</p></article>
           <article data-reveal><span class="feature-number">03 / КОНФЛИКТЫ</span><h3>Три версии и результат</h3><p>Ваша версия, общая база и их изменения — рядом. Собирайте результат построчно и отменяйте правки внутри редактора.</p></article>
           <article data-reveal><span class="feature-number">04 / BLAME</span><h3>История конкретной строки</h3><p>Посмотрите, кто изменил строку. Перейдите к версии до правки и её диффу. История файла учитывает переименования.</p></article>

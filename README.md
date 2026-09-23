@@ -14,25 +14,37 @@ records the current handoff state.
 
 **Website:** <https://kitarasenka.github.io/twig/> — overview and downloads.
 
-![The 🌱 Twig workspace: a real Git sandbox with commit graph in the center, refs
-on the left, commit detail with local marks on the right, and the command
-console below.](site/assets/workspace.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="site/assets/shots/workspace-light.webp">
+  <img src="site/assets/shots/workspace.webp" alt="The 🌱 Twig workspace on the demo sandbox: refs on the left, the commit graph in the center with the Uncommitted changes strip on top and two color-marked commits, and the open commit with its green mark and note on the right.">
+</picture>
+
+Every screenshot here is the real app on the demo repository it seeds on first
+start — see [Screenshots](#screenshots) below.
 
 ## What it does
 
 - **Real commit graph.** A virtualized, paginated view over
   `git log --all --topo-order` with a hand-rolled lane layout — no graph library.
-  Branch and tag badges, author initials in each node, day separators, and an
+  Every branch and tag on a commit is named: badges wrap onto more lines and the
+  row grows, instead of hiding behind a "+N". Author initials in each node and an
   optional "commit age" color ramp instead of branch-lane colors. Column widths
   (branch / graph / message / author / date) are draggable and persisted.
+- **Uncommitted work at a glance.** A full-width strip over the graph counts
+  `N staged` / `N changed` / `N untracked`. Clicking it keeps the graph in place
+  and fills the right panel with the three lists: a plus or minus on each file
+  (and Stage all / Unstage all per list) moves it in or out of the index, and a
+  click shows its diff read-only. **Open staging** leads to the line-level
+  staging screen.
 - **Sidebar** with LOCAL / REMOTE / TAGS read from `git for-each-ref`,
   ahead/behind badges, and branch names grouped into folders by `/`. One search
   field filters refs and, from two characters, searches commit messages and
   hashes across the whole history.
 - **Commit panel** with the full message, author card, parents (click to jump),
-  changed files, an inline diff with intra-line highlighting of the parts of a
-  line that actually changed, local color "marks" with notes, and links to the
-  commit and the author's commits on GitHub / GitLab / Bitbucket.
+  changed files, an inline diff numbered on both sides (old and new line) with
+  intra-line highlighting of the parts of a line that actually changed, local
+  color "marks" with notes, and links to the commit and the author's commits on
+  GitHub / GitLab / Bitbucket. An automatic refresh never closes what is open.
 - **Working tree.** Staged / unstaged / untracked lists, a diff where individual
   lines and hunks can be staged, "stage all" per section, and a commit box that
   validates the message and can amend the last commit.
@@ -65,25 +77,54 @@ console below.](site/assets/workspace.png)
   (`.twig/hooks.json`) is treated as untrusted data and never runs until a
   person enables it. Pipelines can block a commit or push; a one-time bypass is
   logged.
-- **Git profile, remotes, repository list and clone** in Settings — edit the
-  five profile keys locally or globally, manage remotes, clone into a fresh
-  folder with live output and cancellation.
+- **Undo / Redo** for Git operations where a safe inverse exists; anything that
+  cannot be undone ends the chain and says why.
+- **Git profile, SSH keys, remotes, repository list and clone** in Settings —
+  edit the five profile keys locally or globally, list and generate SSH keys,
+  manage remotes, clone into a fresh folder with live output and cancellation.
+- **Check for updates** in Settings — one request to GitHub Releases, only when
+  pressed; it reports a newer version and links to it, nothing is downloaded.
 - **Command console** with the exact argv, cwd, timing, exit code and streamed
-  output of every Git run, plus search and an "all / my actions" filter. The
-  input line accepts **read-only Git only** — a subcommand allowlist, no shell.
+  output of every Git run. It opens on **My** — what you did — while
+  **Full History** also shows the reads Twig makes to draw the graph. Search,
+  copy, and "Show output" next to any error jumps straight to the failed command.
+  The input line accepts **read-only Git only** — a subcommand allowlist, no
+  shell. The journal keeps the last 2000 commands, compacts itself on disk and
+  caps one command's output at 256 KB.
 - **Auto-refresh.** A commit, checkout, fetch or merge run in a terminal shows up
   on its own — `main` watches the active repository's git directory with a single
   `fs.watch` (event-driven, no polling) and the workspace reloads. Regaining
   focus after a real absence is a backstop; the Refresh button stays for the rest.
 - **Demo workspace.** The `workspace-demo` tab is a real Git repository seeded in
   `userData` with a local bare remote — not a mock. Every operation works there.
-  Settings → *Reset demo workspace* re-seeds it.
+  Settings → *Reset demo workspace* re-seeds it. The tab can be closed; that is
+  remembered across launches and deletes nothing — *Show demo workspace* brings
+  back the same sandbox.
 - System / dark / light appearance applied before React loads, bundled Fira Sans
   / Fira Code, Lucide icons, full keyboard navigation.
 
-Shortcuts use Cmd on macOS and Ctrl elsewhere: `J` console, `F` filter,
+Shortcuts use Cmd on macOS and Ctrl elsewhere: `J` console, `F` search,
 `T` new tab, `W` close tab, `,` settings. Tab / Shift+Tab moves between controls,
 arrows / Home / End move in the history, Escape closes dialogs.
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Uncommitted changes: the strip over the graph with 1 staged, 2 changed and 1 untracked, and the three lists in the right panel with a plus or minus on each file.](site/assets/shots/uncommitted.webp) | ![A merge stopped on app/App.jsx: the conflict editor with Ours, Base and Theirs columns, lines picked from both sides, and the result that will be written to disk.](site/assets/shots/conflict.webp) |
+| **Uncommitted changes** — stage and unstage from the side panel without leaving the graph. | **Conflict editor** — pick lines from each side in the order you choose. |
+| ![An automation pipeline blocking a commit to main: Commit blocked, 0 passed, 1 failed, with Fix and retry, Run again and Bypass once.](site/assets/shots/automations-blocked.webp) | ![The automation editor with the JS / TS checks template: trigger Before Commit, block on failure, and a Run command action for npm run lint.](site/assets/shots/automations-editor.webp) |
+| **Automations** — a pre-commit pipeline stops a direct commit to `main`. | **Pipeline editor** — trigger, conditions, ordered actions, what a failure does. |
+| ![BugHunter testing a commit in the middle of the range, with about two more tests to go and Bug absent / Bug present / Cannot test · Skip.](site/assets/shots/bughunter.webp) | ![Blame of app/App.jsx grouped by commit, with the selected line's commit and its diff of this file on the right.](site/assets/shots/blame.webp) |
+| **BugHunter** — a guided `git bisect`. | **Blame** — who changed a line, and the version before that change. |
+| ![File history of app/App.jsx: every commit that touched it, and the numbered diff of the selected one with intra-line highlights.](site/assets/shots/file-history.webp) | ![The console expanded on My: a typed git log --oneline --graph with its cwd, timing and output, and the read-only input line below.](site/assets/shots/console.webp) |
+| **File history** — per-commit diffs of one file, following renames. | **Console** — every command exactly as it ran. |
+
+The screenshots are regenerated from the real app by `npm run shots:site`
+(`scripts/site-shots.mjs`): it seeds the demo sandbox
+in a throwaway profile, drives the UI into each state and writes PNGs to the
+ignored `artifacts/site-shots/`, plus WebP copies into `site/assets/shots/`
+when `cwebp` is installed. The README and the landing page both use those files.
 
 ## Gentoo Linux
 
@@ -150,13 +191,21 @@ sandbox reset. Screenshots land in the ignored `artifacts/`.
 ```sh
 npm run pack:mac    # dmg installers (arm64 + x64)
 npm run pack:win    # nsis installer (x64)
-npm run pack:linux  # deb installer for Debian / Ubuntu (x64)
+npm run pack:linux  # deb for Debian / Ubuntu and an AppImage (x64)
 ```
 
 Builds write into `release/` without publishing. Install Twig by dragging the
-app from the macOS DMG into Applications, running the Windows installer, or
-installing the Linux DEB package. Settings and app state use the standard
-per-user OS directory.
+app from the macOS DMG into Applications, running the Windows installer,
+installing the Linux DEB package, or making the AppImage executable
+(`chmod +x`) and running it. Settings and app state use the standard per-user OS
+directory. Pushing a `twig-v<version>` tag runs `.github/workflows/release.yml`,
+which builds all of them and attaches them to a GitHub Release with the
+matching section of `CHANGELOG.md` as its notes.
+
+On Linux the Electron binary is wrapped by a small launcher that points
+fontconfig at its own cache directory, so the app starts on hosts whose system
+fontconfig is newer than the one bundled with Electron. Set
+`TWIG_SYSTEM_FONTCONFIG=1` to skip that.
 
 No paid Apple Developer ID or notarization is planned for v1: the macOS build
 is ad-hoc signed (no identity, just enough for arm64 to accept the code at
@@ -176,15 +225,20 @@ rather than hosted on the site. See [site/README.md](site/README.md).
 - **M0–M4** — shell, Git executor and journal, real commit graph and diff panel,
   line-level staging / commit / stash / sync, and the full history-operations set
   (menu, interactive rebase, conflict editor, operation banner). Done.
-- **M5** — in progress. Git profile, remotes, repository list and clone are done;
-  SSH, application Undo/Redo (§8.1), installers and final validation on three
-  operating systems remain.
+- **M5** — Git profile, SSH keys, application Undo/Redo (§8.1), remotes,
+  repository list, clone and installers for all three systems are done. What
+  remains is hands-on validation of the Windows and Linux builds on real
+  machines — they are built by CI but have not been run here.
 - **M6** — visual hook automations. Step 1 (engine and UI for operations run
   inside Twig) is done; installing dispatchers into `.git/hooks` to cover Git
   from an external terminal is step 2 and not done.
 
-Electron is pinned to **41.7.1** — newer installers require Node 22.12, which
-conflicts with the mandated Node 20. Reassess before shipping installers.
+Everything after the milestones — the uncommitted-changes panel, line numbers,
+wrapped ref badges, the closable demo tab, the My / Full History console and the
+rest — is listed per release in [CHANGELOG.md](CHANGELOG.md).
+
+Electron is pinned to **41.7.1** — newer versions require Node 22.12, which
+conflicts with the mandated Node 20. Do not bump it through a `^` range.
 
 ## Security boundaries
 
