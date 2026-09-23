@@ -8,7 +8,9 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  # The signature store is a branch of this repository, written with the
+  # built-in token; the action never checks out pull request code.
+  contents: write
   pull-requests: write
   statuses: write
 
@@ -30,16 +32,12 @@ jobs:
         uses: contributor-assistant/github-action@v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # A classic PAT with `repo` scope on the signature repository below.
-          PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_SIGNATURES_TOKEN }}
         with:
-          branch: main
+          # An orphan branch that holds only signatures/cla.json, so signing
+          # never adds commits to main and needs no personal access token.
+          branch: cla-signatures
           path-to-document: https://github.com/kitarasenka/twig/blob/main/CLA.md
           path-to-signatures: signatures/cla.json
-          # Signatures live outside this repository so a contributor never
-          # needs write access here to sign.
-          remote-organization-name: kitarasenka
-          remote-repository-name: twig-cla-signatures
           allowlist: kitarasenka,ktarasenko,dependabot[bot]
           custom-notsigned-prcomment: >-
             Thank you for the pull request. Before it can be merged, please read
