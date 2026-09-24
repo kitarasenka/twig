@@ -1,3 +1,4 @@
+import { open } from 'node:fs/promises';
 import path from 'node:path';
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
@@ -66,6 +67,45 @@ export function parseBisectRefs(output, terms) {
   return refs;
 }
 
+/**
+ * Every answer given so far, from `BISECT_LOG` — the replay script Git itself
+ * writes (`git bisect replay` runs it). `refs/bisect/*` alone cannot say this:
+ * Git keeps only the newest bad commit there, so earlier `bad` answers would
+ * vanish from the graph. Git logs each answer twice in fixed forms: a comment
+ * `# <term>: [<full oid>] <subject>` (the only record of the ends given to
+ * `git bisect start <bad> <good>…`, whose command line keeps the revisions as
+ * typed) and, for later answers, `git bisect <term> <full oid>`. Both are read;
+ * the subject and every other line are ignored, and the last answer for a
+ * commit wins, as it does for Git.
+ * @returns {Map<string, 'bad'|'good'|'skip'>}
+ */
+export function parseBisectLog(text, terms = DEFAULT_TERMS) {
+  const words = new Map([[terms.bad, 'bad'], [terms.good, 'good'], ['skip', 'skip']]);
+  const marks = new Map();
+  for (const line of String(text).split('\n')) {
+    const match = /^git bisect ([a-z][a-z0-9-]*) ([a-f\d]{40}|[a-f\d]{64})$/i.exec(line.trim())
+      || /^# ([a-z][a-z0-9-]*): \[([a-f\d]{40}|[a-f\d]{64})\]/i.exec(line);
+    if (!match || !words.has(match[1])) continue;
+    const oid = match[2].toLowerCase();
+    marks.delete(oid);
+    marks.set(oid, words.get(match[1]));
+  }
+  return marks;
+}
+
+/** The log is small in practice; past this it is read only this far. */
+const LOG_LIMIT = 1024 * 1024;
+
+async function readBisectLog(file) {
+  let handle;
+  try {
+    handle = await open(file, 'r');
+    const buffer = Buffer.alloc(LOG_LIMIT);
+    const { bytesRead } = await handle.read(buffer, 0, LOG_LIMIT, 0);
+    return buffer.subarray(0, bytesRead).toString('utf8');
+  } catch { return ''; } finally { await handle?.close(); }
+}
+
 /** `bisect_rev='<sha>'`, `bisect_nr=<n>` … — shell assignments, one per line. */
 export function parseBisectVars(output) {
   const vars = {};
@@ -77,11 +117,11 @@ export function parseBisectVars(output) {
 }
 
 const IDLE = Object.freeze({
-  active: false, terms: DEFAULT_TERMS, start: null, bad: null, goods: [], skipped: [],
+  active: false, terms: DEFAULT_TERMS, start: null, bad: null, goods: [], skipped: [], marked: [],
   expected: null, remaining: null, steps: null, done: false, firstBad: null
 });
 
-export const idleBisectState = () => ({ ...IDLE, terms: { ...DEFAULT_TERMS }, goods: [], skipped: [] });
+export const idleBisectState = () => ({ ...IDLE, terms: { ...DEFAULT_TERMS }, goods: [], skipped: [], marked: [] });
 
 /**
  * @param {{ cwd: string, log: object, gitDir?: ?string }} options
@@ -92,10 +132,11 @@ export async function loadBisectState({ cwd, log, gitDir = null }) {
   // BISECT_START is the file Git itself tests for; it holds the branch to
   // return to and is empty when the bisect began on a detached HEAD.
   if (!await exists(path.join(dir, 'BISECT_START'))) return idleBisectState();
-  const [start, rawTerms, expected] = await Promise.all([
+  const [start, rawTerms, expected, logText] = await Promise.all([
     readTrimmed(path.join(dir, 'BISECT_START')),
     readTrimmed(path.join(dir, 'BISECT_TERMS')),
-    readTrimmed(path.join(dir, 'BISECT_EXPECTED_REV'))
+    readTrimmed(path.join(dir, 'BISECT_EXPECTED_REV')),
+    readBisectLog(path.join(dir, 'BISECT_LOG'))
   ]);
   let terms = { ...DEFAULT_TERMS };
   if (rawTerms) {
@@ -110,7 +151,17 @@ export async function loadBisectState({ cwd, log, gitDir = null }) {
   const refs = await runGit({ argv: buildBisectRefsArgv(), cwd, log, operation: 'Background: read bisect marks' });
   if (refs.code !== 0) return state;
   const marks = parseBisectRefs(refs.stdout, terms);
-  Object.assign(state, { bad: marks.bad, goods: marks.goods, skipped: marks.skipped });
+  // Every answer, for the graph: the log keeps their order, so its last word
+  // on a commit is the one that counts; the refs fill in whatever the log does
+  // not hold (a bisect started with `git bisect start <bad> <good>` names its
+  // ends by revision, not by oid).
+  const marked = parseBisectLog(logText, terms);
+  const fill = (oid, mark) => { if (!marked.has(oid.toLowerCase())) marked.set(oid.toLowerCase(), mark); };
+  if (marks.bad) fill(marks.bad, 'bad');
+  marks.goods.forEach(oid => fill(oid, 'good'));
+  marks.skipped.forEach(oid => fill(oid, 'skip'));
+  Object.assign(state, { bad: marks.bad, goods: marks.goods, skipped: marks.skipped,
+    marked: [...marked].map(([oid, mark]) => ({ oid, mark })) });
   if (!marks.badRef || marks.goodRefs.length === 0) return state;
 
   const vars = await runGit({

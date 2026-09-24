@@ -1,6 +1,7 @@
 import { validateOid, validateFile } from './commit.js';
 import { validateRefName } from './refs-ops.js';
 import { discardInverse } from './discard-plan.js';
+import { ignoreInverse } from './ignore-plan.js';
 import { moveBranchInverse } from './reflog-plan.js';
 
 function branchName(value) {
@@ -40,6 +41,14 @@ export function buildUndoPlan(entry, direction) {
     return { commands: discardInverse(args, direction), destructive: false,
       explanation: undo ? 'Restores the discarded files from the backup 🌱 Twig recorded before discarding.'
         : 'Discards the same changes again. The backup stays in refs/twig/discard.' };
+  }
+  if (kind === 'worktree:ignore') {
+    if (!args || typeof args !== 'object' || typeof args.created !== 'boolean') throw new TypeError('Invalid saved .gitignore edit');
+    validateOid(args.before); validateOid(args.after);
+    // Only .gitignore is rewritten, and the chain has checked it is exactly as the edit left it.
+    return { commands: ignoreInverse(args, direction), destructive: false,
+      explanation: undo ? (args.created ? 'Deletes the .gitignore the rule created.' : 'Restores .gitignore as it was before the rule was added.')
+        : 'Adds the rule to .gitignore again.' };
   }
   if (kind === 'reflog:move-branch') {
     if (!Array.isArray(args) || args.length !== 4) throw new TypeError('Invalid saved branch move');
@@ -89,6 +98,6 @@ export function inverseReason(kind, before, after, args) {
   if (kind === 'stash:pop' && args[0] > 0) return 'Undo cannot safely restore the position of a popped stash below the top entry.';
   if (kind === 'refs:checkout' && !before.head) return 'Checkout from an unborn branch has no revision to restore.';
   if (kind === 'refs:create-branch' && !before.head) return 'There is no previous revision to restore.';
-  if (!['worktree:discard', 'reflog:move-branch', 'worktree:commit', 'ops:reword', 'ops:merge', 'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind)) return `${kind.replaceAll(':', ' ')} ends the Undo chain.`;
+  if (!['worktree:discard', 'worktree:ignore', 'reflog:move-branch', 'worktree:commit', 'ops:reword', 'ops:merge', 'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind)) return `${kind.replaceAll(':', ' ')} ends the Undo chain.`;
   return null;
 }

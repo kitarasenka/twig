@@ -1,10 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, GitBranch, Globe, Link2, Pencil, Search, Tag, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, GitBranch, Globe, Link2, Pencil, Search, ShieldCheck, Tag, Trash2, Upload } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
 import { pushRefCommand, splitRemoteRef } from './remote-ref.js';
+import { TAG_SORTS, readTagSort, sortTags, writeTagSort } from './tag-sort.js';
 
 const TABS = [['local', 'Branches', GitBranch], ['remote', 'Remote branches', Globe], ['tag', 'Tags', Tag]];
+const tagDate = time => new Date(time).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/**
+ * What a tag says beyond its name. An annotated tag has a tagger, a date and a
+ * message of its own; a lightweight one is only a name on a commit, and says
+ * so rather than borrowing the commit's message.
+ */
+function TagSummary({ detail }) {
+  if (!detail) return null;
+  if (!detail.annotated) return <p className="refs-tag-note muted">Lightweight tag — a name on the commit, without a message of its own.</p>;
+  return <div className="refs-tag-note">
+    <p className="refs-tag-subject">{detail.subject || <span className="muted">(empty message)</span>}</p>
+    {detail.body && <details className="refs-tag-body"><summary>Full message</summary><pre>{detail.body}</pre></details>}
+  </div>;
+}
 
 /** Picks the upstream for a branch out of the remote-tracking refs the repository has. */
 export function UpstreamDialog({ branch, current, candidates, onConfirm, onClose }) {
@@ -42,6 +58,9 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
   const [notice, setNotice] = useState('');
   const [unmerged, setUnmerged] = useState(null);
   const [upstreamFor, setUpstreamFor] = useState(null);
+  const [tagSort, setTagSort] = useState(() => readTagSort(window.localStorage));
+  const [tagDetails, setTagDetails] = useState(null);
+  const [tagError, setTagError] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -51,12 +70,31 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
     return () => { alive = false; };
   }, [repository.id]);
 
+  // Tag messages are read only while the Tags tab is open, and again whenever
+  // the refs change (a tag created, deleted or fetched).
+  const showingTags = type === 'tag';
+  useEffect(() => {
+    if (!showingTags) return undefined;
+    let alive = true;
+    window.twig.getTagDetails(repository.id)
+      .then(list => { if (alive) { setTagDetails(new Map(list.map(tag => [tag.fullName, tag]))); setTagError(''); } })
+      .catch(() => { if (alive) { setTagDetails(new Map()); setTagError('Could not read the tag messages.'); } });
+    return () => { alive = false; };
+  }, [repository.id, refs, showingTags]);
+
   const remoteNames = useMemo(() => remotes.map(item => item.name), [remotes]);
   const upstreamCandidates = useMemo(() => refs.filter(ref => ref.type === 'remote').map(ref => ref.name), [refs]);
   const rows = useMemo(() => {
     const needle = filter.trim().toLowerCase();
-    return refs.filter(ref => ref.type === type && (!needle || ref.name.toLowerCase().includes(needle)));
-  }, [refs, type, filter]);
+    const matches = ref => {
+      if (!needle || ref.name.toLowerCase().includes(needle)) return true;
+      const detail = ref.type === 'tag' ? tagDetails?.get(ref.fullName) : null;
+      return Boolean(detail?.annotated && `${detail.subject}\n${detail.body}`.toLowerCase().includes(needle));
+    };
+    const list = refs.filter(ref => ref.type === type && matches(ref));
+    if (type !== 'tag') return list;
+    return sortTags(list.map(ref => ({ ...ref, date: tagDetails?.get(ref.fullName)?.date ?? null })), tagSort);
+  }, [refs, type, filter, tagDetails, tagSort]);
 
   const run = useCallback(async (action, success) => {
     setNotice(''); setUnmerged(null);
@@ -146,13 +184,18 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
     </header>
     <div className="refs-toolbar">
       <label className="refs-search"><Search aria-hidden="true" />
-        <input value={filter} placeholder="Search by name" aria-label="Search branches and tags" autoComplete="off"
+        <input value={filter} placeholder={type === 'tag' ? 'Search by name or message' : 'Search by name'} aria-label="Search branches and tags" autoComplete="off"
           spellCheck={false} onChange={event => setFilter(event.target.value)} /></label>
+      {type === 'tag' && <label className="refs-remote">Sort
+        <select aria-label="Sort tags" value={tagSort} onChange={event => { setTagSort(event.target.value); writeTagSort(window.localStorage, event.target.value); }}>
+          {TAG_SORTS.map(sort => <option key={sort.id} value={sort.id}>{sort.label}</option>)}
+        </select></label>}
       {type === 'tag' && remotes.length > 0 && <label className="refs-remote">Remote
         <select value={remote} onChange={event => setRemote(event.target.value)}>
           {remotes.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}
         </select></label>}
     </div>
+    {type === 'tag' && tagError && <p className="operation-note" role="alert">{tagError}<button onClick={onConsole}>Show output</button></p>}
     {notice && <p className="operation-note" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss">×</button></p>}
     {unmerged && <p className="operation-note" role="alert">
       <span>Git refused to delete {unmerged}: it is not fully merged.</span>
@@ -161,15 +204,20 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
     </p>}
     <div className="refs-rows" role="list">
       {rows.length === 0 && <p className="empty-inline">No {TABS.find(([value]) => value === type)[1].toLowerCase()} match this search.</p>}
-      {rows.map(ref => <div className="refs-row" role="listitem" key={ref.fullName}>
+      {rows.map(ref => { const tag = ref.type === 'tag' ? tagDetails?.get(ref.fullName) : null; return <div className="refs-row" role="listitem" key={ref.fullName}>
         <div className="refs-name">
-          <strong>{ref.name}{ref.type === 'local' && ref.name === headBranch && <span className="refs-head">current</span>}</strong>
+          <strong>{ref.name}{ref.type === 'local' && ref.name === headBranch && <span className="refs-head">current</span>}
+            {tag && <span className="refs-kind">{tag.annotated ? 'annotated' : 'lightweight'}</span>}
+            {tag?.signed && <span className="refs-kind" title="The tag object carries a signature. Verify it with git tag -v."><ShieldCheck aria-hidden="true" />signed</span>}</strong>
           <small>
             <code>{ref.target.slice(0, 7)}</code>
+            {tag?.tagger && <> · {tag.tagger.name}</>}
+            {tag && Number.isFinite(tag.date) && <> · <time dateTime={new Date(tag.date).toISOString()} title={new Date(tag.date).toLocaleString('en-GB')}>{tagDate(tag.date)}</time></>}
             {ref.upstream && <> · tracks {ref.upstream}</>}
             {(ref.ahead > 0 || ref.behind > 0) && <> · ↑{ref.ahead} ↓{ref.behind}</>}
             {ref.type === 'local' && !ref.upstream && <> · no upstream</>}
           </small>
+          {ref.type === 'tag' && <TagSummary detail={tag} />}
         </div>
         <div className="refs-actions">
           {ref.type === 'local' && <>
@@ -194,7 +242,7 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
               onClick={() => pushTag(ref, true)}>Delete on remote</Button>
           </>}
         </div>
-      </div>)}
+      </div>; })}
     </div>
     {upstreamFor && <UpstreamDialog branch={upstreamFor.name} current={upstreamFor.upstream} candidates={upstreamCandidates}
       onClose={() => setUpstreamFor(null)}

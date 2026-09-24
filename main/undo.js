@@ -76,6 +76,7 @@ export class UndoService {
         if (failure || result?.ok === false) reason = 'The operation did not finish normally. Continue or abort it explicitly.';
         if (!reason && kind === 'worktree:discard' && !result?.undo) reason = 'The discard did not record its backup. Its content is in refs/twig/discard.';
         if (!reason && kind === 'reflog:move-branch' && !result?.undo) reason = 'The branch move did not report where it started.';
+        if (!reason && kind === 'worktree:ignore' && !result?.undo) reason = 'The .gitignore edit did not record its backup.';
         if (kind === 'refs:create-branch' && !reason) {
           const ancestor = await runGit({ cwd, log: this.log, argv: ['merge-base', '--is-ancestor', args[1], before.head], operation: 'Background: check safe branch deletion' });
           if (ancestor.code !== 0) reason = 'The new branch contains unmerged commits; branch -d would refuse its deletion.';
@@ -86,8 +87,9 @@ export class UndoService {
           // Only branch/stash parameters are needed; never persist commit bodies or file contents.
           // A discard keeps the ids of its two backup commits and the paths — the
           // content itself lives in Git's object store under refs/twig/discard.
-          // A reflog move keeps the branch name and its two ends.
-          const savedArgs = ['worktree:discard', 'reflog:move-branch'].includes(kind) ? result.undo
+          // A reflog move keeps the branch name and its two ends; a .gitignore
+          // rule keeps its two backups and whether the file was new.
+          const savedArgs = ['worktree:discard', 'reflog:move-branch', 'worktree:ignore'].includes(kind) ? result.undo
             : ['refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind) ? args : [];
           active.undo.push({ kind, args: savedArgs, before, after }); active.undo = active.undo.slice(-100);
           active.redo = []; active.reason = '';

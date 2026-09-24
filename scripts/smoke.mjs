@@ -56,7 +56,8 @@ try {
     'cherryPickMany', 'revertMany', 'getSignature', 'getLfsStatus', 'pullLfs', 'cancelRepositoryTool',
     'exportPatches', 'choosePatch', 'applyPatchCommits', 'applyPatchFiles',
     'getSubmodules', 'updateSubmodules', 'openSubmodule',
-    'getWorktrees', 'planWorktree', 'addWorktree', 'removeWorktree', 'pruneWorktrees', 'openWorktree'].sort());
+    'getWorktrees', 'planWorktree', 'addWorktree', 'removeWorktree', 'pruneWorktrees', 'openWorktree',
+    'getTagDetails', 'getCoAuthors', 'addIgnoreRule', 'getRepositoryStats', 'runMaintenance'].sort());
   const security = await app.evaluate(({ BrowserWindow }) => {
     const prefs = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
     return { sandbox: prefs.sandbox, contextIsolation: prefs.contextIsolation, nodeIntegration: prefs.nodeIntegration };

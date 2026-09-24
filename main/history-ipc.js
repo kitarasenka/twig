@@ -44,6 +44,10 @@ export function registerHistoryIpc(getWindow, entryUrl, { repositories, journal 
     const { loadRefs } = await import('./git/refs.js');
     return loadRefs(options);
   });
+  handler('refs:tags', 1, async options => {
+    const { loadTagDetails } = await import('./git/refs.js');
+    return loadTagDetails(options);
+  });
   // Where HEAD or one branch has been. `null` is HEAD; a name is a local branch.
   handler('reflog:read', 3, async (options, branch, skip) => {
     if ((branch !== null && (typeof branch !== 'string' || branch.length > 255)) || !Number.isSafeInteger(skip) || skip < 0) throw new Error('Invalid reflog request');

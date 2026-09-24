@@ -135,3 +135,70 @@ export async function loadRefs({ cwd, log }) {
   if (result.code !== 0) throw new Error('Git could not read branches and tags.');
   return parseRefsV1(result.stdout);
 }
+
+/**
+ * What the tag list on the "Branches and tags" screen shows beyond the name:
+ * whether a tag is annotated, who tagged it and when, and its message. One
+ * `for-each-ref` over `refs/tags`, read only while that screen is open — the
+ * graph and the sidebar keep using the lean `loadRefs` above.
+ *
+ * A message spans lines, so records cannot be split on `\n` the way
+ * `parseRefsV1` does. Every field, the last one included, ends in NUL instead;
+ * Git then appends its own `\n` to each record, which therefore sits at the
+ * start of the next record's first field (a ref name, which cannot contain a
+ * newline) and alone after the last one.
+ */
+const TAG_FIELDS = ['%(refname)', '%(objecttype)', '%(objectname)', '%(*objectname)', '%(taggername)', '%(taggeremail)',
+  '%(creatordate:unix)', '%(contents:subject)', '%(contents:body)', '%(contents:signature)'];
+const TAG_MESSAGE_LIMIT = 8000;
+
+export function buildTagDetailsArgv() {
+  return ['for-each-ref', `--format=${TAG_FIELDS.map(field => `${field}%00`).join('')}`, 'refs/tags'];
+}
+
+/**
+ * @param {string} output
+ * @returns {{ name: string, fullName: string, target: string, annotated: boolean, tagger: ?{ name: string, email: string },
+ *   date: ?number, subject: string, body: string, signed: boolean }[]}
+ */
+export function parseTagDetails(output) {
+  if (typeof output !== 'string') fail('output must be a string');
+  if (output.length === 0) return [];
+  const tokens = output.split('\0');
+  if (tokens.pop() !== '\n' || tokens.length % TAG_FIELDS.length !== 0) fail('truncated tag record');
+  const tags = [];
+  for (let at = 0; at < tokens.length; at += TAG_FIELDS.length) {
+    const record = tokens.slice(at, at + TAG_FIELDS.length);
+    if (at > 0) {
+      if (!record[0].startsWith('\n')) fail('unexpected tag record separator');
+      record[0] = record[0].slice(1);
+    }
+    const [fullName, objectType, objectName, deref, taggerName, taggerEmail, date, subject, body, signature] = record;
+    const { type, name } = classify(fullName);
+    if (type !== 'tag') fail('not a tag');
+    if (!OBJECT_TYPES.has(objectType)) fail('invalid object type');
+    validateOid(objectName);
+    if (deref) validateOid(deref);
+    // A lightweight tag points straight at a commit, so its "contents" are
+    // that commit's message — not something the tag says. Only a tag object
+    // has a tagger and a message of its own.
+    const annotated = objectType === 'tag';
+    const seconds = Number(date);
+    tags.push({
+      name, fullName, target: deref || objectName, annotated,
+      tagger: annotated && taggerName ? { name: taggerName, email: taggerEmail.replace(/^<|>$/g, '') } : null,
+      date: date && Number.isSafeInteger(seconds) ? seconds * 1000 : null,
+      subject: annotated ? subject : '',
+      body: annotated ? body.replace(/\s+$/, '').slice(0, TAG_MESSAGE_LIMIT) : '',
+      signed: annotated && signature.length > 0
+    });
+  }
+  return tags;
+}
+
+/** @param {{ cwd: string, log: import('../command-log.js').CommandLog }} options */
+export async function loadTagDetails({ cwd, log }) {
+  const result = await runGit({ argv: buildTagDetailsArgv(), cwd, log, operation: 'Read tag messages' });
+  if (result.code !== 0) throw new Error('Git could not read the tags.');
+  return parseTagDetails(result.stdout);
+}

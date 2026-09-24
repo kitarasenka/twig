@@ -1,15 +1,24 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, GitBranch, Globe, Tag, FilePenLine, Archive, Bookmark } from 'lucide-react';
+import { Check, GitBranch, Globe, Tag, FilePenLine, Archive, Bookmark, Bug, CheckCircle2, FlaskConical, SkipForward, XCircle } from 'lucide-react';
 import { LANE_WIDTH, ROW_HEIGHT, authorInitials, createRowMetrics, segmentPath } from './layout.js';
 import { HEAD_WIDTH, MARK_WIDTH, badgeWidth, extraHeight, packRefLines } from './ref-lines.js';
 import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
 import { markClass } from './mark-color.js';
+import { bisectClass } from './bisect-marks.js';
 import { HISTORY_COLUMNS, TOGGLABLE_COLUMNS, dragColumnWidth, nudgeColumnWidth, readColumnWidths, writeColumnWidths, readColumnVisibility, writeColumnVisibility } from './column-widths.js';
 import { refEndpoint, rowEndpoint } from './useGitDrag.js';
 import { summaryChips } from '../worktree/worktree-summary.js';
 import Menu from '../../ui/Menu.jsx';
 
 const EMPTY_SELECTION = new Set();
+const NO_BISECT_MARKS = new Map();
+const BISECT_ICONS = { culprit: Bug, bad: XCircle, good: CheckCircle2, skip: SkipForward, testing: FlaskConical };
+
+/** A BugHunter answer on the commit it was given for: an icon and the word, never colour alone. */
+function BisectChip({ mark }) {
+  const Icon = BISECT_ICONS[mark.kind] || SkipForward;
+  return <span className={bisectClass(mark.kind)} title={mark.title}><Icon aria-hidden="true" /><span>{mark.word}</span></span>;
+}
 /** What `selected` holds while the uncommitted row, not a commit, is chosen. */
 export const UNCOMMITTED = 'uncommitted';
 const EMPTY_LINES = [[]];
@@ -49,7 +58,7 @@ export function relativeDate(value) {
   return format.format(Math.round(seconds / 86400), 'day');
 }
 
-const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, index, selected, member, head, stashes, stashX, onStashes, refs, refLines, mark, onSelect, onMenu, dayStart, age, drag, headBranch, visibility }) {
+const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, index, selected, member, head, stashes, stashX, onStashes, refs, refLines, mark, bisect, onSelect, onMenu, dayStart, age, drag, headBranch, visibility }) {
   // In age mode a row paints its own age onto every lane crossing it, so the
   // graph reads as one gradient down the page instead of per-branch colours.
   const stroke = age === null ? null : ageStrokeClass(age);
@@ -82,13 +91,13 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
         onClick={event => { event.stopPropagation(); onStashes(); }}>
         <Archive />{stashes.length > 1 && <span>{stashes.length}</span>}</button>}
     </span>
-    <span className="commit-subject" title={`${commit.subject}\n${commit.body}`}><span>{commit.subject || '(no subject)'}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
+    <span className="commit-subject" title={`${bisect ? `${bisect.title}\n` : ''}${commit.subject}\n${commit.body}`}>{bisect && <BisectChip mark={bisect} />}<span>{commit.subject || '(no subject)'}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
     <span className="author-col" title={visibility.author ? commit.author.email : undefined}>{visibility.author && commit.author.name}</span>
     <span className={`date-cell ${age === null ? '' : ageTextClass(age)}`} title={visibility.date ? commit.committedAt : undefined}>{visibility.date && relativeDate(commit.committedAt)}</span>
   </div>;
 });
 
-export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, onUncommitted, onStashes, active, commitColors = 'lanes', drag, headBranch }) {
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, bisectMarks = NO_BISECT_MARKS, onUncommitted, onStashes, active, commitColors = 'lanes', drag, headBranch }) {
   const selectionSet = selection || EMPTY_SELECTION;
   const scroller = useRef(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
@@ -319,7 +328,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
         {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
           top={metrics.top(start + offset)} height={metrics.height(start + offset)} refLines={refLines.get(commit.oid) || EMPTY_LINES}
           selected={selected === commit.oid} member={selectionSet.has(commit.oid)} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} age={now === null ? null : ageStop(commit.committedAt, now)}
-          mark={marks[commit.oid] || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch} visibility={visibility}
+          mark={marks[commit.oid] || null} bisect={bisectMarks.get(commit.oid.toLowerCase()) || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch} visibility={visibility}
           dayStart={start + offset > 0 && commit.committedAt.slice(0, 10) !== commits[start + offset - 1].committedAt.slice(0, 10)} />)}
       </div>
     </div>

@@ -17,6 +17,68 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Соавторы, .gitignore из меню, пометки bisect, теги, обслуживание (2026-09-24,
+вне вех). Пять возможностей одним заходом.
+
+- **Соавторы** (`main/git/co-author-trailer.js` — общий для main и renderer,
+  `main/git/co-authors.js`, `worktree/CoAuthors.jsx`): под сообщением коммита
+  кнопка «Add co-authors» (по умолчанию форма не выше прежней — иначе на
+  маленьком окне она перекрывала дифф staging, поймал `worktree-smoke`);
+  выбор — только из авторов истории: `log --exclude=refs/twig/* --exclude=refs/stash
+  --all -z --format=%aN%x00%aE --max-count=5000` (mailmap, счёт коммитов, себя по
+  `config --default '' --get user.email` и бэкапы 🌱 Twig не предлагает).
+  Каждый человек — слово argv `--trailer=Co-authored-by: Имя <email>` (Git сам
+  ставит блок трейлеров); превью строки под полем строит тот же модуль.
+  `missingCoAuthors` отбрасывает тех, чья строка уже есть в сообщении: при amend
+  Git (`addIfDifferentNeighbor`) иначе повторил бы трейлер. `worktree:commit`
+  теперь 5 аргументов, кривой соавтор отклоняет запрос до Undo; канал
+  `worktree:co-authors`, мост `getCoAuthors`.
+- **.gitignore** (`main/git/ignore-plan.js` чистый, `main/git/ignore.js`): у
+  untracked-файла в меню панели незакоммиченного и (новое) правым кликом /
+  Shift+F10 на экране staging — «Ignore this file» (`/путь`), «Ignore all .ext
+  files» (`*.ext`), «Ignore folder dir/» (`/dir/`); подсказка пункта — точная
+  строка. Renderer шлёт путь и вид, шаблон считает main (спецсимволы
+  экранируются, `#`/`!` в начале тоже), путь обязан быть untracked в свежем
+  status. Пишется корневой `.gitignore` (сохраняются окончания строк, дубликат
+  не добавляется, симлинк/не-файл/>1 МБ — отказ), в журнал как
+  `🌱 Twig append .gitignore <шаблон>`. Undo — kind `worktree:ignore`: до и после
+  записи снимок `.gitignore` коммитом в `refs/twig/discard` (экспортирован
+  `snapshot` из `discard.js`), Undo = `restore --source=<до>` или `clean -f -x`,
+  если файл создан этим действием; Redo = `restore --source=<после>`.
+- **Пометки bisect в графе** (`graph/bisect-marks.js`): у коммитов чип с иконкой и
+  словом терминов репозитория — bad / good / skipped / testing (ревизия на
+  проверке) / first bad (результат). Все ответы берутся из `BISECT_LOG`
+  (`parseBisectLog`: строки `git bisect <term> <oid>` и комментарии
+  `# <term>: [<oid>]` — только в них записаны концы `bisect start <bad> <good>`);
+  `refs/bisect/*` держит лишь последний bad. Состояние bisect получило `marked`.
+- **Теги** (`refs.js`: `loadTagDetails`, канал `refs:tags`, мост `getTagDetails`;
+  `refs/tag-sort.js`): на вкладке Tags экрана «Branches and tags» — annotated /
+  lightweight / signed, автор тега, дата, тема сообщения и «Full message»;
+  лёгкий тег честно говорит, что сообщения у него нет (не подставляет
+  сообщение коммита). Сортировка Version (по умолчанию: числа числами,
+  пре-релиз раньше релиза, теги без цифр в конце) / Date / Name, выбор в
+  `localStorage` `twig:tag-sort`; поиск идёт и по сообщениям. Разбор
+  многострочного `for-each-ref`: каждое поле кончается NUL, `\n` Git'а —
+  в начале следующей записи.
+- **Обслуживание** (`main/git/maintenance-plan.js` чистый, `maintenance.js`,
+  `tools/MaintenanceScreen.jsx`, пункт «Maintenance» в сайдбаре): размер из
+  `count-objects -v` (на диске, объекты, паки, рыхлые, мусор) и подсказка по
+  порогам авто-gc. **Optimize** — `maintenance run --task=commit-graph
+  --task=loose-objects --task=incremental-repack`, затем `prune-packed`
+  (задача loose-objects удаляет рыхлые копии упакованного только при
+  *следующем* запуске — один клик ничего не уменьшал, поймала проверка);
+  ничего нужного не удаляет, без диалога. **Clean up** — `git gc` через §6.5 с
+  предупреждением про истечение reflog и удаление недостижимого старше двух
+  недель. Каналы `maintenance:stats|run` (задача из allowlist, не argv), отмена —
+  общая `tools:cancel`, через `undo.perform` (цепочку Undo не рвёт — проверено).
+
+Проверки: новые `tags.mjs`, `co-authors.mjs`, `ignore.mjs`, `maintenance.mjs`
+(в `npm test`, на настоящем Git, Undo — через настоящий `UndoService`),
+дополнен `bisect.mjs`; новый смоук `scripts/everyday-smoke.mjs` (в `test:smoke`):
+все пять сценариев, Undo правила, 8 отказов IPC, снимки `artifacts/everyday-*.png`.
+Все 15 смоуков и `npm test` (кроме заранее сломанного `foundation.mjs`) зелёные.
+Версия не менялась.
+
 UI/UX-проход по свежим снимкам (2026-09-24, вне вех): решения — в
 `design/TOKENS.md` («UI/UX pass over the app»). Кнопки получили уровни:
 `primary` / новый `secondary` / обычная / `danger` (рамка только у
@@ -1752,8 +1814,7 @@ UI-профиль просмотрен в обеих темах на 1000×640, 
 - Blame по файлу сделан (см. «Blame, Blame History и Reverse Blame» выше).
   Поиск по истории: по сообщению и хэшу, автору, пути и содержимому (`-S`/`-G`)
   сделан (см. «Поиск по автору, файлу и содержимому» выше).
-- Граф не помечает коммиты, уже отмеченные good/bad/skip: какая ревизия
-  проверяется, говорит только баннер.
+- Пометки good/bad/skip в графе сделаны (2026-09-24, см. запись выше).
 - Worktrees, сабмодули, подписи, патчи, диапазоны cherry-pick/revert и LFS
   сделаны (2026-09-24, см. запись выше).
 - Селектор репозитория пока без поиска. Clone есть (M5), фоновый fetch есть

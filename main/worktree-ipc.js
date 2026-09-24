@@ -3,7 +3,10 @@ import { isTrustedPage } from './security.js';
 import { loadWorktree, loadWorktreeDiff } from './git/worktree.js';
 import { applySelection, intentToAdd, stageAll, stageFile, unstageAll, unstageFile } from './git/stage.js';
 import { discardAll, discardFile, discardSelection } from './git/discard.js';
+import { addIgnoreRule } from './git/ignore.js';
 import { createCommit, stashPop, stashPush } from './git/commit-ops.js';
+import { validateCoAuthors } from './git/co-author-trailer.js';
+import { loadCoAuthors } from './git/co-authors.js';
 import { loadStashDiff, loadStashes, loadStashFiles, runStashAction } from './git/stash.js';
 import { loadDivergence, pushRef, runSync } from './git/sync.js';
 import { runDrop, validateDropRequest } from './git/drop.js';
@@ -33,7 +36,7 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
       const kind = channel === 'stash:action' && ['apply', 'pop'].includes(args[1]) ? `stash:${args[1]}`
         : channel.startsWith('worktree:discard') ? 'worktree:discard' : channel;
       const parameters = kind !== channel ? [args[2]] : args.slice(1);
-      return ['worktree:read', 'worktree:diff', 'stash:list', 'stash:files', 'stash:diff', 'sync:divergence', 'sync:cancel', 'sync:run', 'sync:push-ref', 'sync:drop'].includes(channel)
+      return ['worktree:read', 'worktree:diff', 'worktree:co-authors', 'stash:list', 'stash:files', 'stash:diff', 'sync:divergence', 'sync:cancel', 'sync:run', 'sync:push-ref', 'sync:drop'].includes(channel)
         ? run() : undo.perform(repo.path, kind, parameters, run);
     });
   }
@@ -101,11 +104,23 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     return discardSelection({ ...options, path: asPath(path), digest, selection });
   });
 
-  handler('worktree:commit', 4, (options, message, amend, expectedHead) => {
+  /**
+   * A rule for one untracked path in the root `.gitignore`. The renderer names
+   * the path and the kind of rule; main checks the path is untracked right now
+   * and computes the pattern itself (git/ignore-plan.js).
+   */
+  handler('worktree:ignore', 3, (options, path, kind) => {
+    if (typeof kind !== 'string') throw new Error('Invalid ignore request');
+    return addIgnoreRule({ ...options, path: asPath(path), kind });
+  });
+
+  handler('worktree:commit', 5, (options, message, amend, expectedHead, coAuthors) => {
     if (typeof message !== 'string' || message.length > 1_000_000 || typeof amend !== 'boolean') throw new Error('Invalid commit request');
     if (amend ? typeof expectedHead !== 'string' : expectedHead !== null) throw new Error('Invalid commit request');
-    return createCommit({ ...options, message, amend, expectedHead });
+    // Validated before the Undo record opens: a bad co-author rejects the request instead of reaching Git.
+    return createCommit({ ...options, message, amend, expectedHead, coAuthors: validateCoAuthors(coAuthors) });
   });
+  handler('worktree:co-authors', 1, options => loadCoAuthors(options));
 
   handler('stash:push', 3, (options, includeUntracked, message) => {
     if (typeof includeUntracked !== 'boolean' || typeof message !== 'string' || message.length > 4096) throw new Error('Invalid stash request');

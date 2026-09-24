@@ -6,8 +6,9 @@ import { CommandLog } from '../../main/command-log.js';
 import { runGit } from '../../main/git/exec.js';
 import {
   buildBisectMarkArgv, buildBisectRefsArgv, buildBisectResetArgv, buildBisectStartArgv, buildBisectVarsArgv,
-  loadBisectState, parseBisectRefs, parseBisectVars, runBisect, validateTerm
+  loadBisectState, parseBisectLog, parseBisectRefs, parseBisectVars, runBisect, validateTerm
 } from '../../main/git/bisect.js';
+import { BISECT_KINDS, bisectClass, bisectMarkMap } from '../../renderer/src/features/graph/bisect-marks.js';
 
 // Bisect is a search Git drives by checking commits out. Only a real
 // repository can show that the commit it lands on is the one that broke the
@@ -50,6 +51,45 @@ assert.throws(() => parseBisectRefs(`refs/heads/main\0${B}`, { bad: 'bad', good:
 assert.deepEqual(parseBisectVars("bisect_rev='abc'\nbisect_nr=7\nbisect_steps=3\nbisect_all=15\n"),
   { bisect_rev: 'abc', bisect_nr: '7', bisect_steps: '3', bisect_all: '15' });
 
+// Every answer, from the replay script Git writes: the last word on a commit wins,
+// prose comments and malformed lines are ignored, custom terms are understood.
+{
+  const logText = [
+    "git bisect start 'HEAD' 'HEAD~7'", '# status: waiting for both good and bad commits',
+    `# bad: [${B}] c8`, `git bisect bad ${B}`, `git bisect skip ${C}`, `git bisect good ${C}`,
+    `git bisect good ${D.toUpperCase()}`, 'git bisect bad not-a-sha', `git bisect run ${B}`, `git bisect bad ${'e'.repeat(64)}`,
+    // The ends given to `start` exist only as comments; a result line is not an answer.
+    `# good: [${'1'.repeat(40)}] c1`, `# first bad commit: [${'2'.repeat(40)}] c9`, `# possible first bad commit: [${'3'.repeat(40)}] x`
+  ].join('\n');
+  assert.deepEqual([...parseBisectLog(logText)], [[B, 'bad'], [C, 'good'], [D, 'good'], ['e'.repeat(64), 'bad'], ['1'.repeat(40), 'good']]);
+  assert.deepEqual([...parseBisectLog(`git bisect broken ${B}\ngit bisect works ${C}\ngit bisect bad ${D}`, { bad: 'broken', good: 'works' })],
+    [[B, 'bad'], [C, 'good']], 'with custom terms, bad/good are just other words');
+  assert.equal(parseBisectLog('').size, 0);
+}
+
+// The graph's chips: a word and a kind per commit, nothing while no bisect runs.
+{
+  assert.equal(bisectMarkMap({ active: false, marked: [{ oid: B, mark: 'bad' }] }).size, 0);
+  const map = bisectMarkMap({ active: true, terms: { bad: 'broken', good: 'works' }, expected: D, done: false,
+    marked: [{ oid: B.toUpperCase(), mark: 'bad' }, { oid: C, mark: 'good' }, { oid: 'nonsense', mark: 'bad' }, { oid: 'f'.repeat(40), mark: 'run' }] });
+  assert.deepEqual(Object.fromEntries([...map].map(([oid, mark]) => [oid[0], [mark.kind, mark.word]])),
+    { b: ['bad', 'broken'], c: ['good', 'works'], d: ['testing', 'testing'] }, 'custom terms are the words on the chips; oids are lower-cased');
+  assert.match(map.get(B).title, /bug is present/);
+  // The revision on test that was already answered keeps its answer.
+  assert.equal(bisectMarkMap({ active: true, expected: C, marked: [{ oid: C, mark: 'skip' }] }).get(C).kind, 'skip');
+  // Refs alone (an older main) still draw.
+  assert.equal(bisectMarkMap({ active: true, bad: B, goods: [C], skipped: [D] }).size, 3);
+  // Done: the answer is the culprit, and nothing is "testing" any more.
+  const done = bisectMarkMap({ active: true, done: true, firstBad: B, expected: D, marked: [{ oid: B, mark: 'bad' }] });
+  assert.deepEqual([done.get(B).kind, done.get(B).word, done.has(D)], ['culprit', 'first bad', false]);
+  for (const kind of BISECT_KINDS) assert.equal(bisectClass(kind), `bisect-chip bisect-${kind}`);
+  // Every chip class is styled, and each rendered chip carries its word.
+  const css = await readFile(new URL('../../renderer/src/ui/history.css', import.meta.url), 'utf8');
+  for (const kind of BISECT_KINDS) assert.ok(css.includes(`.bisect-${kind} {`), `.bisect-${kind} is styled`);
+  const graph = await readFile(new URL('../../renderer/src/features/graph/CommitGraph.jsx', import.meta.url), 'utf8');
+  assert.match(graph, /<Icon aria-hidden="true" \/><span>\{mark\.word\}<\/span>/, 'the chip shows its word, not only an icon');
+}
+
 // --- real repository ---
 
 const root = await mkdtemp(path.join(tmpdir(), 'twig-bisect-check-'));
@@ -80,7 +120,7 @@ try {
   const firstBroken = commits[8];
 
   assert.deepEqual(await state(), {
-    active: false, terms: { bad: 'bad', good: 'good' }, start: null, bad: null, goods: [], skipped: [],
+    active: false, terms: { bad: 'bad', good: 'good' }, start: null, bad: null, goods: [], skipped: [], marked: [],
     expected: null, remaining: null, steps: null, done: false, firstBad: null
   }, 'a repository with no bisect reports none');
 
@@ -102,11 +142,20 @@ try {
   assert.equal(current.expected, (await git(['rev-parse', 'HEAD'])).stdout.trim(), 'the revision to test is checked out');
 
   // 2. Answer for each revision Git offers until the search ends.
+  const answers = new Map([[commits.at(-1), 'bad'], [commits[0], 'good']]);
   for (let guard = 0; guard < 20 && !current.done; guard += 1) {
-    await runBisect({ cwd: repo, log, step: await broken() ? 'bad' : 'good' });
+    const answer = await broken() ? 'bad' : 'good';
+    answers.set(current.expected, answer);
+    await runBisect({ cwd: repo, log, step: answer });
     current = await state();
   }
   assert.equal(current.done, true, 'the search finished');
+  // Every answer is on its commit — including the earlier `bad` ones, which
+  // refs/bisect no longer holds (Git keeps only the newest bad there).
+  assert.deepEqual(new Map(current.marked.map(item => [item.oid, item.mark])), answers, 'the graph gets every answer given');
+  assert.ok([...answers.values()].filter(mark => mark === 'bad').length > 1, 'the search went through several bad commits');
+  const chips = bisectMarkMap(current);
+  assert.equal(chips.get(firstBroken).kind, 'culprit', 'the first bad commit is drawn as the result');
   assert.equal(current.firstBad, firstBroken, 'bisect found the commit that introduced the defect');
   assert.equal(current.remaining, 0);
 
@@ -122,6 +171,8 @@ try {
   await runBisect({ cwd: repo, log, step: 'skip' });
   current = await state();
   assert.deepEqual(current.skipped, [skipped], 'the skipped revision is recorded');
+  assert.equal(new Map(current.marked.map(item => [item.oid, item.mark])).get(skipped), 'skip', 'and drawn as skipped');
+  assert.equal(bisectMarkMap(current).get(current.expected).kind, 'testing', 'the next revision is drawn as the one on test');
   assert.notEqual(current.expected, skipped, 'Git offers a different revision after a skip');
   await runBisect({ cwd: repo, log, step: 'reset' });
 
@@ -134,6 +185,7 @@ try {
   await runBisect({ cwd: repo, log, step: 'good', oid: commits[0], terms: custom.terms });
   current = await state();
   assert.equal(current.bad, commits.at(-1), 'the mark landed on refs/bisect/broken');
+  assert.deepEqual(current.marked.map(item => item.mark).sort(), ['bad', 'good'], 'custom-term answers read back as bad/good');
   assert.equal(current.goods.length, 1);
   assert.ok(current.remaining > 0, 'counting works with custom terms too');
   await runBisect({ cwd: repo, log, step: 'reset' });

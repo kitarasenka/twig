@@ -1,5 +1,6 @@
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
+import { coAuthorArgv, missingCoAuthors } from './co-author-trailer.js';
 
 /** Commit creation and the stash, i.e. local writes that move HEAD or shelve work. */
 
@@ -24,8 +25,13 @@ export function validateCommitMessage(message) {
   return { valid: true, error: null, warnings };
 }
 
-export function buildCommitArgv({ amend = false } = {}) {
-  return ['commit', '--file=-', '--cleanup=strip', ...(amend ? ['--amend'] : [])];
+/**
+ * Co-authors become `--trailer` words rather than lines pasted into the
+ * message: Git places them in the trailer block itself, and on an amend it
+ * does not repeat a trailer the message already ends with.
+ */
+export function buildCommitArgv({ amend = false, coAuthors = [] } = {}) {
+  return ['commit', '--file=-', '--cleanup=strip', ...(amend ? ['--amend'] : []), ...coAuthorArgv(coAuthors)];
 }
 
 /**
@@ -62,11 +68,13 @@ async function mutate({ cwd, log, argv, operation, stdin = null }) {
  * is refused, because the staged changes were meant for that commit and a bare
  * `--amend` would rewrite whatever HEAD has become in the meantime — the same
  * guard `rewordHead` applies.
- * @param {{ cwd: string, log: object, message: string, amend?: boolean, expectedHead?: ?string }} options
+ * @param {{ cwd: string, log: object, message: string, amend?: boolean, expectedHead?: ?string,
+ *   coAuthors?: { name: string, email: string }[] }} options
  */
-export async function createCommit({ cwd, log, message, amend = false, expectedHead = null }) {
+export async function createCommit({ cwd, log, message, amend = false, expectedHead = null, coAuthors = [] }) {
   const check = validateCommitMessage(message);
   if (!check.valid) throw new Error(check.error);
+  const argv = buildCommitArgv({ amend, coAuthors: missingCoAuthors(message, coAuthors) });
   if (amend) {
     validateOid(expectedHead);
     const head = await runGit({ argv: ['rev-parse', '--verify', 'HEAD'], cwd, log, operation: 'Read the commit being amended' });
@@ -75,7 +83,7 @@ export async function createCommit({ cwd, log, message, amend = false, expectedH
       throw new Error('The branch moved since the last commit was read. Refresh and try again.');
     }
   }
-  await mutate({ cwd, log, argv: buildCommitArgv({ amend }), stdin: message, operation: amend ? 'Amend the last commit' : 'Commit' });
+  await mutate({ cwd, log, argv, stdin: message, operation: amend ? 'Amend the last commit' : 'Commit' });
   return check.warnings;
 }
 

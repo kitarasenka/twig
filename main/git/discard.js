@@ -49,9 +49,11 @@ async function expand({ cwd, log, entries }) {
 
 /**
  * Records the working-tree copies of `files` as one commit on DISCARD_REF and
- * returns its id. Files that do not exist are simply not in it.
+ * returns its id. Files that do not exist are simply not in it. Exported for
+ * the other edit 🌱 Twig makes to a working-tree file — a rule added to
+ * `.gitignore` — which is undone from the same kind of backup.
  */
-async function snapshot({ cwd, log, files, message }) {
+export async function snapshot({ cwd, log, files, message }) {
   const root = await realpath(cwd);
   const regular = [];
   const records = [];

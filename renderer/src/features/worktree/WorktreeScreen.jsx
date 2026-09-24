@@ -1,16 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, FilePenLine, FilePlus2, Minus, Plus, Trash2, Undo2 } from 'lucide-react';
+import { Check, FilePenLine, FilePlus2, Minus, Plus, Trash2, Undo2, Users } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import Menu from '../../ui/Menu.jsx';
+import { ignoreMenuItems } from '../diff/file-menu.js';
 import FileStatus from '../diff/FileStatus.jsx';
 import StageDiff from './StageDiff.jsx';
+import CoAuthors from './CoAuthors.jsx';
 import { ConfirmDialog } from '../ops/dialogs.jsx';
 import { discardDialog } from './discard-dialog.js';
 
 const EMPTY = { staged: [], unstaged: [], untracked: [], branch: null };
 
-function FileRow({ entry, active, onOpen, onPrimary, primaryIcon: Icon, primaryLabel, busy, discard = null }) {
+/** Right-click, Shift+F10 or the Menu key on a row, opening at the pointer or under the row. */
+function menuProps(onMenu) {
+  if (!onMenu) return {};
+  return {
+    onContextMenu: event => { event.preventDefault(); onMenu(event.clientX, event.clientY); },
+    onKeyDown: event => {
+      if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+      event.preventDefault();
+      const box = event.currentTarget.getBoundingClientRect();
+      onMenu(box.left + 24, box.bottom);
+    }
+  };
+}
+
+function FileRow({ entry, active, onOpen, onPrimary, primaryIcon: Icon, primaryLabel, busy, discard = null, onMenu = null }) {
   return <div className={`worktree-file ${active ? 'selected' : ''}`}>
-    <button className="worktree-open" onClick={onOpen} title={entry.path}>
+    <button className="worktree-open" onClick={onOpen} title={onMenu ? `${entry.path} · Right-click or Shift+F10 to ignore it` : entry.path} {...menuProps(onMenu)}>
       <FileStatus status={entry.status} /><span>{entry.path}</span>
     </button>
     {discard && <Button className="discard" icon={discard.icon} aria-label={`${discard.label} ${entry.path}`} reason={discard.reason} onClick={discard.run} />}
@@ -28,7 +45,11 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
   const [message, setMessage] = useState('');
   const [notice, setNotice] = useState('');
   const [amend, setAmend] = useState(false);
+  const [coAuthors, setCoAuthors] = useState([]);
+  // The picker costs a row of height, so it opens on request; chosen people keep it open.
+  const [coAuthorsOpen, setCoAuthorsOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
+  const [rowMenu, setRowMenu] = useState(null);
   const amendBase = useRef(null);
   const generation = useRef(0);
   const diffRequest = useRef(0);
@@ -143,6 +164,15 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
       `Discarded ${lines} line${lines === 1 ? '' : 's'} of ${open.path}. Undo brings them back.`);
   };
 
+  /** A rule in .gitignore for an untracked path; Undo takes it back out. */
+  const ignore = (file, choice) => guard(async () => {
+    const outcome = await window.twig.addIgnoreRule(repository.id, file, choice.kind);
+    if (!outcome.ok) throw new Error(outcome.message);
+    if (open?.path === file) { setOpen(null); setDiff(null); }
+    setNotice(outcome.stillShown ? `Added ${outcome.pattern} to .gitignore, but a later rule still shows ${file}.`
+      : `Added ${outcome.pattern} to .gitignore. Undo takes it back out.`);
+  }, null, false);
+
   const busyOp = operation && operation.kind !== 'none' ? operation.kind : null;
   const amendToggleReason = busy ? 'Git is working'
     : unborn ? 'There is no commit to amend yet'
@@ -177,8 +207,10 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
     }
     const head = amendMode ? amendBase.current?.oid ?? tree.branch?.oid ?? null : null;
     await guard(async () => {
-      const warnings = await window.twig.createCommit(repository.id, message, amendMode, head);
+      const warnings = await window.twig.createCommit(repository.id, message, amendMode, head, coAuthors);
       setMessage('');
+      setCoAuthors([]);
+      setCoAuthorsOpen(false);
       setAmend(false);
       amendBase.current = null;
       setOpen(null);
@@ -246,6 +278,7 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
             {tree.untracked.length > 0 && <Button className="bulk discard" icon={Trash2} reason={bulkReason}
               onClick={() => discardAllAction('untracked')}>Delete all</Button>}</h3>
           {tree.untracked.map(entry => <FileRow key={`n-${entry.path}`} entry={entry} busy={busy} discard={discardRow(entry, 'untracked')}
+            onMenu={(x, y) => setRowMenu({ path: entry.path, x, y })}
             active={open?.path === entry.path}
             onOpen={() => trackAndOpen(entry.path)}
             primaryIcon={Plus} primaryLabel="Stage"
@@ -265,12 +298,19 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
       <label htmlFor="commit-message">{amend ? 'Amend message' : 'Commit message'}</label>
       <textarea id="commit-message" rows={3} value={message} placeholder="Subject line, blank line, then the details"
         onChange={event => setMessage(event.target.value)} />
+      {(coAuthorsOpen || coAuthors.length > 0) && <CoAuthors repositoryId={repository.id} chosen={coAuthors} onChange={setCoAuthors}
+        disabled={busy} autoFocus={coAuthorsOpen && coAuthors.length === 0} onDone={() => setCoAuthorsOpen(false)} />}
       {amendSharedWarning && <p className="worktree-notice amend-warn" role="alert">{amendSharedWarning}</p>}
-      <label className="amend-toggle" title={amendToggleReason || undefined}>
-        <input type="checkbox" checked={amend} disabled={Boolean(amendToggleReason)}
-          onChange={event => void toggleAmend(event.target.checked)} />
-        <span>Amend last commit — add every staged file to it{amendToggleReason ? ` (${amendToggleReason})` : ''}</span>
-      </label>
+      <div className="commit-options">
+        <label className="amend-toggle" title={amendToggleReason || undefined}>
+          <input type="checkbox" checked={amend} disabled={Boolean(amendToggleReason)}
+            onChange={event => void toggleAmend(event.target.checked)} />
+          <span>Amend last commit — add every staged file to it{amendToggleReason ? ` (${amendToggleReason})` : ''}</span>
+        </label>
+        {!coAuthorsOpen && coAuthors.length === 0 && <button type="button" className="text-button co-author-open"
+          title="Credit people from this history with Co-authored-by: trailers" onClick={() => setCoAuthorsOpen(true)}>
+          <Users aria-hidden="true" />Add co-authors</button>}
+      </div>
       <div className="commit-actions">
         <span className={subject.length > 72 ? 'warn' : 'muted'}>{subject.length}/72 in the subject</span>
         <Button className="primary" type="submit" reason={commitReason}>
@@ -278,5 +318,7 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
       </div>
     </form>
     {confirm && <ConfirmDialog {...confirm} onClose={() => setConfirm(null)} />}
+    {rowMenu && <Menu x={rowMenu.x} y={rowMenu.y} label={`Actions for ${rowMenu.path}`} onClose={() => setRowMenu(null)}
+      items={ignoreMenuItems({ path: rowMenu.path, reason: busy ? 'Git is working' : undefined, run: choice => void ignore(rowMenu.path, choice) })} />}
   </div>;
 }

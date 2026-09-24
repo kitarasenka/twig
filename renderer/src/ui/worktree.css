@@ -76,3 +76,34 @@
    icons would shout louder than the file names. Every one of them names what
    it does and asks for confirmation, so colour is never the only warning. */
 button.discard:not(:disabled):hover, button.discard:not(:disabled):focus-visible { color: var(--danger); }
+
+/* Co-authors: people from this history, each one a `Co-authored-by:` trailer. */
+.co-authors { display: flex; flex-direction: column; gap: var(--space-1); }
+.co-authors-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-2); font-size: var(--text-xs); }
+.co-authors-label { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.co-authors-label svg, .co-author-picker > svg { width: 13px; height: 13px; flex: none; }
+.co-author-chip { display: inline-flex; align-items: center; gap: 2px; padding: 0 2px 0 var(--space-2); height: 22px;
+  background: var(--accent-bg); border: 1px solid var(--border); border-radius: 11px; color: var(--text); }
+.co-author-chip button { display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--muted); cursor: pointer; }
+.co-author-chip button:hover, .co-author-chip button:focus-visible { background: var(--surface-hover); color: var(--text); }
+.co-author-chip button svg { width: 12px; height: 12px; }
+.co-author-picker { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); flex: 1; min-width: 180px; color: var(--muted); }
+.co-author-picker input { flex: 1; min-width: 0; height: 24px; padding: 0 var(--space-2); background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; font-size: var(--text-xs); }
+.co-author-picker input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* The form sits at the bottom of the screen, so the list opens upwards. */
+.co-author-options { position: absolute; left: 18px; right: 0; bottom: calc(100% + 4px); z-index: 20; margin: 0; padding: var(--space-1);
+  list-style: none; max-height: 240px; overflow: auto; background: var(--surface-raised); border: 1px solid var(--border);
+  border-radius: var(--radius-md); box-shadow: var(--shadow); }
+.co-author-options li { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: var(--space-2);
+  padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); color: var(--text); cursor: pointer; font-size: var(--text-sm); }
+.co-author-options li span, .co-author-options li small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
+.co-author-options li.active { background: var(--surface-hover); }
+.co-author-hint { margin: 0; font-size: var(--text-xs); }
+.co-author-preview { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); font-size: var(--text-xs); }
+.co-author-preview code { font-family: var(--font-mono); color: var(--text); }
+/* Amend and the co-author button share one row, so the form keeps its height until co-authors are wanted. */
+.commit-options { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
+.co-author-open { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-xs); }
+.co-author-open svg { width: 13px; height: 13px; }

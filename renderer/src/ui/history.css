@@ -76,6 +76,16 @@
 .real-lane circle.mark-node { fill: none; stroke: var(--mark-color); stroke-width: 2.5; }
 .mark-chip { display: inline-flex; align-items: center; flex: none; margin-right: var(--space-1); color: var(--mark-color); }
 .mark-chip svg { width: 14px; height: 14px; }
+/* BugHunter answers on their commits: icon + word, tinted by kind (never colour alone). */
+.bisect-chip { --bisect-color: var(--mark-slate); display: inline-flex; align-items: center; gap: 3px; vertical-align: middle;
+  height: 16px; margin-right: var(--space-2); padding: 0 6px 0 4px; border: 1px solid var(--bisect-color); border-radius: 8px;
+  background: color-mix(in srgb, var(--bisect-color) 14%, transparent); color: var(--text); font-size: var(--text-xs); line-height: 1; }
+.bisect-chip svg { width: 11px; height: 11px; flex: none; color: var(--bisect-color); }
+.bisect-bad { --bisect-color: var(--mark-red); }
+.bisect-good { --bisect-color: var(--mark-green); }
+.bisect-skip { --bisect-color: var(--mark-slate); }
+.bisect-testing { --bisect-color: var(--mark-amber); border-style: dashed; }
+.bisect-culprit { --bisect-color: var(--mark-red); background: color-mix(in srgb, var(--mark-red) 28%, transparent); font-weight: 600; }
 .mark-editor { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
 .mark-label { margin: 0 var(--space-1) 0 0; color: var(--muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
 .mark-swatches { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }

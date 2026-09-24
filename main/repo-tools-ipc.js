@@ -3,13 +3,15 @@ import path from 'node:path';
 import { isTrustedPage } from './security.js';
 import { runGit } from './git/exec.js';
 import { loadLfsStatus, pullLfs } from './git/lfs.js';
+import { loadRepositoryStats, runMaintenance } from './git/maintenance.js';
+import { MAINTENANCE_TASKS } from './git/maintenance-plan.js';
 import { checkPatch, exportName, exportPatches, inspectPatch, readPatchFile, validateExport } from './git/patches.js';
 import { loadSubmodules, submoduleDirectory, updateSubmodules } from './git/submodules.js';
 import { addWorktree, findWorktree, folderName, loadWorktrees, pruneWorktrees, removeWorktree, suggestWorktreePath } from './git/worktrees.js';
 
 /**
  * Channels for the repository tools beyond history: Git LFS, patches,
- * submodules and worktrees. Like every other channel, each checks the sender,
+ * submodules, worktrees and maintenance. Like every other channel, each checks the sender,
  * its frame and the argument count, and resolves the repository only from the
  * saved list — a path from the renderer is never trusted as a repository.
  */
@@ -31,9 +33,9 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
       return action({ cwd: item.path, log: journal, repository: item }, ...args.slice(1));
     });
   }
-  /** One network job per repository (LFS download, submodule update), cancellable. */
+  /** One long job per repository (LFS download, submodule update, maintenance), cancellable. */
   async function job(cwd, run) {
-    if (jobs.has(cwd)) throw new Error('A download is already running in this repository.');
+    if (jobs.has(cwd)) throw new Error('Another download or maintenance task is running in this repository.');
     const controller = new AbortController();
     jobs.set(cwd, controller);
     try { return await run(controller.signal); } finally { jobs.delete(cwd); }
@@ -135,6 +137,18 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
     const found = await findWorktree({ ...options, path: folder });
     if (found.prunable) throw new Error('This worktree’s folder is gone. Prune it instead.');
     return repositories.add(found.path);
+  });
+
+  // --- maintenance -----------------------------------------------------------------------------
+  handler('maintenance:stats', 1, options => loadRepositoryStats(options));
+  /**
+   * `optimize` or `gc`, never an argv: the command is fixed per task. It goes
+   * through Undo's busy lock like any action; neither moves a ref, so a chain
+   * of Undo steps survives it.
+   */
+  handler('maintenance:run', 2, (options, task) => {
+    if (!MAINTENANCE_TASKS.includes(task)) throw new TypeError('Invalid maintenance task');
+    return job(options.cwd, signal => undo.perform(options.cwd, `maintenance:${task}`, [], () => runMaintenance({ ...options, task, signal })));
   });
 
   handler('tools:cancel', 1, options => { jobs.get(options.cwd)?.abort(); return true; });

@@ -1,4 +1,5 @@
-import { AlignLeft, ClipboardCopy, FilePenLine, FolderOpen, History, Minus, Plus, Trash2, Undo2 } from 'lucide-react';
+import { AlignLeft, ClipboardCopy, EyeOff, FilePenLine, FolderOpen, History, Minus, Plus, Trash2, Undo2 } from 'lucide-react';
+import { ignoreChoices } from '../../../../main/git/ignore-plan.js';
 
 /** What the file manager is called here, for menu text. */
 export function fileManagerName(platform) {
@@ -19,6 +20,19 @@ export function absolutePath(root, file) {
 }
 
 /**
+ * "Ignore this file / all .ext files / this folder" for an untracked path. The
+ * hint is the exact line main will append to the root .gitignore — main
+ * computes it again from the same shared module rather than trusting it.
+ * A path the module cannot express gets no items rather than a wrong rule.
+ */
+export function ignoreMenuItems({ path, run, reason }) {
+  let choices;
+  try { choices = ignoreChoices(path); } catch { return []; }
+  return choices.map(choice => ({ key: `ignore-${choice.kind}`, icon: EyeOff, text: choice.text, hint: choice.pattern, reason,
+    run: () => run(choice) }));
+}
+
+/**
  * The context menu of a file row — in a commit's file list and in the
  * uncommitted panel. Opening and revealing act on the working-tree copy, which
  * is the only copy an editor can change; that is why a file shown in an old
@@ -28,7 +42,9 @@ export function absolutePath(root, file) {
  * none (an uncommitted list); `tracked: false` drops the history items, which
  * mean nothing for a file Git has never recorded. `move` adds the staging
  * direction of an uncommitted row, and `discard` ('changes' | 'untracked')
- * its destructive counterpart, which always confirms before it runs.
+ * its destructive counterpart, which always confirms before it runs. An
+ * untracked row (`discard: 'untracked'`) also offers the .gitignore rules when
+ * `handlers.ignore` is given.
  */
 export function buildFileMenu({ path, platform, editor = 'System default', blameOid = null, tracked = true, move = null, discard = null, handlers }) {
   const editorText = !editor || editor === 'System default' ? 'Open in default editor' : `Open in ${editor}`;
@@ -43,6 +59,10 @@ export function buildFileMenu({ path, platform, editor = 'System default', blame
     items.push({ separator: true }, move === 'unstage'
       ? { key: 'unstage', icon: Minus, text: 'Unstage', reason: handlers.moveReason, run: () => handlers.move(path) }
       : { key: 'stage', icon: Plus, text: 'Stage', reason: handlers.moveReason, run: () => handlers.move(path) });
+  }
+  if (discard === 'untracked' && handlers.ignore) {
+    const ignore = ignoreMenuItems({ path, run: handlers.ignore, reason: handlers.ignoreReason });
+    if (ignore.length) items.push({ separator: true }, ...ignore);
   }
   if (discard) {
     items.push(discard === 'untracked'

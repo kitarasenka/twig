@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlignLeft, Archive, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow } from 'lucide-react';
+import { AlignLeft, Archive, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow, Wrench } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
@@ -21,6 +21,7 @@ import StashScreen from '../stash/StashScreen.jsx';
 import ReflogScreen from '../reflog/ReflogScreen.jsx';
 import WorktreesScreen from '../tools/WorktreesScreen.jsx';
 import SubmodulesScreen from '../tools/SubmodulesScreen.jsx';
+import MaintenanceScreen from '../tools/MaintenanceScreen.jsx';
 import WorktreeDialog from '../tools/WorktreeDialog.jsx';
 import AutomationsScreen from '../automations/AutomationsScreen.jsx';
 import ExecutionPanel from '../automations/ExecutionPanel.jsx';
@@ -35,6 +36,7 @@ import { absolutePath, buildFileMenu } from '../diff/file-menu.js';
 import { buildRewordPlan } from '../ops/reword-plan.js';
 import { buildSquashPlan } from '../ops/squash-plan.js';
 import { createLaneLayout } from './layout.js';
+import { bisectMarkMap } from './bisect-marks.js';
 import useGitDrag, { refEndpoint } from './useGitDrag.js';
 import DropDialog from './DropDialog.jsx';
 import BlameView from '../blame/BlameView.jsx';
@@ -45,9 +47,9 @@ import { dropActions, endpointLabel, sameEndpoint } from '../../../../main/git/d
 const NOOP = () => {};
 const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
 const NO_BISECT = { active: false, terms: { bad: 'bad', good: 'good' }, start: null, bad: null, goods: [],
-  skipped: [], expected: null, remaining: null, steps: null, done: false, firstBad: null };
+  skipped: [], marked: [], expected: null, remaining: null, steps: null, done: false, firstBad: null };
 /** The four centre-pane screens that replace the graph instead of selecting a commit. */
-const SCREENS = ['worktree', 'branches', 'stashes', 'reflog', 'worktrees', 'submodules', 'automations'];
+const SCREENS = ['worktree', 'branches', 'stashes', 'reflog', 'worktrees', 'submodules', 'maintenance', 'automations'];
 /** Values of `selected` that are not a commit oid and so have no commit to read. */
 const isCommitSelection = value => Boolean(value) && !SCREENS.includes(value) && value !== UNCOMMITTED;
 /** Shift+F10 or the Menu key: the keyboard way to a context menu, as in the graph. */
@@ -212,6 +214,8 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     }
     return seen;
   }, [repository.status?.branch?.oid, data.commits, indexMap]);
+  // BugHunter's answers, drawn on the commits they were given for.
+  const bisectMarks = useMemo(() => bisectMarkMap(bisect), [bisect]);
   const refMap = useMemo(() => {
     const result = new Map();
     for (const ref of data.refs) result.set(ref.target, [...result.get(ref.target) || [], ref]);
@@ -1065,7 +1069,13 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     stageAll: scope => void runStaging(() => window.twig.stageAll(repository.id, scope),
       count => `Staged ${plural(count, scope === 'untracked' ? 'new path' : 'file')}.`),
     unstageAll: () => void runStaging(() => window.twig.unstageAll(repository.id),
-      count => `Unstaged ${plural(count, 'file')}.`)
+      count => `Unstaged ${plural(count, 'file')}.`),
+    // A .gitignore rule is an edit to one file, not a Git command: it runs like
+    // staging (status re-read, history left alone) and Undo takes it back out.
+    ignore: (file, choice) => void runStaging(() => window.twig.addIgnoreRule(repository.id, file.path, choice.kind),
+      outcome => (!outcome.ok ? outcome.message
+        : outcome.stillShown ? `Added ${outcome.pattern} to .gitignore, but a later rule still shows ${file.path}.`
+          : `Added ${outcome.pattern} to .gitignore${outcome.created ? ' (new file)' : ''}. Undo takes it back out.`))
   };
   const dropReason = toolbarBusyReason || (working ? 'Git is working' : undefined)
     || (!operationReady ? 'Repository state is not verified yet. Refresh first.' : undefined)
@@ -1126,6 +1136,8 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
             <FolderGit2 /><span>Worktrees</span></button>
           <button className={`real-branch ${screen === 'submodules' ? 'selected' : ''}`} onClick={() => choose('submodules')} title="Repositories pinned inside this one">
             <Boxes /><span>Submodules</span></button>
+          <button className={`real-branch ${screen === 'maintenance' ? 'selected' : ''}`} onClick={() => choose('maintenance')} title="Repository size and Git's clean-up: git maintenance and git gc">
+            <Wrench /><span>Maintenance</span></button>
           <button className={`real-branch ${screen === 'automations' ? 'selected' : ''}`} onClick={() => choose('automations')}>
             <Workflow /><span>Automations</span></button>
         </nav>
@@ -1183,13 +1195,13 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
           {search.loading ? <div className="loading-shell" aria-label="Searching history">{Array.from({ length: 6 }, (_, i) => <div className="skeleton" key={i} />)}</div>
             : search.error ? <p className="empty-inline">{search.error} <button onClick={onConsole}>Show output</button></p>
             : search.commits.length ? <CommitGraph commits={search.commits} lanes={search.lanes} laneCount={1} refMap={refMap} indexMap={searchIndexMap} selected={selected} head={repository.status?.branch?.oid}
-                onSelect={oid => choose(oid)} onMenu={openMenu} loadMore={NOOP} hasMore={false} loading={false} summary={null} stashes={[]} marks={marks}
+                onSelect={oid => choose(oid)} onMenu={openMenu} loadMore={NOOP} hasMore={false} loading={false} summary={null} stashes={[]} marks={marks} bisectMarks={bisectMarks}
                 onUncommitted={NOOP} onStashes={NOOP} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />
               : <p className="empty-inline">{search.invalid || searchEmpty(search.query, search.mode)}</p>}
         </div>
         : loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
-            onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks}
+            onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
             onUncommitted={() => choose(UNCOMMITTED)} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
       </div>
       {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}
@@ -1208,6 +1220,8 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
       {!conflict && screen === 'submodules' && <SubmodulesScreen repository={repository} busy={working} refreshKey={toolsRefresh}
         onBack={() => choose(data.commits[0]?.oid || null)} onOpen={folder => openTab(() => window.twig.openSubmodule(repository.id, folder))}
         onDialog={setDialog} onChanged={() => onRepositoryChanged?.()} onConsole={onConsole} />}
+      {!conflict && screen === 'maintenance' && <MaintenanceScreen repository={repository} busy={working}
+        onBack={() => choose(data.commits[0]?.oid || null)} onDialog={setDialog} onConsole={onConsole} />}
       {!conflict && screen === 'automations' && <AutomationsScreen repository={repository} refreshKey={automationRefresh} busy={working || Boolean(execution)}
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onChanged={() => setAutomationRefresh(value => value + 1)}
         onRunEvent={(event, options) => void runAutomation(event, options)} />}
@@ -1248,6 +1262,8 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
         discard: fileMenu.section === 'unstaged' ? 'changes' : fileMenu.section === 'untracked' ? 'untracked' : null,
         handlers: { ...fileHandlers,
           discard: () => stagingActions.discard({ path: fileMenu.path, status: fileMenu.status }, fileMenu.section),
+          ignore: choice => stagingActions.ignore({ path: fileMenu.path }, choice),
+          ignoreReason: stageReason,
           discardReason: fileMenu.section && fileMenu.section !== 'staged' ? stagingActions.reasons.discard({ status: fileMenu.status }, fileMenu.section) : undefined,
           move: () => (fileMenu.section === 'staged' ? stagingActions.unstage : stagingActions.stage)({ path: fileMenu.path }),
           moveReason: fileMenu.section === 'staged' ? stagingActions.reasons.unstage : stagingActions.reasons.stage }
