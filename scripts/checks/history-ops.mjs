@@ -390,6 +390,23 @@ assert.deepEqual(buildRewordArgv(), ['commit', '--amend', '--only', '--file=-', 
 
   const busy = buildMultiCommitMenu({ commits: run, operation: { kind: 'rebase' }, handlers: multiHandlers });
   assert.match(busy.find(item => item.key === 'squash').reason, /rebase/);
+
+  // Cherry-pick and revert of a selection: kept with a reason when they cannot run.
+  const pickHandlers = { ...multiHandlers, cherryPick: () => {}, revert: () => {} };
+  const reasonOf = (menu, key) => menu.find(item => item.key === key)?.reason;
+  const elsewhere = buildMultiCommitMenu({ commits: gap, onCurrentBranch: false, someOnCurrentBranch: false, head: { branch: 'main' }, handlers: pickHandlers });
+  assert.equal(reasonOf(elsewhere, 'cherry-pick-many'), undefined, 'commits from another branch can be picked');
+  assert.match(elsewhere.find(item => item.key === 'cherry-pick-many').text, /Cherry-pick 2 commits onto main/);
+  assert.match(reasonOf(elsewhere, 'revert-many'), /Only commits on main/, 'a revert of commits off the branch is refused with the reason');
+  const mine = buildMultiCommitMenu({ commits: run, head: { branch: 'main' }, handlers: pickHandlers });
+  assert.match(reasonOf(mine, 'cherry-pick-many'), /These commits are already on main/);
+  assert.equal(reasonOf(mine, 'revert-many'), undefined);
+  const mixed = buildMultiCommitMenu({ commits: run, onCurrentBranch: false, someOnCurrentBranch: true, handlers: pickHandlers });
+  assert.match(reasonOf(mixed, 'cherry-pick-many'), /Some of these commits/);
+  const withMerge = buildMultiCommitMenu({ commits: [{ oid: C, parents: [A, B] }, ...gap.slice(1)], onCurrentBranch: false, someOnCurrentBranch: false, handlers: pickHandlers });
+  assert.match(reasonOf(withMerge, 'cherry-pick-many'), /merge commit/);
+  assert.match(reasonOf(withMerge, 'revert-many'), /merge commit/);
+  assert.match(reasonOf(buildMultiCommitMenu({ commits: run, operation: { kind: 'merge' }, handlers: pickHandlers }), 'revert-many'), /merge first/);
 }
 
 console.log('history-ops: all checks passed');

@@ -2,6 +2,7 @@ import { runGit } from './exec.js';
 import { loadRefs } from './refs.js';
 import { validateRefName } from './refs-ops.js';
 import { loadRemotes, validateRemoteName, validateRepositoryUrl } from './remotes.js';
+import { BACKGROUND_FETCH_ARGV } from '../background-fetch.js';
 
 /**
  * Network operations. Each one takes an AbortSignal because the brief
@@ -97,5 +98,23 @@ export async function pushRef({ cwd, log, remote, ref, remove = false, signal = 
   const result = await runGit({ cwd, log, argv, signal, operation });
   if (result.cancelled) return { ok: false, cancelled: true, message: `${operation} was cancelled.` };
   if (result.code !== 0) return { ok: false, cancelled: false, message: `${operation} failed. Show output in the console.` };
+  return { ok: true, cancelled: false, message: null };
+}
+
+/**
+ * The fetch the background schedule runs (see main/background-fetch.js). It is
+ * journaled like any other command, under a `Background:` label, so it shows
+ * in the console's Full History and not among the person's own actions.
+ * @param {{ cwd: string, log: object, signal?: ?AbortSignal }} options
+ * @returns {Promise<{ ok: boolean, cancelled: boolean, message: ?string }>}
+ */
+export async function backgroundFetch({ cwd, log, signal = null }) {
+  const result = await runGit({ cwd, log, argv: [...BACKGROUND_FETCH_ARGV], signal, operation: 'Background: fetch all remotes' });
+  if (result.cancelled) return { ok: false, cancelled: true, message: null };
+  if (result.code !== 0) {
+    // The reason is shown in Settings, so a credential inside a URL is cut out of it.
+    const reason = result.stderr.split('\n').map(line => line.replace(/^(fatal|error): /, '').replace(/(\w+:\/\/)[^/@\s]+@/g, '$1').trim()).find(Boolean);
+    return { ok: false, cancelled: false, message: reason ? `Fetch failed: ${reason}` : 'Fetch failed. Show output in the console.' };
+  }
   return { ok: true, cancelled: false, message: null };
 }

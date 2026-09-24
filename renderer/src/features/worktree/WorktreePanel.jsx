@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Check, FilePenLine, FilePlus2, Minus, Plus, X } from 'lucide-react';
+import { Check, FilePenLine, FilePlus2, Minus, Plus, Trash2, Undo2, X } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import FileStatus from '../diff/FileStatus.jsx';
 import { SECTIONS, conflictCount, summaryLabel } from './worktree-summary.js';
@@ -18,6 +18,17 @@ const MOVES = {
 };
 
 /**
+ * Throwing work away, per list: changes are discarded back to the staged or
+ * committed version, untracked files are deleted. Staged work has no discard
+ * here — it is unstaged first, so nothing staged disappears in one click.
+ * Every one of these asks first (§6.5) and is backed up for Undo.
+ */
+const DISCARDS = {
+  unstaged: { icon: Undo2, label: 'Discard changes to', bulkLabel: 'Discard all unstaged changes' },
+  untracked: { icon: Trash2, label: 'Delete', bulkLabel: 'Delete every untracked file' }
+};
+
+/**
  * The details panel for the "Uncommitted changes" row: the same right-hand slot
  * a commit gets, filled with what is staged, what is only changed on disk and
  * what Git does not track yet. The lists come from the status the workspace
@@ -25,7 +36,24 @@ const MOVES = {
  * same channels the staging screen runs. Staging by line, and the commit box
  * itself, stay one click away on that screen.
  */
-export default function WorktreePanel({ summary, branch, open, actions, error, onConsole, onDismissError, onFile, onStaging, onClose }) {
+/**
+ * Right-click, or Shift+F10 / the Menu key on a focused row, opens the file
+ * menu — the same two ways the commit panel's file rows reach theirs.
+ */
+function fileMenuProps(file, section, onFileMenu) {
+  if (!onFileMenu) return {};
+  return {
+    onContextMenu: event => { event.preventDefault(); onFileMenu(file, section, event.clientX, event.clientY); },
+    onKeyDown: event => {
+      if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+      event.preventDefault();
+      const box = event.currentTarget.getBoundingClientRect();
+      onFileMenu(file, section, box.left + 24, box.bottom);
+    }
+  };
+}
+
+export default function WorktreePanel({ summary, branch, open, actions, error, onConsole, onDismissError, onFile, onFileMenu, onStaging, onClose }) {
   const [filter, setFilter] = useState('');
   const query = filter.trim().toLowerCase();
   const sections = useMemo(() => SECTIONS.map(section => ({
@@ -59,15 +87,21 @@ export default function WorktreePanel({ summary, branch, open, actions, error, o
       {sections.map(section => {
         const Icon = ICONS[section.key];
         const rule = MOVES[section.key];
+        const discard = DISCARDS[section.key];
         const total = summary[section.key].length;
         return <section className="worktree-panel-section" key={section.key} aria-label={`${section.title} files`}>
           <div className="files-heading"><Icon /><strong>{section.title}</strong><span className="count">{total}</span>
             {total > 0 && <Button className="bulk" icon={rule.icon} reason={bulkReason(section.key)}
-              aria-label={rule.bulkLabel} onClick={() => moveAll(section.key)}>{rule.bulk}</Button>}</div>
+              aria-label={rule.bulkLabel} onClick={() => moveAll(section.key)}>{rule.bulk}</Button>}
+            {total > 0 && discard && <Button className="bulk discard" icon={discard.icon} reason={actions.reasons.discardAll}
+              aria-label={discard.bulkLabel} title={discard.bulkLabel} onClick={() => actions.discardAll(section.key === 'untracked' ? 'untracked' : 'tracked')} />}</div>
           {section.files.map(file => <div className="worktree-panel-file" key={`${section.key}:${file.path}`}>
             <button className="commit-file" aria-pressed={open?.file === file.path && open?.section === section.key}
-              onClick={() => onFile(file, section.key)} title={file.originalPath ? `${file.originalPath} → ${file.path}` : file.path}>
+              onClick={() => onFile(file, section.key)} title={file.originalPath ? `${file.originalPath} → ${file.path}` : file.path}
+              {...fileMenuProps(file, section.key, onFileMenu)}>
               <FileStatus status={file.status} /><span>{file.path}</span></button>
+            {discard && <Button className="discard" icon={discard.icon} aria-label={`${discard.label} ${file.path}`}
+              reason={actions.reasons.discard(file, section.key)} onClick={() => actions.discard(file, section.key)} />}
             <Button icon={rule.icon} aria-label={`${rule.label} ${file.path}`}
               reason={section.key === 'staged' ? actions.reasons.unstage : actions.reasons.stage}
               onClick={() => move(section.key, file)} /></div>)}

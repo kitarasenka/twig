@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { _electron as electron } from 'playwright';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { CommandLog } from '../main/command-log.js';
@@ -124,9 +124,134 @@ try {
   assert.match(await addedRow.locator('.diff-line-new').innerText(), /^\d+$/, 'the added line has a new line number');
   assert.equal((await addedRow.locator('.diff-line-old').innerText()).trim(), '', 'the added line has no old line number');
   assert.equal((await fileDiff.locator('.diff-hunk').first().locator('.diff-line-old').innerText()).trim(), '', 'the hunk header itself is not numbered');
+  // Word mode folds the edited pair into one line — removed words struck,
+  // added words underlined, both line numbers kept — and the choice is shared.
+  assert.equal(await fileDiff.locator('.diff-language').textContent(), 'Plain text');
+  await fileDiff.getByRole('button', { name: 'Words', exact: true }).click();
+  const changedRow = fileDiff.locator('.diff-changed');
+  await changedRow.waitFor();
+  assert.equal(await changedRow.count(), 1);
+  assert.equal(await fileDiff.locator('.diff-deleted, .diff-added').count(), 0, 'the pair is one row now');
+  assert.match(await changedRow.locator('.diff-seg-del').first().textContent(), /Twig/);
+  assert.match(await changedRow.locator('.diff-seg-add').first().textContent(), /real/);
+  assert.match(await changedRow.locator('.diff-line-old').innerText(), /^\d+$/);
+  assert.match(await changedRow.locator('.diff-line-new').innerText(), /^\d+$/);
+  await fileDiff.getByRole('button', { name: 'Lines', exact: true }).click();
+  await fileDiff.locator('.diff-deleted').first().waitFor();
+  assert.equal(await fileDiff.locator('.diff-changed').count(), 0);
   await fileDiff.getByRole('button', { name: 'Go to commit', exact: true }).click();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
   assert.equal(await fileHistory.count(), 0);
+
+  // File menu: open in the editor chosen in Settings, reveal, copy both paths.
+  // The "editor" is a script that writes the path it was given, picked through
+  // the same native dialog a person would use (stubbed here); the file manager
+  // is stubbed too, so nothing outside the test opens.
+  const editorOut = path.join(root, 'editor-called-with.txt');
+  const fakeEditor = path.join(root, 'fake-editor');
+  await writeFile(fakeEditor, `#!/bin/sh\nprintf '%s' "$1" > '${editorOut}'\n`, { mode: 0o755 });
+  await app.evaluate(({ dialog, shell }, file) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
+    globalThis.revealed = [];
+    shell.showItemInFolder = target => globalThis.revealed.push(target);
+  }, fakeEditor);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  const editorSelect = page.getByRole('combobox', { name: /Open files with/ });
+  assert.equal(await editorSelect.inputValue(), 'system', 'System default until a person chooses otherwise');
+  await editorSelect.selectOption('custom');
+  await page.getByText(fakeEditor, { exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  await app.evaluate(({ dialog }, directory) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] }); }, cwd);
+  const helloRow = page.getByRole('button', { name: 'Modified hello.txt', exact: true });
+  await helloRow.click({ button: 'right' });
+  const fileActions = page.getByRole('menu', { name: 'Actions for hello.txt' });
+  for (const name of ['Open in fake-editor', 'Copy path', 'Copy full path', 'File history', 'Blame history']) {
+    // An item's hint is part of its accessible name, so match the start only.
+    await fileActions.getByRole('menuitem', { name: new RegExp(`^${name}`) }).waitFor();
+  }
+  const revealName = process.platform === 'darwin' ? 'Reveal in Finder' : process.platform === 'win32' ? 'Show in Explorer' : 'Show in file manager';
+  await fileActions.getByRole('menuitem', { name: /^Open in fake-editor/ }).click();
+  await page.getByText('Opened hello.txt in fake-editor.', { exact: true }).waitFor();
+  let opened = '';
+  for (let i = 0; i < 50 && !opened; i++) { opened = await readFile(editorOut, 'utf8').catch(() => ''); if (!opened) await new Promise(r => setTimeout(r, 100)); }
+  assert.equal(await realpath(opened), await realpath(path.join(cwd, 'hello.txt')), 'the editor got the working-tree file');
+  const fullPath = await page.evaluate(() => window.twig.getWorkspace()).then(workspace => workspace.repositories.find(item => !item.sandbox).path);
+  await helloRow.click({ button: 'right' });
+  await fileActions.getByRole('menuitem', { name: revealName, exact: true }).click();
+  assert.deepEqual(await app.evaluate(() => globalThis.revealed), [path.join(fullPath, 'hello.txt')]);
+  await helloRow.focus();
+  await page.keyboard.press('Shift+F10');
+  await fileActions.getByRole('menuitem', { name: /^Copy path/ }).click();
+  assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), 'hello.txt');
+  await helloRow.click({ button: 'right' });
+  await fileActions.getByRole('menuitem', { name: 'Copy full path', exact: true }).click();
+  assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), path.join(fullPath, 'hello.txt'));
+  // Main resolves the path itself: a file gone from the tree is a reason, a
+  // path out of the tree is not a request at all.
+  const fixtureId = await page.evaluate(() => window.twig.getWorkspace()).then(workspace => workspace.repositories.find(item => !item.sandbox).id);
+  const gone = await page.evaluate(id => window.twig.openInEditor(id, 'old [name].txt'), fixtureId);
+  assert.equal(gone.reason, 'missing');
+  for (const bad of [['../outside.txt'], ['/etc/hosts'], ['a\0b']]) {
+    await assert.rejects(page.evaluate(([id, file]) => window.twig.openInEditor(id, file), [fixtureId, bad[0]]), /Invalid file/, bad[0]);
+  }
+  await assert.rejects(page.evaluate(() => window.twig.setEditor('/bin/sh')), /Invalid editor/);
+  await assert.rejects(page.evaluate(() => window.twig.openInEditor('not-a-repository', 'hello.txt')), /Unknown repository/);
+
+  // Sidebar: every branch, tag and section header has its own context menu.
+  const sidebar = page.getByRole('complementary', { name: 'Repository navigation' });
+  const curves = sidebar.locator('.real-branch', { hasText: 'curves' });
+  await curves.click({ button: 'right' });
+  const branchActions = page.getByRole('menu', { name: 'Actions for feat/graph/curves' });
+  for (const name of ['Show in history', 'Check out feat/graph/curves', 'Merge feat/graph/curves into main', 'Rebase main onto feat/graph/curves',
+    'Compare with main', 'Create branch from feat/graph/curves…', 'Delete feat/graph/curves', 'Copy branch name']) {
+    await branchActions.getByRole('menuitem', { name, exact: true }).waitFor();
+  }
+  // Rename sits right under Check out and names its F2 shortcut.
+  const menuNames = await branchActions.getByRole('menuitem').allTextContents();
+  assert.equal(menuNames[2], 'Rename feat/graph/curves…F2', 'Rename is the third item, under Check out');
+  await page.keyboard.press('Escape');
+  // F2 on the focused branch opens the dialog on the current name; the rename is real.
+  await curves.focus();
+  await page.keyboard.press('F2');
+  const renameDialog = page.getByRole('dialog', { name: 'Rename feat/graph/curves' });
+  const renameField = renameDialog.getByRole('textbox', { name: 'New branch name' });
+  assert.equal(await renameField.inputValue(), 'feat/graph/curves', 'the field starts on the current name');
+  assert.ok(await renameDialog.getByRole('button', { name: /^Rename branch/ }).isDisabled(), 'an unchanged name is refused');
+  await renameField.fill('feat/graph/arcs');
+  await renameDialog.getByRole('button', { name: 'Rename branch', exact: true }).click();
+  await page.getByText('Branch feat/graph/curves renamed to feat/graph/arcs.', { exact: true }).waitFor();
+  assert.equal(await git(['rev-parse', 'refs/heads/feat/graph/arcs']), feature);
+  assert.equal((await runGit({ cwd, log, argv: ['rev-parse', '--verify', '--quiet', 'refs/heads/feat/graph/curves'] })).code, 1);
+  // And back, through the menu item this time, so the rest of the run finds it.
+  const arcs = sidebar.locator('.real-branch', { hasText: 'arcs' });
+  await arcs.click({ button: 'right' });
+  await page.getByRole('menu', { name: 'Actions for feat/graph/arcs' }).getByRole('menuitem', { name: /^Rename feat\/graph\/arcs…/ }).click();
+  await page.getByRole('dialog', { name: 'Rename feat/graph/arcs' }).getByRole('textbox', { name: 'New branch name' }).fill('feat/graph/curves');
+  await page.getByRole('dialog', { name: 'Rename feat/graph/arcs' }).getByRole('button', { name: 'Rename branch', exact: true }).click();
+  await page.getByText('Branch feat/graph/arcs renamed to feat/graph/curves.', { exact: true }).waitFor();
+  assert.equal(await git(['rev-parse', 'refs/heads/feat/graph/curves']), feature);
+  await curves.click({ button: 'right' });
+  await branchActions.getByRole('menuitem', { name: 'Copy branch name', exact: true }).click();
+  assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), 'feat/graph/curves');
+  await curves.click({ button: 'right' });
+  await branchActions.getByRole('menuitem', { name: 'Compare with main', exact: true }).click();
+  await page.getByRole('complementary', { name: 'Commit details' }).getByText('COMPARE').waitFor();
+  await sidebar.locator('.real-branch', { hasText: /^main/ }).click({ button: 'right' });
+  const mainActions = page.getByRole('menu', { name: 'Actions for main' });
+  assert.ok(await mainActions.getByRole('menuitem', { name: /^Check out main: Already checked out/ }).isDisabled());
+  assert.ok(await mainActions.getByRole('menuitem', { name: /^Delete main: A checked-out branch cannot be deleted/ }).isDisabled());
+  await page.keyboard.press('Escape');
+  await sidebar.locator('.real-branch', { hasText: 'v-test' }).focus();
+  await page.keyboard.press('Shift+F10');
+  await page.getByRole('menu', { name: 'Actions for v-test' }).getByRole('menuitem', { name: 'Check out v-test (detached)', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  await sidebar.locator('summary', { hasText: 'LOCAL' }).click({ button: 'right' });
+  await page.getByRole('menu', { name: 'Actions for LOCAL' }).getByRole('menuitem', { name: 'Create branch at main…', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  await sidebar.locator('summary', { hasText: 'REMOTE' }).click({ button: 'right' });
+  assert.ok(await page.getByRole('menu', { name: 'Actions for REMOTE' }).getByRole('menuitem', { name: /^Fetch: No remote is configured/ }).isDisabled());
+  await page.keyboard.press('Escape');
+  await list.getByRole('option').first().click();
 
   await page.getByRole('button', { name: 'Added renamed.txt', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'File history' }).click();
@@ -210,6 +335,25 @@ try {
   await page.getByText(/1 commit matches/).waitFor();
   await list.getByRole('option').first().click();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
+  // Search in other places: a changed path, the author, the code itself.
+  const searchIn = page.getByRole('combobox', { name: 'Search in' });
+  await searchIn.selectOption('file');
+  await search.fill('renamed');
+  await page.getByText('1 commit matches “renamed” in the changed file path', { exact: true }).waitFor();
+  await searchIn.selectOption('author');
+  await search.fill('fixture');
+  await page.getByText('200+ commits match “fixture” in the author', { exact: true }).waitFor();
+  assert.ok(await page.getByRole('complementary', { name: 'Repository navigation' }).locator('.real-branch', { hasText: /^main/ }).count() > 0,
+    'an author query does not filter branch names in the sidebar');
+  await searchIn.selectOption('content');
+  await search.fill('real history');
+  await page.getByText('1 commit matches “real history” in the added or removed code', { exact: true }).waitFor();
+  await list.getByRole('option').first().click();
+  await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
+  await searchIn.selectOption('regex');
+  await search.fill('Hello [');
+  await page.getByText(/^Git cannot use that pattern: /).first().waitFor();
+  await searchIn.selectOption('message');
   await page.getByRole('button', { name: 'Clear search results', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('.search-results'));
   assert.equal(await search.inputValue(), '');
@@ -250,13 +394,13 @@ try {
       window.twig.getFileHistory(id, '../escape'), window.twig.getFileHistory(id, '/etc/passwd'),
       window.twig.setMark(id, 'not-an-oid', 'red', ''), window.twig.setMark(id, 'a'.repeat(40), 'crimson', ''),
       window.twig.setMark('unregistered', 'a'.repeat(40), 'red', ''),
-      window.twig.searchHistory(id, '   '), window.twig.searchHistory(id, 'x'.repeat(201)),
+      window.twig.searchHistory(id, '   '), window.twig.searchHistory(id, 'x'.repeat(201)), window.twig.searchHistory(id, 'x', 'shell'),
       window.twig.runConsoleCommand(id, 123), window.twig.runConsoleCommand(id, '-c core.pager=sh log'),
       window.twig.runConsoleCommand(id, 'push origin main'), window.twig.runConsoleCommand('unregistered', 'status')
     ]);
     return results.map(result => result.status);
   });
-  assert.deepEqual(rejected, Array(15).fill('rejected'));
+  assert.deepEqual(rejected, Array(16).fill('rejected'));
 
   // Commit age colours: the default ramp, the switch back to branch lanes and
   // the choice surviving a restart. Colour classes are the only honest witness

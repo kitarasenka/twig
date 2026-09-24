@@ -103,6 +103,8 @@
 .search-results-heading { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
   padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border); font-size: var(--text-sm); }
 .search-results-heading span { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--muted); }
+.search-results-heading .search-mode { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--muted); font-size: var(--text-xs); }
+.search-results-heading .search-mode span { flex: none; }
 .search-results .history { flex: 1; min-height: 0; }
 .sidebar-filter-clear { position: absolute; right: var(--space-1); padding: var(--space-1); min-height: 0; color: var(--muted); background: none; border: 0; }
 .sidebar-filter-clear svg { width: 14px; height: 14px; }
@@ -157,6 +159,14 @@
 .detail-skeleton { margin-bottom: var(--space-3); }
 .author-card div { min-width: 0; overflow-wrap: anywhere; }
 .details-toggle { display: block; margin: 0 0 var(--space-4); }
+/* Signature verdict under the subject: the icon is tinted, the words carry the meaning. */
+.signature-line { display: grid; grid-template-columns: auto 1fr; column-gap: var(--space-2); align-items: start; margin: 0 0 var(--space-3); font-size: var(--text-sm); }
+.signature-line svg { width: 16px; height: 16px; grid-row: span 2; margin-top: 1px; }
+.signature-line span { grid-column: 2; color: var(--muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.signature-good svg { color: var(--accent); }
+.signature-warn svg { color: var(--mark-amber); }
+.signature-bad svg { color: var(--danger); }
+.signature-none svg { color: var(--muted); }
 .metadata dd .text-button { margin-right: var(--space-2); }
 .diff-view { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .diff-view .panel-heading code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -185,13 +195,35 @@
 .diff-line-old { width: calc(var(--diff-old-digits, 1) * 1ch); }
 .diff-line-new { width: calc(var(--diff-new-digits, 1) * 1ch); margin-left: var(--space-2); }
 .diff-added { color: var(--accent); background: var(--accent-bg); }
-.diff-deleted { color: var(--danger); background: var(--surface); }
+.diff-deleted { color: var(--danger); background: var(--danger-bg); }
 .diff-hunk { color: var(--lane-mint); background: var(--surface-raised); }
+/* Word mode: one row for a changed line, removed and added pieces inline. */
+.diff-changed .diff-marker { color: var(--lane-mint); }
 /* Intra-line change: only the characters that differ carry a stronger tint,
-   plus an underline (added) or strike (removed) so the mark survives without colour. */
+   plus an underline (added) or strike (removed) so the mark survives without colour.
+   The tints are light on purpose: every --syntax-* colour keeps 4.5:1 on them. */
 .diff-seg-add, .diff-seg-del { color: var(--text); border-radius: var(--radius-sm); text-decoration-thickness: 2px; }
-.diff-seg-add { background: color-mix(in srgb, var(--accent) 26%, transparent); text-decoration: underline; text-underline-offset: 2px; }
-.diff-seg-del { background: color-mix(in srgb, var(--danger) 34%, transparent); text-decoration: line-through; }
+.diff-seg-add { background: color-mix(in srgb, var(--accent) 20%, transparent); text-decoration: underline; text-underline-offset: 2px; }
+.diff-seg-del { background: color-mix(in srgb, var(--danger) 22%, transparent); text-decoration: line-through; }
+/* With syntax colours on, code keeps the text colour and the syntax roles;
+   added and removed lines are told apart by their tint and their +/- marker. */
+.diff-syntax .diff-added, .diff-syntax .diff-deleted, .diff-syntax .diff-changed { color: var(--text); }
+.diff-added .diff-marker { color: var(--accent); }
+.diff-deleted .diff-marker { color: var(--danger); }
+.diff-marker { user-select: none; }
+.syn-keyword { color: var(--syntax-keyword); }
+.syn-string { color: var(--syntax-string); }
+.syn-number { color: var(--syntax-number); }
+/* Italic as well: in the dark theme the comment grey sits close to the text colour. */
+.syn-comment { color: var(--syntax-comment); font-style: italic; }
+.syn-function { color: var(--syntax-function); }
+.syn-type { color: var(--syntax-type); }
+.syn-property { color: var(--syntax-property); }
+/* flex: none — in a column next to a long diff the toolbar would otherwise
+   shrink to nothing and its buttons would sit on top of the first rows. */
+.diff-toolbar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--border); background: var(--surface-raised); }
+.diff-language { color: var(--muted); font-size: var(--text-xs); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .worktree-summary { overflow: auto; }
 .worktree-summary > p { padding: var(--space-4); }
 .worktree-file { display: flex; gap: var(--space-3); padding: var(--space-1) var(--space-4); overflow-wrap: anywhere; }
@@ -280,5 +312,17 @@
 .worktree-panel-file:hover button { color: var(--text); }
 .worktree-panel-file button svg { width: 14px; height: 14px; }
 .worktree-panel .files-heading .bulk { margin-left: var(--space-2); }
+.worktree-panel .files-heading .bulk.discard { margin-left: var(--space-1); }
+
 .worktree-panel .files-heading .bulk button { min-height: 22px; padding: 0 var(--space-2); font-size: var(--text-xs); }
 .worktree-panel .worktree-panel-error { padding: var(--space-2) 0; font-size: var(--text-sm); }
+
+/* A Git LFS pointer change, shown as the stored file instead of three lines of hashes. */
+.lfs-card { display: grid; gap: var(--space-2); margin: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.lfs-card p { margin: 0; }
+.lfs-title { display: flex; align-items: center; gap: var(--space-2); }
+.lfs-title svg { width: 16px; height: 16px; color: var(--accent); flex: none; }
+.lfs-card .text-button { justify-self: start; }
+.lfs-banner { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin: var(--space-2) var(--space-3) 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-left: 3px solid var(--mark-amber); border-radius: var(--radius-md); background: var(--surface); font-size: var(--text-sm); }
+.lfs-banner > svg { width: 16px; height: 16px; color: var(--mark-amber); flex: none; }
+.lfs-banner > span { flex: 1 1 240px; }

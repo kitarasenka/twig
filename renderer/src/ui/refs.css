@@ -1,8 +1,8 @@
 /* Branches, tags, stashes and the bisect banner — same tokens as history.css. */
 
-.refs-screen, .stash-screen { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
-.refs-screen .panel-heading, .stash-screen .panel-heading { flex-wrap: wrap; }
-.stash-screen .panel-heading > div { display: flex; align-items: center; gap: var(--space-2); }
+.refs-screen, .stash-screen, .reflog-screen { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.refs-screen .panel-heading, .stash-screen .panel-heading, .reflog-screen .panel-heading { flex-wrap: wrap; }
+.stash-screen .panel-heading > div, .reflog-screen .panel-heading > div { display: flex; align-items: center; gap: var(--space-2); }
 
 .refs-tabs { display: flex; gap: var(--space-1); margin-left: auto; }
 .refs-tabs button { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3);
@@ -73,6 +73,40 @@ button.danger:disabled { border-color: var(--border); }
 .stash-files small svg { width: 12px; height: 12px; }
 .stash-detail .diff-view { border-top: 1px solid var(--border); }
 
+/* Reflog: the moves on the left, the chosen entry's commit and actions on the right. */
+.reflog-toolbar { flex-wrap: wrap; }
+.reflog-intro { margin: 0; padding: var(--space-2) var(--space-4); font-size: var(--text-xs); line-height: 1.5; border-bottom: 1px solid var(--border); }
+.reflog-body { display: flex; flex: 1; min-height: 0; }
+.reflog-list { width: 440px; flex: none; overflow: auto; border-right: 1px solid var(--border); }
+.reflog-list > .button-wrap { display: inline-block; margin: var(--space-3) var(--space-4); }
+.reflog-list [role="listitem"] > button { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 2px; width: 100%;
+  padding: var(--space-2) var(--space-3); background: none; border: 0; border-bottom: 1px solid var(--border);
+  color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.reflog-list [role="listitem"] > button:hover { background: var(--surface-hover); }
+.reflog-list [role="listitem"] > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.reflog-list [role="listitem"] > button.selected { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); }
+.reflog-line { display: flex; align-items: baseline; justify-content: flex-start; width: 100%; gap: var(--space-2); min-width: 0; font-size: var(--text-sm); }
+.reflog-line code { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--accent); }
+.reflog-action { flex: none; font-weight: 600; }
+.reflog-detail, .reflog-commit > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.reflog-detail { color: var(--muted); }
+.reflog-line small { flex: none; color: var(--muted); font-size: var(--text-xs); }
+.reflog-commit code { color: var(--muted); }
+.reflog-lost { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); padding: 0 var(--space-1);
+  color: var(--danger); border: 1px solid currentColor; border-radius: var(--radius-sm); font-size: var(--text-xs); }
+.reflog-lost svg, .reflog-lost-note svg { width: 12px; height: 12px; flex: none; }
+.reflog-detail-pane { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: auto; }
+.reflog-summary { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.reflog-summary p { margin: 0 0 var(--space-2); }
+.reflog-summary h3 { margin: 0 0 var(--space-2); font-size: var(--text-md); }
+.reflog-summary code { font-family: var(--font-mono); font-size: var(--text-xs); }
+.reflog-lost-note { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2); color: var(--text);
+  background: var(--danger-bg); border-radius: var(--radius-sm); }
+.reflog-lost-note svg { margin-top: 3px; color: var(--danger); }
+.reflog-body-text { margin: 0 0 var(--space-2); font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; }
+.reflog-detail-pane .stash-files { max-height: none; flex: none; }
+.reflog-detail-pane .diff-view { border-top: 1px solid var(--border); }
+
 .bisect-banner { flex: 0 1 auto; min-height: 0; max-height: 50%; overflow: auto; }
 .bisect-banner .operation-actions { flex-wrap: wrap; }
 .bisect-phase { color: var(--muted); font-size: var(--text-xs); }
@@ -95,5 +129,30 @@ button.danger:disabled { border-color: var(--border); }
 
 @media (max-width: 900px) {
   .stash-list { width: 200px; }
+  .reflog-list { width: 300px; }
   .refs-actions { margin-left: 0; width: 100%; }
 }
+
+/* Worktrees and Submodules: a list of items, each with its actions on the right. */
+.tool-screen { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.tool-screen .panel-heading { flex-wrap: wrap; }
+.tool-screen .panel-heading > div { display: flex; align-items: center; gap: var(--space-2); }
+.tool-intro { margin: var(--space-2) var(--space-4) 0; font-size: var(--text-sm); }
+.tool-list { flex: 1; min-height: 0; overflow: auto; margin: var(--space-2) 0 0; padding: 0; list-style: none; }
+.tool-list > li { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
+.tool-list > li:hover { background: var(--surface-hover); }
+.tool-item { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.tool-item strong { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); overflow-wrap: anywhere; }
+.tool-item span, .tool-item small { font-size: var(--text-sm); }
+.tool-item code { font-family: var(--font-mono); font-size: var(--text-xs); }
+.tool-path { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-badge { padding: 0 var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--muted); font-size: var(--text-xs); font-weight: 500; }
+.tool-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
+.worktree-dialog { display: grid; gap: var(--space-3); }
+.worktree-dialog label { display: grid; gap: var(--space-1); font-weight: 500; }
+.worktree-dialog .segmented { justify-self: start; }
+.worktree-folder { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.worktree-folder > span { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 240px; min-width: 0; }
+.worktree-folder svg { width: 16px; height: 16px; flex: none; color: var(--accent); }
+.worktree-folder code { font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
+@media (max-width: 720px) { .tool-list > li { flex-direction: column; align-items: stretch; } .tool-actions { justify-content: flex-start; } }

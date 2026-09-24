@@ -5,7 +5,7 @@ import path from 'node:path';
 import { CommandLog } from '../../main/command-log.js';
 import { runGit } from '../../main/git/exec.js';
 import { loadOperationState, resolveGitDir } from '../../main/git/operation-state.js';
-import { cherryPick, merge, reset, revert, sequencer } from '../../main/git/history-ops.js';
+import { buildCherryPickManyArgv, buildRevertManyArgv, cherryPick, cherryPickMany, findMergeCommits, merge, reset, revert, revertMany, sequencer } from '../../main/git/history-ops.js';
 import { checkout, createBranch, createTag } from '../../main/git/refs-ops.js';
 import { clearPlan, planDirectory, startRebase } from '../../main/git/rebase.js';
 import { loadRebaseCandidates } from '../../main/git/history.js';
@@ -146,6 +146,41 @@ try {
   assert.equal((await revert({ ...options, oid: picked })).ok, true, 'revert must not stop at an editor');
   assert.match((await subjects())[0], /^Revert "add pickme"$/);
   await assert.rejects(readFile(path.join(cwd, 'pickme.txt')), /ENOENT/, 'the revert really removed the file');
+
+  // --- cherry-pick and revert of a selection -------------------------------
+  // Two donor commits that touch the same file: applied in the wrong order the
+  // second would conflict, so a clean run proves the order Twig names is kept.
+  {
+    await git(['checkout', 'donor', '--']);
+    await write('series.txt', 'one\n'); await git(['add', '--', ':(literal)series.txt']); await git(['commit', '--message', 'series one']);
+    const one = await git(['rev-parse', 'HEAD']);
+    await write('series.txt', 'one\ntwo\n'); await git(['commit', '--all', '--message', 'series two']);
+    const two = await git(['rev-parse', 'HEAD']);
+    assert.throws(() => buildCherryPickManyArgv([one]), TypeError, 'a selection is at least two commits');
+    assert.throws(() => buildCherryPickManyArgv([one, one]), TypeError, 'a commit named twice is refused');
+    assert.throws(() => buildRevertManyArgv([one, '--force']), TypeError);
+    assert.deepEqual(await findMergeCommits({ cwd, log, oids: [one, two] }), [], 'no merge among plain commits');
+    await git(['checkout', 'picking', '--']);
+    const start = await git(['rev-parse', 'HEAD']);
+    const picked = await cherryPickMany({ ...options, oids: [one, two] });
+    assert.equal(picked.ok, true, picked.message || '');
+    assert.deepEqual((await subjects()).slice(0, 2), ['series two', 'series one'], 'picked oldest first, in one run');
+    assert.equal(await readFile(path.join(cwd, 'series.txt'), 'utf8'), 'one\ntwo\n');
+    const tip = await git(['rev-parse', 'HEAD']);
+    const reverted = await revertMany({ ...options, oids: [tip, await git(['rev-parse', 'HEAD~1'])] });
+    assert.equal(reverted.ok, true, reverted.message || '');
+    assert.deepEqual((await subjects()).slice(0, 2), ['Revert "series one"', 'Revert "series two"'], 'reverted newest first, one commit each');
+    await assert.rejects(readFile(path.join(cwd, 'series.txt')), /ENOENT/);
+    const idle = { head: null, branch: 'picking', paths: [], clean: true, operation: 'none' };
+    const undoPlan = buildUndoPlan({ kind: 'ops:cherry-pick-many', before: { ...idle, head: start }, after: { ...idle, head: tip }, args: [[one, two]] }, 'undo');
+    assert.deepEqual(undoPlan.commands, [['reset', '--hard', start]], 'Undo of the whole run is one reset to where it started');
+    assert.equal(inverseReason('ops:revert-many', { ...idle, head: tip }, { ...idle, head: start }, [[two, one]]), null, 'a clean run keeps the Undo chain');
+    await git(['checkout', '-b', 'with-merge', start, '--']);
+    await git(['merge', '--no-ff', '--no-edit', 'donor']);
+    const mergeTip = await git(['rev-parse', 'HEAD']);
+    assert.deepEqual(await findMergeCommits({ cwd, log, oids: [mergeTip, two] }), [mergeTip], 'the merge in a selection is found');
+    await git(['checkout', 'picking', '--']);
+  }
 
   // --- reset ----------------------------------------------------------------
   await write('scratch.txt', 'uncommitted\n');

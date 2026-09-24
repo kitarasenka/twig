@@ -39,6 +39,316 @@ My/Full History и ужатие журнала, Undo/Redo, SSH, Check for update
 Linux-лаунчер; M5 описана честно — осталась только живая проверка Windows/Linux.
 Проверки: `site/check.mjs` на 375/768/1024/1440, `version.mjs`, `eslint .`.
 
+Worktrees, сабмодули, подписи, патчи, диапазоны, LFS (2026-09-24, вне вех).
+Шесть возможностей одним заходом; Git-слой каждой — отдельный модуль в
+`main/git/`, каналы — новый `main/repo-tools-ipc.js` (кроме применения патча и
+cherry-pick/revert диапазона — они в `history-ops-ipc.js`, потому что отвечают
+состоянием операции и идут через `undo.perform`).
+
+- **Worktrees** (`worktrees.js`): экран «Worktrees» в сайдбаре (`git worktree
+  list --porcelain -z`: Main / This tab / Locked / Folder missing), «Open as tab»,
+  «Remove…» (§6.5; грязный — второй диалог с `--force`; main и текущий
+  отказываются; вкладка удалённого закрывается вместе с ним, ветка остаётся),
+  «Prune missing». Пункт меню ветки **Open <b> in a new worktree…** и кнопка
+  «New worktree…» открывают `WorktreeDialog`: существующая свободная ветка или
+  новая от HEAD, папка — `<repo>-<ветка>` рядом с основной (номер, если занято)
+  или выбранная нативным диалогом. Папку планирует main и держит **токеном**
+  (`main/token-registry.js`, 15 мин, одноразовый, привязан к репозиторию):
+  renderer путь не присылает, показанная команда = исполняемая. После `worktree
+  add` main делает `repositories.add` — новая вкладка открывается сразу
+  (`onOpenWorkspace` → `openWorkspaceTab` в App).
+- **Сабмодули** (`submodules.js`): закреплённый коммит — gitlink из `ls-files
+  --stage -z`, имя/URL/ветка — `config --file .gitmodules -z` (имя может
+  содержать точки), что выкачано — HEAD внутри; человеческий `git submodule
+  status` не парсится. Состояния pinned / moved / uninitialized словами, URL без
+  credentials. «Initialize» / «Check out pinned commit» / «Update all…» —
+  `git submodule update --init -- <пути>` через §6.5 (без danger), отмена,
+  обрывает Undo честно. «Open as tab» — инициализированный сабмодуль вкладкой.
+- **Подписи** (`signature.js`, `features/commit/signature-view.js`): есть ли
+  подпись — по заголовку `gpgsig` самого коммита, потому что без
+  `gpg.ssh.allowedSignersFile` Git отвечает `N` и для подписанного SSH-коммита;
+  `%G?` — только результат проверки. В панели коммита строка с иконкой и словом
+  (Verified / Signed, signer not trusted / Bad signature / …, для неподтверждаемой
+  SSH — что настроить), в деталях строка Signature. Канал `history:signature`,
+  читается после самого коммита. Профиль: Sign new commits (`commit.gpgSign`),
+  Signature format, Signing key, Sign annotated tags, Allowed signers file —
+  значения-выборы через `PROFILE_CHOICES` в main. `exec.js` теперь всегда
+  добавляет `-c log.showSignature=false`: включённый у человека
+  `log.showSignature` печатал бы вывод gpg в NUL-записи всех `log`/`show`
+  (явный `--show-signature` в консоли его перебивает).
+- **Патчи** (`patches.js`): «Export … as a patch…» в меню коммита и мультивыделения
+  — каждый коммит `format-patch` во временную папку, склейка **байтами** в один
+  mbox (кодировки не портятся), путь — нативный диалог сохранения; merge
+  отказывается заранее (этот Git делает для него патч по первому родителю).
+  «Apply patch…» в шапке истории: `patch:choose` (диалог, разбор: mbox или diff,
+  коммиты, файлы, `apply --check`) → токен → `PatchDialog` с командой →
+  `patch:am` (`am --3way --`, Undo — reset как у cherry-pick) или `patch:apply`
+  (`apply [--index] --`, всё или ничего, обрывает Undo). Попутно исправлено:
+  идущий `git am` раньше читался как rebase (`rebase-apply` общий) — теперь вид
+  операции `am` (файл `applying`, шаги `next`/`last`), баннер зовёт
+  `am --continue/--skip/--abort`.
+- **Cherry-pick и revert диапазона**: в меню мультивыделения «Cherry-pick N
+  commits onto <ветка>…» (старые первыми; отказ, если какие-то уже на ветке) и
+  «Revert N commits…» (новые первыми; только коммиты ветки); merge-коммит в
+  выделении отказывает с причиной. Один запуск sequencer'а (`ops:cherry-pick-many`,
+  `ops:revert-many`, 2–100 oid, main перепроверяет merge через `rev-list
+  --min-parents=2`), диалог с точной командой, один Undo откатывает всю серию.
+- **Git LFS** (`lfs.js`, `features/diff/lfs-pointer.js`): LFS узнаётся по
+  `filter=lfs` в закоммиченных `.gitattributes` — без git-lfs вообще, так что
+  «не установлен» тоже честно сказано. Все пробы выходят с кодом 0 (`ls-files` +
+  `cat-file --batch`, git-lfs ищется в exec path и PATH, а не запуском `git lfs`):
+  проба с «ненайдено = код 1» выглядела бы в журнале провалом, и «Show output»
+  показал бы на неё вместо настоящей ошибки — это поймал `browse-smoke`. С git-lfs плашка над графом считает
+  файлы-указатели (`lfs ls-files --long`) и даёт **Download (git lfs pull)** с
+  отменой. Дифф указателя показывается карточкой «Replaced in Git LFS: 1000 B →
+  2.4 MB» с размерами и oid, «Show pointer text» — исходный текст.
+
+Проверки: `signature.mjs`, `patches.mjs`, `lfs.mjs`, `submodules.mjs`,
+`worktrees.mjs` (в `npm test`, **на настоящем Git**; SSH-подпись — настоящим
+ssh-keygen, git-lfs — подставной скрипт на PATH, сабмодули — с
+`protocol.file.allow=always` через `GIT_CONFIG_*`), `history-ops(-live).mjs` —
+диапазоны. Смоук `scripts/tools-smoke.mjs` (в `test:smoke`): плашка LFS и pull,
+карточка указателя, Verified signature, cherry-pick выделения + Undo (нативное
+подтверждение подменяется), экспорт и `am`, worktree из меню ветки открывается
+вкладкой и удаляется вместе с ней, сабмодуль вкладкой, 8 отказов IPC; снимки
+`artifacts/tools-*.png`. Версия не менялась.
+
+Reflog и восстановление потерянного (2026-09-24, вне вех): в сайдбаре пункт
+**Reflog** (иконка History, рядом со Stashes) — экран «где был HEAD / каждая
+ветка»: селектор «HEAD has been / <ветка> has been», новые сверху, у каждой
+записи `HEAD@{n}`, действие словом (Reset, Checkout, Amend, Rebase, …), детали
+reflog-сообщения (полные SHA сокращены до 7, полный текст в `title`), время
+**перемещения** (не коммита), короткий SHA и тема коммита. Коммит, который не
+держит ни ветка, ни тег, ни remote, ни HEAD, помечен плашкой **«On no branch»**
+(иконка + слово, не только цвет); фильтр «Only commits on no branch». Справа —
+детали выбранной записи: сообщение, автор, файлы и дифф (граф такой коммит
+показать не может), предупреждение, что Git удалит его по истечении reflog.
+Действия: **Create branch here…** (имя предлагается: ветка, на которой коммит
+был сделан, — из ближайшего `checkout: moving from X` — если имя свободно, иначе
+`recovered-<sha>`; `NameDialog` получил `suggested`, чтобы предложенное имя можно
+было принять как есть), **Move <ветка> here…** (в reflog HEAD — текущая ветка,
+в reflog ветки — она сама; выключено с причиной: detached, ветки нет, уже здесь,
+идёт операция), **Show in history** (выключено для потерянных), **Copy SHA**.
+Клавиатура: стрелки/Home/End по списку. Постранично по 200 («Load older entries»).
+
+Git-слой — `main/git/reflog.js`: `git log --walk-reflogs --date=unix -z` в своём
+NUL-формате (`%gd` с `--date=unix` даёт время перемещения, индекс `@{n}` — позиция
+записи; человеческий вывод `git reflog` и файлы `.git/logs` не читаются — у
+reftable их нет), `--no-show-signature`, ветка полным `refs/heads/…` перед `--`,
+`--max-count=limit+1` говорит, есть ли ещё страница. «Потерянность» — один
+`rev-list --ignore-missing --stdin --not --branches --tags --remotes HEAD` на
+страницу (id через stdin). Перенос ветки (`moveBranch`) сверяет, что ветка всё
+ещё там, где её видел экран (`expected`), и что коммит существует. Команду строит
+чистый `main/git/reflog-plan.js` (его же печатает диалог §6.5): текущая ветка —
+`reset --keep <oid>` (файлы следуют за веткой, незакоммиченное остаётся, а при
+конфликте с ним Git отказывает и ничего не двигается), другая —
+`update-ref -m "🌱 Twig: move … from the reflog" refs/heads/<b> <new> <old>`
+(compare-and-swap: сдвинувшаяся ветка не перезаписывается). Undo — kind
+`reflog:move-branch`, аргументы `[ветка, откуда, куда, checked-out]` из результата
+действия, инверсия — та же команда с переставленными концами. Каналы
+`reflog:read` (history-ipc; `null` = HEAD) и `reflog:move-branch` (history-ops-ipc,
+отказ во время merge/rebase), мост `getReflog`/`moveBranchTo`. `ConfirmDialog`
+теперь берёт в кавычки аргументы с пробелами/кавычками (как `DropDialog`), иначе
+`-m` сообщение читалось бы как несколько слов.
+
+Фоновый fetch по расписанию (2026-09-24, вне вех; **по согласию**): Settings →
+«Background fetch»: Off (по умолчанию) / Every 5 / 15 / 30 minutes / Every hour.
+Текст под выбором прямо говорит, что это единственный сетевой доступ, который
+🌱 Twig делает сам, и показывает статус открытого репозитория («Last fetched …» /
+«Fetching now…» / причина ошибки). Подсказка кнопки Pull говорит, насколько свежи
+бейджи. Согласие хранится в **main** (`main/fetch-store.js`,
+`background-fetch.json` в userData; нет файла или он битый — Off), потому что
+fetch запускает main. `main/background-fetch.js` (без импортов Electron):
+`BACKGROUND_FETCH_ARGV` = `fetch --all --no-tags --no-recurse-submodules` (двигаются
+только remote-tracking ветки; теги приходят только ручным fetch; без prune);
+`createFetchScheduler` — **ни одного таймера, пока Off или репозиторий не открыт**,
+иначе один `setTimeout` на ближайший срок: только репозиторий активной вкладки
+(идёт за `repo:watch`, при закрытии окна останавливается), новый репозиторий —
+через 10 с, дальше — через интервал; ошибка ждёт следующего интервала (без
+повторов в цикле); пока идёт действие человека на этом репозитории
+(`undo.isBusy`) — не стартует (повтор через минуту), а начатое действие отменяет
+идущий фоновый fetch (`undo.onChange` → `cancel`), чтобы не спорить за lock'и
+ref'ов. `backgroundFetch` в `sync.js` журналируется как
+`Background: fetch all remotes` (в консоли — только Full History), причина ошибки
+для Settings очищается от credentials в URL. Каналы `fetch:get|set|status`
+(`main/fetch-ipc.js`, интервал строго из allowlist), событие `fetch:update`;
+после него App перечитывает бейджи, граф перечитывает watcher. Мост:
+`getBackgroundFetch`, `setBackgroundFetch`, `getBackgroundFetchStatus`,
+`onBackgroundFetch`. Слова — чистый `renderer/src/app/background-fetch-view.js`;
+общий `renderer/src/ui/relative-time.js`.
+
+Чтобы fetch не рвал Undo: отпечаток состояния (`undo-snapshot.js`) больше не
+включает `refs/remotes/*` и строку `# branch.ab` (ahead/behind считается от
+remote-tracking ветки) — ни одна инверсия их не читает и не двигает. Ручной
+`fetch`/`fetch-prune` тоже больше не обрывает цепочку, если сдвинул только
+remote-ветки (обрывает, только если принёс теги). Watcher перестал реагировать
+на `FETCH_HEAD`: его переписывает каждый fetch, даже пустой, а fetch, который
+что-то принёс, двигает refs.
+
+Проверки: `scripts/checks/reflog.mjs` и `scripts/checks/background-fetch.mjs`
+(в `npm test`, **на настоящем Git**): argv и разбор, страницы, reflog ветки,
+ветка без reflog, потерянные после `branch -D` и `reset --hard`, предложенное
+имя, перенос текущей ветки (`reset --keep` сохраняет незакоммиченное, отказ при
+конфликте) и чужой (`update-ref`, отказ на устаревшем tip), Undo/Redo через
+настоящий `UndoService`; планировщик на фиктивных часах (Off — ноль таймеров,
+только активный репозиторий, уступает действиям, отмена, пауза после ошибки),
+хранилище, настоящий fetch против локального bare (двигается только
+`origin/main`, тегов нет, HEAD и файлы на месте, **цепочка Undo жива**),
+credentials не попадают в текст. Новый смоук `scripts/reflog-smoke.mjs` (в
+`test:smoke`): Off 12 с — ни одного fetch; включение — бейдж Pull «1» без клика,
+запись в журнале, выключение; reflog, «On no branch», восстановление удалённой
+ветки под её именем, Move main here с точной командой, Cancel, Undo, reflog
+ветки, Show in history, 5+3 отказа IPC; снимки
+`artifacts/reflog-{dark,light}.png`, `artifacts/background-fetch-settings.png`.
+Версия не менялась.
+
+Отмена изменений (Discard) с настоящим Undo (2026-09-24, вне вех): файл,
+выбранные строки, вся секция Changes; удаление untracked-файла, папки или всей
+секции Untracked. Где: иконки ↶ / корзина на каждом файле и в заголовках секций
+панели незакоммиченного и экрана staging, «Discard N selected» рядом со «Stage N
+selected» в построчном диффе, пункт «Discard changes…» / «Delete file…» в меню
+файла. Всё — через диалог §6.5 (`ConfirmDialog`) с точной командой из общего
+чистого модуля `main/git/discard-plan.js` (его же исполняет main — показанное не
+может разойтись с запущенным). Staged не сбрасывается: сначала unstage.
+Отказы (и в main, и выключенной кнопкой с причиной): конфликт, сабмодуль,
+файл после `git add -N`, путь, которого уже нет в секции, устаревший digest
+диффа, построчный discard нового/удалённого файла.
+
+Как работает Undo (`main/git/discard.js`): **до** сброса файлы кладутся в
+объекты Git — `hash-object -w --stdin-paths`, дерево через временный
+`GIT_INDEX_FILE` (настоящий индекс не трогается), `commit-tree` (свой
+identity, `--no-gpg-sign`, сообщение через stdin) под скрытым ref
+`refs/twig/discard`; бэкапы цепочкой (до 200, дальше цепочка начинается заново).
+**После** сброса — второй снимок тех же путей. Undo = `git restore
+--source=<before> --worktree` по всем путям (no-overlay: восстановленный
+удалённый файл снова удаляется), Redo = `restore --source=<after>` + `clean -f`
+для untracked. Пути идут через `--pathspec-from-file=-` (команды Undo теперь могут
+быть `{ argv, stdin }`). `undo.perform` для kind `worktree:discard` сохраняет
+аргументы из результата действия (id двух коммитов и пути — не содержимое).
+Бэкапы скрыты: `--exclude=refs/twig/*` **перед** `--all` в истории и поиске
+(после `--all` Git его молча игнорирует — проверено), `for-each-ref` читает
+только heads/remotes/tags. Даже после обрыва цепочки Undo содержимое лежит в
+`git log refs/twig/discard`. Каналы `worktree:discard|discard-all|discard-lines`,
+мост `discardFile/discardAll/discardSelection`.
+
+Попутно исправлены два бага раскладки, найденные смоуком: тулбар диффа в
+колонке сжимался до нуля и перекрывал первые строки (`flex: none`), а у
+`.worktree-body` не было высоты строки грида — длинный дифф на экране staging
+вылезал под форму коммита вместо прокрутки (`grid-template-rows: minmax(0, 1fr)`).
+
+Поиск по автору, файлу и содержимому (2026-09-24, вне вех): в строке
+результатов поиска — селектор «Search in»: Messages and hashes (как было) /
+Author name or email (`--author`, литерально, без регистра) / Changed file path
+(pathspec `:(glob,icase)**/*текст*` + `/**`, glob-символы экранированы) /
+Code added or removed (`-S`, pickaxe: где строка появилась или исчезла; точный
+регистр, счёт по файлу) / Code matching a regex (`-G`). Сломанный regex — не
+ошибка, а ответ `{ invalid }` с причиной Git. Новый поиск отменяет прежний
+(`AbortController` на репозиторий в `history:search`, теперь 3 аргумента, режим
+из allowlist). Сайдбар фильтрует ветки по имени только в режиме сообщений.
+Подписи — чистый `renderer/src/features/graph/search-modes.js` (паритет списка
+режимов с `SEARCH_MODES` в main проверяется).
+
+Проверки: `scripts/checks/discard.mjs` и `scripts/checks/search.mjs` (в
+`npm test`, **на настоящем Git**): все виды discard, сохранение staged-части,
+исполняемый бит, симлинк, папка, бэкапы вне истории, Undo/Redo побайтно через
+настоящий `UndoService`, отказы; все режимы поиска, `-S` появление/исчезновение,
+`-G`, сломанный regex, экранирование glob, скрытые бэкапы, отмена.
+`worktree-smoke.mjs` — Cancel ничего не делает, удаление untracked и Undo,
+построчный discard и Undo, Discard all/Delete all, 4 новых отказа IPC;
+`history-smoke.mjs` — поиск по пути, автору (200+), `-S`, сломанный regex,
+сайдбар не фильтруется, отказ IPC на неизвестный режим. Версия не менялась.
+
+Подсветка синтаксиса и дифф «слово в слово» (2026-09-24, вне вех; §8.6 брифа):
+дифф в панели коммита, стешах, blame-детали и на экране staging красится по
+типу файла, blame — тоже. Над каждым диффом тулбар: язык («JavaScript» /
+«Plain text») и переключатель **Lines / Words**. Words складывает пару
+«удалённая + добавленная» строка, которую `annotatePatch` счёл правкой, в одну
+строку `diff-changed` с маркером `~` и обоими номерами: общее один раз,
+удалённые слова зачёркнуты, добавленные подчёркнуты — **целыми словами**
+(`segmentPair` теперь отдаёт ещё `merged` из пословного LCS, без посимвольного
+уточнения: `250`→`500` читается как замена слова, а не «2500»). Переписанные
+строки остаются раздельными. Staging — только подсветка (там выбирают строки).
+Настройка Settings → «Syntax highlighting» On/Off; режим и флаг —
+`localStorage` (`twig:diff-mode`, `twig:syntax`), одно window-событие
+переключает все открытые диффы разом (`useDiffPrefs`).
+
+Токенайзер — **Prism 1.30.0** (MIT, без своих зависимостей; бриф запрещает
+только графовые библиотеки и обёртки над git), 45 грамматик. Он отдаёт токены
+как данные, HTML не генерируется — React экранирует текст как обычно. Prism и
+грамматики — **отдельный чанк** (106 КБ / 35 КБ gzip), грузится при первом
+диффе с цветом (`useHighlighter`), основной бандл +10 КБ, сборка без
+предупреждений. `prism-setup.js` выключает автоподсветку страницы и worker.
+Модули: `diff/languages.js` (имя файла → грамматика, без импортов),
+`diff/syntax.js` (`highlightLines`: блок строк → диапазоны по строкам; роли
+Prism сведены к семи: keyword/string/number/comment/function/type/property;
+лимиты 2000 символов на строку и 300 КБ на блок — дальше обычный текст),
+`diff/diff-view.js` (без импортов: `sideSyntax` — старая и новая сторона
+каждого ханка подсвечиваются целиком, чтобы многострочные комментарии и
+строки красились верно; `lineSpans`/`splitByRanges` — слияние синтаксиса с
+сегментами изменений; `displayRows` — режимы Lines/Words).
+
+Палитра: семь токенов `--syntax-*` и `--danger-bg` (фон удалённой строки —
+раньше удалённая строка отличалась только красным текстом) в обеих темах.
+Цвета подобраны расчётом: каждый держит ≥4.5:1 на всех 16 фонах, где может
+оказаться код (панели, hover, добавленная/удалённая строка, тинты изменений
+поверх каждого из них); тинты `.diff-seg-add/-del` снижены с 26/34 % до 20/22 %
+— подчёркивание и зачёркивание по-прежнему несут смысл без цвета. Комментарии
+ещё и курсивом: в тёмной теме их серый близок к тексту. С подсветкой строки
+добавления/удаления пишутся цветом текста, их отличают тинт фона и маркер +/-
+(маркер не выделяется при копировании).
+
+Заодно исправлена гонка, которую вскрыл `browse-smoke`: `jump()` (кнопка
+BugHunter «Show test commit», клик по ветке в сайдбаре, «Show in history»)
+молча ничего не делал, если попадал в идущий `reload()` — `loadMore` отказывал
+по `busy`. Теперь `reload` хранит свой промис (`reloading`), и `jump` его
+дожидается. До правки тест падал ~1 из 2 прогонов, после — 4 из 4 зелёные.
+
+Проверки: `scripts/checks/syntax.mjs` (в `npm test`) — карта языков, каждая
+грамматика загружена и импортирована, диапазоны (многострочные шаблоны,
+комментарии, тройные кавычки), лимиты, 4000 строк JS (235 КБ) за ~80 мс,
+стороны ханка, слияние с сегментами, Words (одна строка на пару, переписанные
+раздельно, синтаксис каждой стороны, целые слова), настройки с падающим
+storage, контраст всех `--syntax-*` и `--text` на 16 фонах, считанных из
+`tokens.css` и процентов тинтов в `history.css`; `smoke.mjs` — JS-дифф в
+песочнице с `.syn-keyword`, тулбар «JavaScript», Settings Off/On;
+`history-smoke.mjs` — Words на hello.txt и возврат в Lines. Версия не менялась.
+
+Контекстные меню файлов и левой панели (2026-09-24, вне вех): меню файла (панель
+коммита и панель незакоммиченного) получило **Open in <редактор>**, **Reveal in
+Finder** / Show in Explorer / Show in file manager, **Copy path** / **Copy full
+path**; у незакоммиченных ещё Stage/Unstage, у untracked нет File history/Blame.
+Редактор выбирается в Settings → «Open files with»: System default, VS Code,
+Cursor, Zed, Sublime Text или «Other application…» (нативный диалог в main).
+Настройка живёт в **main** (`main/editor-store.js`, `editor.json` в userData):
+renderer называет только preset из allowlist и никогда не передаёт путь к
+программе. Чистый `main/editor.js`: `planOpen` — macOS всегда через `open -t` /
+`open -a <App>` (System default = текстовый редактор, файл не «запускается»);
+Windows/Linux System default = `shell.openPath`, но исполняемые типы (`.exe`,
+`.bat`, `.desktop`, `.sh`, …) и файлы с exec-битом **отказываются**; preset на
+Win/Linux ищет CLI на login-PATH, у Windows одинокий `.cmd` не запускается —
+берётся `.exe` рядом. `resolveRepositoryFile` — путь только внутри рабочего
+дерева. `main/files-ipc.js`: `editor:get|set`, `file:open`, `file:reveal`
+(sender/frame/число аргументов, репозиторий по сохранённому списку); запуск —
+один `spawn` с `shell:false`, журналируется как «Open in editor». Отсутствующий
+в дереве файл → причина `missing`; reveal такого файла выделяет ближайшую
+существующую папку (`showItemInFolder`, не `openPath` — папка `x.app` бы
+запустилась). Левая панель: у каждой ветки/remote-ветки/тега — меню
+(`renderer/src/features/refs/ref-menu.js`: Show in history, Check out, Merge,
+Rebase onto, Compare with HEAD, Create branch/tag from, Copy name/SHA, плюс
+общие с меню коммита Rename/Upstream/Publish/Delete — вынесены в
+`refActionItems` в `commit-menu.js`), у заголовков LOCAL/REMOTE/TAGS — Create
+branch/tag at HEAD, Fetch (`fetch --prune`), Open Branches and tags; у имени
+текущей ветки в подвале — меню этой ветки. Всё и с клавиатуры (Shift+F10/Menu).
+Rename у локальной ветки в меню сайдбара стоит третьим, сразу под Check out, с
+подсказкой **F2**; F2 на ветке в сайдбаре сразу открывает диалог. `NameDialog`
+получил `initialValue`: диалог переименования (сайдбар, меню коммита, экран
+Branches and tags) начинается с текущего имени, выделенного целиком, а
+неизменённое имя отклоняется («That is the current name»). У remote-веток
+Rename нет: Git не переименовывает ref на сервере.
+Проверки: `scripts/checks/context-menus.mjs` (в `npm test`), `history-smoke.mjs`
+(редактор-скрипт через заглушку диалога, reveal, оба копирования, отказы IPC,
+меню ветки/тега/секций), мост в `smoke.mjs`. Версия не менялась.
+
 Незакоммиченное видно и разбирается в правой панели (2026-09-22, вне вех):
 строка `Uncommitted changes` над графом была обычной строкой текста с иконкой —
 теперь это **полоса** во всю ширину: тинт `--accent-bg`, акцентная планка слева
@@ -1398,17 +1708,20 @@ UI-профиль просмотрен в обеих темах на 1000×640, 
   результат и работают с клавиатуры.
 - Отдельного экрана для остановки на `edit` в rebase нет: Git останавливается,
   баннер это показывает, правки делаются на экране рабочего дерева.
-- Discard изменений и `stash drop` не сделаны намеренно: они разрушающие и
-  требуют диалога подтверждения по §6.5, а в перечень M3 не входили.
-- Дифф-режим «слово в слово» и подсветка синтаксиса отсутствуют.
+- Discard сделан (2026-09-24, см. «Отмена изменений (Discard)» выше); `stash drop`
+  есть на экране стешей.
+- Дифф-режим «слово в слово» и подсветка синтаксиса сделаны (2026-09-24, см. выше).
 - Ввод команд в консоль есть, но только read-only git (см. «Ввод команд в
   консоль — read-only» выше); мутирующие команды и шелл-пайплайны — нет.
 - Blame по файлу сделан (см. «Blame, Blame History и Reverse Blame» выше).
-  Поиск по истории: по сообщению и хэшу сделан («Глобальный поиск по коммитам»);
-  `log --author` и `-S`/`-G` (pickaxe) — по-прежнему нет.
+  Поиск по истории: по сообщению и хэшу, автору, пути и содержимому (`-S`/`-G`)
+  сделан (см. «Поиск по автору, файлу и содержимому» выше).
 - Граф не помечает коммиты, уже отмеченные good/bad/skip: какая ревизия
   проверяется, говорит только баннер.
-- Селектор репозитория пока без поиска; clone и фоновые fetch отсутствуют.
+- Worktrees, сабмодули, подписи, патчи, диапазоны cherry-pick/revert и LFS
+  сделаны (2026-09-24, см. запись выше).
+- Селектор репозитория пока без поиска. Clone есть (M5), фоновый fetch есть
+  по согласию (2026-09-24, см. «Фоновый fetch по расписанию»).
   Аватары — инициалы автора коммита (в узле графа и в панели), не изображение:
   Gravatar/фордж — это сеть и внешняя картинка, обе запрещены.
 - Нет инсталляторов и ключей SSH; M5 по брифу.
@@ -1807,7 +2120,10 @@ UI/UX-скилл прочитан и выполнен перед M0; приня�
 (это его команды: `npm test` и т. п. могут ходить в сеть — это ожидаемо и
 показано; сам код автоматизаций в сеть не ходит) и **ручной проверки
 обновлений** (см. ниже): один запрос к GitHub Releases строго по нажатию
-кнопки. В dev только localhost Vite.
+кнопки. **Сам по себе** 🌱 Twig ходит в сеть только фоновым fetch, и только
+после явного выбора интервала в Settings → «Background fetch» (по умолчанию
+Off; см. запись о нём выше) — никакой другой фоновой сети добавлять нельзя.
+В dev только localhost Vite.
 Никаких внешних шрифтов/изображений. Цвета только из TOKENS.md.
 Без подписей и телеметрии; автообновления (скачивание/установка) в v1 нет —
 проверка только сообщает о новой версии и даёт ссылку. Не трогать другие модули.

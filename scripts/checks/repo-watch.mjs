@@ -10,7 +10,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 for (const name of ['HEAD', 'packed-refs', 'ORIG_HEAD', 'refs/heads/main', 'logs/HEAD', 'rebase-merge/done']) {
   assert.equal(isWatchedPath(name), true, name);
 }
-for (const name of ['index', 'index.lock', 'refs/heads/main.lock', 'config', 'objects/pack/pack-abc.pack', 'description']) {
+// FETCH_HEAD is rewritten by every fetch, even one that brings nothing (the
+// background fetch runs every few minutes); a fetch that does bring something
+// moves refs/remotes, which is watched.
+for (const name of ['index', 'index.lock', 'refs/heads/main.lock', 'config', 'objects/pack/pack-abc.pack', 'description', 'FETCH_HEAD']) {
   assert.equal(isWatchedPath(name), false, name);
 }
 assert.equal(isWatchedPath(null), true, 'a missing filename is treated as relevant');

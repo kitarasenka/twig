@@ -55,6 +55,14 @@
   --mark-violet: #d0a9ff;
   --mark-slate: #b0becb;
   --danger: #ffc2b2;
+  --danger-bg: #2b1512;
+  --syntax-keyword: #f4afda;
+  --syntax-string: #f2ba5b;
+  --syntax-number: #f4b49f;
+  --syntax-comment: #b9c8be;
+  --syntax-function: #9fc7f4;
+  --syntax-type: #d4b9f3;
+  --syntax-property: #3cddd7;
   --shadow: 0 16px 48px #00000066;
   --overlay: #00000080;
 }
@@ -85,6 +93,14 @@
   --mark-violet: #7b3fbf;
   --mark-slate: #556370;
   --danger: #973b2e;
+  --danger-bg: #f6e1da;
+  --syntax-keyword: #951567;
+  --syntax-string: #6d4809;
+  --syntax-number: #8e2f10;
+  --syntax-comment: #425448;
+  --syntax-function: #114e95;
+  --syntax-type: #6620b6;
+  --syntax-property: #105956;
   --shadow: 0 16px 48px #102d2326;
   --overlay: #102d2366;
 }

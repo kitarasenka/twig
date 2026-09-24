@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { RefreshCw, Save, RotateCcw } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 
@@ -7,8 +7,22 @@ const FIELDS = [
   ['user.email', 'Email', 'Your email on new commits.'],
   ['core.editor', 'Editor command', 'Git runs this command when it needs an external editor.'],
   ['pull.rebase', 'Pull strategy', 'Default strategy for Git commands that do not specify one.'],
-  ['init.defaultBranch', 'Initial branch', 'Used when you create a new repository.']
+  ['init.defaultBranch', 'Initial branch', 'Used when you create a new repository.'],
+  ['commit.gpgSign', 'Sign new commits', 'Every commit, amend, cherry-pick, revert and rebase is signed with the key below. Many teams require it.'],
+  ['gpg.format', 'Signature format', 'GPG uses your gpg keyring; SSH signs with an SSH key; X.509 uses gpgsm.'],
+  ['user.signingKey', 'Signing key', 'GPG: a key ID or fingerprint. SSH: the path to a public key (~/.ssh/id_ed25519.pub) or “key::” and the key itself.'],
+  ['tag.gpgSign', 'Sign annotated tags', 'Tags created with a message are signed too.'],
+  ['gpg.ssh.allowedSignersFile', 'Allowed signers file', 'Needed to verify SSH signatures: lines of “email key”. Without it every SSH-signed commit shows as not verified.']
 ];
+
+/** Settings that take one of a few words, shown as a choice instead of a text field. */
+const CHOICES = {
+  'pull.rebase': [['false', 'Merge'], ['true', 'Rebase'], ['merges', 'Rebase with merges'], ['interactive', 'Interactive rebase']],
+  'commit.gpgSign': [['true', 'On'], ['false', 'Off']],
+  'tag.gpgSign': [['true', 'On'], ['false', 'Off']],
+  'gpg.format': [['openpgp', 'GPG (openpgp)'], ['ssh', 'SSH'], ['x509', 'X.509 (gpgsm)']]
+};
+const SIGNING = 'commit.gpgSign';
 
 function ProfileField({ field, value, effective, busy, scope, onSave }) {
   const [key, label, description] = field;
@@ -20,9 +34,9 @@ function ProfileField({ field, value, effective, busy, scope, onSave }) {
     <label htmlFor={id}>{label}<code>{key}</code></label>
     <p className="muted" id={`${id}-help`}>{description}</p>
     <div className="profile-controls">
-      {key === 'pull.rebase' ? <select id={id} aria-describedby={`${id}-help`} value={draft} disabled={busy} onChange={event => setDraft(event.target.value)}>
-        <option value="">Not set here</option><option value="false">Merge</option><option value="true">Rebase</option><option value="merges">Rebase with merges</option><option value="interactive">Interactive rebase</option>
-        {draft && !['false', 'true', 'merges', 'interactive'].includes(draft) && <option value={draft}>{draft} (existing value)</option>}
+      {CHOICES[key] ? <select id={id} aria-describedby={`${id}-help`} value={draft} disabled={busy} onChange={event => setDraft(event.target.value)}>
+        <option value="">Not set here</option>{CHOICES[key].map(([choice, text]) => <option key={choice} value={choice}>{text}</option>)}
+        {draft && !CHOICES[key].some(([choice]) => choice === draft) && <option value={draft}>{draft} (existing value)</option>}
       </select> : <input id={id} value={draft} maxLength={4096} aria-describedby={`${id}-help`} disabled={busy} spellCheck={false} autoComplete="off" onChange={event => setDraft(event.target.value)} />}
       <Button icon={Save} type="submit" reason={reason} aria-label={`Save ${label}`} title={`Save ${label} · ${scope}`}>Save</Button>
       <Button icon={RotateCcw} type="button" aria-label={`Remove ${label} setting`} reason={busy ? 'Wait for the current request' : value === null ? 'This setting is not stored in this scope' : undefined} title={`Remove ${scope} setting and use inherited configuration`} onClick={() => onSave(key, null, value)}>Remove</Button>
@@ -58,7 +72,10 @@ function ProfileForm({ repositoryId, scope, onConsole }) {
     <div className="profile-feedback" aria-live="polite">{busy ? 'Loading or saving Git profile…' : notice}</div>
     {error && <div role="alert" className="profile-error"><p>{error}</p><Button type="button" onClick={onConsole}>Show output</Button></div>}
     {!snapshot && busy && <div aria-label="Loading Git profile" className="loading-shell">{FIELDS.map(([key]) => <div key={key} className="skeleton" />)}</div>}
-    {snapshot && FIELDS.map(field => <ProfileField key={field[0]} field={field} scope={scope} value={snapshot.values[field[0]]} effective={snapshot.effective[field[0]]} busy={busy} onSave={save} />)}
+    {snapshot && FIELDS.map(field => <Fragment key={field[0]}>
+      {field[0] === SIGNING && <h3 className="profile-heading">Commit signing</h3>}
+      <ProfileField field={field} scope={scope} value={snapshot.values[field[0]]} effective={snapshot.effective[field[0]]} busy={busy} onSave={save} />
+    </Fragment>)}
     <Button icon={RefreshCw} reason={busy ? 'Wait for the current request' : undefined} onClick={() => setReload(value => value + 1)} title="Discard unsaved edits and reread Git configuration">Reload profile</Button>
   </div>;
 }

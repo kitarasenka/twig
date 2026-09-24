@@ -19,7 +19,17 @@ export async function captureState({ cwd, log }) {
     loadOperationState({ cwd, log })
   ]);
   const status = parseStatusV2(raw);
-  const hash = createHash('sha256').update(raw).update(refs).update(index).update(stash).update(operation.kind);
+  // Remote-tracking refs are left out: no inverse reads or moves them, and a
+  // fetch — the background one included — would otherwise end the Undo chain
+  // for work it never touched.
+  // For the same reason the status header's ahead/behind count (`# branch.ab`),
+  // which is measured against the remote-tracking branch, is left out too.
+  const own = refs.split('\n').filter(line => !line.startsWith('refs/remotes/')).join('\n');
+  const tokens = raw.split('\0');
+  let headers = 0;
+  while (headers < tokens.length && tokens[headers].startsWith('# ')) headers++;
+  const local = tokens.filter((token, index) => index >= headers || !token.startsWith('# branch.ab ')).join('\0');
+  const hash = createHash('sha256').update(local).update(own).update(index).update(stash).update(operation.kind);
   const root = await realpath(cwd);
   for (const entry of status.entries) {
     const file = path.resolve(root, entry.path);

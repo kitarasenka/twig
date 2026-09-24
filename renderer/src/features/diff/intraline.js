@@ -102,14 +102,19 @@ function refine(ops) {
  * Token-level diff of two single lines (no leading +/- marker).
  * @param {string} oldText
  * @param {string} newText
- * @returns {{ old: Segment[], new: Segment[] } | null} null when the lines are
- *   equal, too long, or too dissimilar to highlight partially.
+ * @returns {{ old: Segment[], new: Segment[], merged: Segment[] } | null} null
+ *   when the lines are equal, too long, or too dissimilar to highlight
+ *   partially. `merged` is the one-line form word mode shows: shared text once,
+ *   removed and added pieces in the order the edit reads — whole words, never
+ *   refined to the character, because `250` → `500` inline must read as one
+ *   word replaced, not as `2500` with single digits struck and underlined.
  */
 export function segmentPair(oldText, newText) {
   if (oldText === newText) return null;
   if (oldText.length > MAX_LINE || newText.length > MAX_LINE) return null;
 
-  const ops = refine(diffSequences(tokenize(oldText), tokenize(newText)));
+  const words = diffSequences(tokenize(oldText), tokenize(newText));
+  const ops = refine(words);
   if (sharedLength(ops) / Math.max(oldText.length, newText.length) < MIN_SIMILARITY) return null;
 
   const oldSegs = [];
@@ -119,7 +124,9 @@ export function segmentPair(oldText, newText) {
     else if (op.type === 'delete') pushSegment(oldSegs, 'del', op.text);
     else pushSegment(newSegs, 'add', op.text);
   }
-  return { old: oldSegs, new: newSegs };
+  const merged = [];
+  for (const op of words) pushSegment(merged, op.type === 'equal' ? 'same' : op.type === 'delete' ? 'del' : 'add', op.text);
+  return { old: oldSegs, new: newSegs, merged };
 }
 
 /**
@@ -149,8 +156,9 @@ export function segmentHunkLines(lines) {
 
 /**
  * @typedef {{ cls: '' | 'diff-added' | 'diff-deleted' | 'diff-hunk',
- *   text: string, segments: Segment[] | null,
+ *   text: string, segments: Segment[] | null, merged?: Segment[],
  *   oldLine: number | null, newLine: number | null }} PatchRow
+ * `merged` sits on the removed line of a pair; word mode shows it in place of both.
  */
 
 /** Git's per-file preamble: machine bookkeeping, not a change to the file. */
@@ -230,7 +238,7 @@ export function annotatePatch(patch) {
     const pairs = Math.min(removedEnd - k, addedEnd - removedEnd);
     for (let p = 0; p < pairs; p++) {
       const seg = segmentPair(rows[k + p].text.slice(1), rows[removedEnd + p].text.slice(1));
-      if (seg) { rows[k + p].segments = seg.old; rows[removedEnd + p].segments = seg.new; }
+      if (seg) { rows[k + p].segments = seg.old; rows[k + p].merged = seg.merged; rows[removedEnd + p].segments = seg.new; }
     }
     k = addedEnd;
   }

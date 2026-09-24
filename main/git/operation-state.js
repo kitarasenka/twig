@@ -15,7 +15,7 @@ import { parseStatusV2 } from './status-parser.js';
  * scraping the English output of `git status` would not be.
  *
  * @typedef {Object} OperationState
- * @property {'none'|'merge'|'cherry-pick'|'revert'|'rebase'} kind
+ * @property {'none'|'merge'|'cherry-pick'|'revert'|'rebase'|'am'} kind
  * @property {?number} step 1-based position in a rebase, else null
  * @property {?number} total number of rebase steps, else null
  * @property {?string} branch branch being rebased, from `head-name`
@@ -49,17 +49,24 @@ export async function resolveGitDir({ cwd, log }) {
   return result.stdout.trimEnd();
 }
 
+/**
+ * `rebase-apply` is shared: `git am` keeps its state there too, marked by an
+ * `applying` file, and counts its steps in `next`/`last` rather than
+ * `msgnum`/`end`. Telling them apart matters — `git rebase --continue` refuses
+ * to continue an `am`, and the reverse.
+ */
 async function readRebase(gitDir) {
   for (const name of REBASE_DIRS) {
     const dir = path.join(gitDir, name);
     if (!await exists(dir)) continue;
+    const am = name === 'rebase-apply' && await exists(path.join(dir, 'applying'));
     const [step, total, headName] = await Promise.all([
-      readTrimmed(path.join(dir, 'msgnum')),
-      readTrimmed(path.join(dir, 'end')),
-      readTrimmed(path.join(dir, 'head-name'))
+      readTrimmed(path.join(dir, am ? 'next' : 'msgnum')),
+      readTrimmed(path.join(dir, am ? 'last' : 'end')),
+      am ? null : readTrimmed(path.join(dir, 'head-name'))
     ]);
     return {
-      kind: 'rebase',
+      kind: am ? 'am' : 'rebase',
       step: Number.isInteger(Number(step)) ? Number(step) : null,
       total: Number.isInteger(Number(total)) ? Number(total) : null,
       branch: headName ? headName.replace(/^refs\/heads\//, '') : null

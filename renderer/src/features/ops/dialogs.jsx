@@ -3,21 +3,24 @@ import { AlertTriangle } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
 
+/** An argument with a space or a quote is shown quoted, so it reads as the one word Git receives. */
+const shown = command => command.map(arg => (/[\s"'`$\\]/.test(arg) ? JSON.stringify(arg) : arg)).join(' ');
+
 /**
  * Confirmation for a destructive operation. §6.5 of the brief asks for two
  * things by name — the exact command that will run and what it destroys — so
  * both are required arguments rather than optional decoration, and the command
  * is shown in the same monospace form the console will log.
  */
-export function ConfirmDialog({ title, command, consequence, confirmLabel, onConfirm, onClose }) {
+export function ConfirmDialog({ title, command, consequence, confirmLabel, danger = true, onConfirm, onClose }) {
   return <Dialog title={title} onClose={onClose}>
     <div className="confirm-dialog">
       <p className="confirm-consequence"><AlertTriangle aria-hidden="true" />{consequence}</p>
       <p className="muted">This command will run:</p>
-      <code className="confirm-command">$ git {command.join(' ')}</code>
+      <code className="confirm-command">$ git {shown(command)}</code>
       <div className="dialog-actions">
         <Button onClick={onClose}>Cancel</Button>
-        <Button className="danger" onClick={() => { onClose(); onConfirm(); }}>{confirmLabel}</Button>
+        <Button className={danger ? 'danger' : 'primary'} onClick={() => { onClose(); onConfirm(); }}>{confirmLabel}</Button>
       </div>
     </div>
   </Dialog>;
@@ -28,16 +31,24 @@ export function ConfirmDialog({ title, command, consequence, confirmLabel, onCon
  * checked here only for the mistakes worth catching before a process starts;
  * Git remains the authority and its refusal is shown as-is.
  */
-export function NameDialog({ title, label, placeholder, confirmLabel, extra, withMessage, onConfirm, onClose }) {
-  const [name, setName] = useState('');
+/**
+ * `initialValue` is for renaming: the field starts on the current name, all of
+ * it selected, so a person edits the part that changes instead of retyping a
+ * long `feature/…` path — and submitting it unchanged is refused, not run.
+ */
+export function NameDialog({ title, label, placeholder, confirmLabel, extra, withMessage, initialValue = '', suggested = false, onConfirm, onClose }) {
+  const [name, setName] = useState(initialValue);
   const [message, setMessage] = useState('');
   const [checked, setChecked] = useState(false);
   const invalid = name.length > 0 && /[\s~^:?*[\\]|\.\.|^[-/.]|\.lock$|\/$/.test(name);
+  // A suggested name (a branch recovered from the reflog) may be taken as is.
+  const unchanged = Boolean(initialValue) && !suggested && name.trim() === initialValue;
   return <Dialog title={title} onClose={onClose}>
     <form className="name-dialog" onSubmit={event => { event.preventDefault(); onClose(); onConfirm({ name: name.trim(), message, checked }); }}>
       <label htmlFor="ref-name">{label}</label>
       {/* showModal() focuses the first control by itself, so this field is where the caret lands. */}
       <input id="ref-name" value={name} placeholder={placeholder} autoComplete="off" spellCheck={false}
+        onFocus={initialValue ? event => event.currentTarget.select() : undefined}
         aria-describedby={invalid ? 'ref-name-error' : undefined} onChange={event => setName(event.target.value)} />
       {invalid && <p id="ref-name-error" role="alert" className="warn">A Git ref name cannot contain spaces, <code>..</code>, <code>~^:?*[\</code>, or end with <code>/</code> or <code>.lock</code>.</p>}
       {withMessage && <>
@@ -47,7 +58,7 @@ export function NameDialog({ title, label, placeholder, confirmLabel, extra, wit
       {extra && <label className="checkbox-row"><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} />{extra}</label>}
       <div className="dialog-actions">
         <Button type="button" onClick={onClose}>Cancel</Button>
-        <Button type="submit" className="primary" reason={name.trim().length === 0 ? 'Enter a name first' : invalid ? 'This name is not valid' : undefined}>{confirmLabel}</Button>
+        <Button type="submit" className="primary" reason={name.trim().length === 0 ? 'Enter a name first' : invalid ? 'This name is not valid' : unchanged ? 'That is the current name' : undefined}>{confirmLabel}</Button>
       </div>
     </form>
   </Dialog>;
@@ -77,7 +88,7 @@ export function MessageDialog({ title, label, initial, confirmLabel, command, co
       <p className={subject.length > 72 ? 'warn' : 'muted'}>{subject.length}/72 in the subject</p>
       <p className="confirm-consequence"><AlertTriangle aria-hidden="true" />{consequence}</p>
       <p className="muted">This command will run:</p>
-      <code className="confirm-command">$ git {command.join(' ')}</code>
+      <code className="confirm-command">$ git {shown(command)}</code>
       <div className="dialog-actions">
         <Button type="button" onClick={onClose}>Cancel</Button>
         <Button type="submit" className="primary" reason={reason}>{confirmLabel}</Button>

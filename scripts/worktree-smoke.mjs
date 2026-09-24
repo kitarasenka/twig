@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { _electron as electron } from 'playwright';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { CommandLog } from '../main/command-log.js';
@@ -214,6 +214,73 @@ try {
   });
   assert.equal(staleAmend, 'rejected');
 
+  // Discard, from the uncommitted panel and from the staging screen. Each one
+  // asks first with the exact command, backs the files up under a hidden ref,
+  // and the toolbar's Undo brings them back byte for byte.
+  const gridPath = path.join(cwd, 'grid.txt');
+  const clean = await readFile(gridPath, 'utf8');
+  const cleanRows = clean.split('\n');
+  const dirty = cleanRows.map((row, i) => (i === 0 ? 'EDIT ONE' : i === 9 ? 'EDIT TEN' : row)).join('\n');
+  await writeFile(gridPath, dirty, 'utf8');
+  await writeFile(path.join(cwd, 'junk.txt'), 'scratch notes\n', 'utf8');
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
+  // Edits made outside the app show up on Refresh (the watcher follows refs, not files).
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.getByRole('button', { name: /Uncommitted changes, 2 files/ }).click();
+  await uncommitted.waitFor();
+  const confirmDialog = page.getByRole('dialog');
+  const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
+  // Cancel runs nothing.
+  await panelList('Changed files').getByRole('button', { name: 'Discard changes to grid.txt', exact: true }).click();
+  await confirmDialog.getByText('$ git restore --worktree -- :(literal)grid.txt', { exact: true }).waitFor();
+  await confirmDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.equal(await readFile(gridPath, 'utf8'), dirty, 'Cancel leaves the file alone');
+  // Deleting an untracked file, then Undo.
+  await panelList('Untracked files').getByRole('button', { name: 'Delete junk.txt', exact: true }).click();
+  await confirmDialog.getByText('$ git clean -f -- :(literal)junk.txt', { exact: true }).waitFor();
+  await confirmDialog.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect('Deleted junk.txt. Undo brings it back.', 'deleting an untracked file');
+  assert.equal(await git(['status', '--porcelain', '--', 'junk.txt']), '', 'the file is gone');
+  assert.match(await git(['log', '-1', '--format=%s', 'refs/twig/discard']), /state after discarding junk\.txt/, 'the backup sits under the hidden ref');
+  assert.equal((await git(['log', '--exclude=refs/twig/*', '--all', '--format=%s'])).includes('Twig'), false, 'and never in history');
+  await undoButton.click();
+  for (let i = 0; i < 50 && await git(['status', '--porcelain', '--', 'junk.txt']) !== '?? junk.txt'; i++) await page.waitForTimeout(100);
+  assert.equal(await readFile(path.join(cwd, 'junk.txt'), 'utf8'), 'scratch notes\n', 'Undo restored the deleted file');
+  assert.equal(await git(['status', '--porcelain', '--', 'junk.txt']), '?? junk.txt', 'still untracked');
+
+  // On the staging screen: discard only the lines of the second edit. The
+  // console was left open by earlier steps; collapsed, the diff has room.
+  if (await page.getByRole('textbox', { name: 'Search command log' }).isVisible()) await page.locator('.console-status').click();
+  await uncommitted.getByRole('button', { name: 'Open staging', exact: true }).click();
+  await expect('Working tree · 0 staged, 2 not staged', 'staging after the panel discard');
+  await page.getByRole('region', { name: 'Unstaged changes' }).locator('.worktree-open').filter({ hasText: 'grid.txt' }).click();
+  const stageDiff = page.getByRole('region', { name: 'Working tree diff for grid.txt' });
+  const lineTen = stageDiff.getByRole('checkbox', { name: 'Stage line 10', exact: true });
+  await lineTen.first().waitFor();
+  assert.equal(await lineTen.count(), 2, 'the removed and the added line of the second edit');
+  for (const box of await lineTen.all()) await box.check();
+  await stageDiff.getByRole('button', { name: 'Discard 2 selected', exact: true }).click();
+  await confirmDialog.getByText('$ git apply --reverse --whitespace=nowarn -', { exact: true }).waitFor();
+  await confirmDialog.getByRole('button', { name: 'Discard lines', exact: true }).click();
+  await expect('Discarded 2 lines of grid.txt. Undo brings them back.', 'discarding selected lines');
+  const afterLines = await readFile(gridPath, 'utf8');
+  assert.ok(afterLines.includes('EDIT ONE') && !afterLines.includes('EDIT TEN'), 'only the selected edit was discarded');
+  await undoButton.click();
+  for (let i = 0; i < 50 && await readFile(gridPath, 'utf8') !== dirty; i++) await page.waitForTimeout(100);
+  assert.equal(await readFile(gridPath, 'utf8'), dirty, 'Undo restored the selected lines');
+  // Both sections at once, leaving the tree clean for the rest of the run.
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
+  await page.getByRole('button', { name: /Uncommitted changes, 2 files/ }).click();
+  await uncommitted.getByRole('button', { name: 'Open staging', exact: true }).click();
+  await expect('Working tree · 0 staged, 2 not staged', 'staging after Undo');
+  await page.getByRole('region', { name: 'Unstaged changes' }).getByRole('button', { name: 'Discard all', exact: true }).click();
+  await confirmDialog.getByRole('button', { name: 'Discard 1 file', exact: true }).click();
+  await expect('Discarded every unstaged change. Undo brings them back.', 'Discard all');
+  await page.getByRole('region', { name: 'Untracked files' }).getByRole('button', { name: 'Delete all', exact: true }).click();
+  await confirmDialog.getByRole('button', { name: 'Delete 1 path', exact: true }).click();
+  await expect('Working tree · 0 staged, 0 not staged', 'the tree is clean after both discards');
+  assert.equal(await readFile(gridPath, 'utf8'), clean);
+
   // Rejected IPC input: a stale digest and a traversal path must both fail.
   const rejected = await page.evaluate(async () => {
     const workspace = await window.twig.getWorkspace();
@@ -222,11 +289,15 @@ try {
       window.twig.applySelection(id, 'grid.txt', false, 'stale-digest', [{ index: 0, lines: [1] }]),
       window.twig.stageFile(id, '../escape'),
       window.twig.createCommit(id, '   ', false),
-      window.twig.stageAll(id, 'everything')
+      window.twig.stageAll(id, 'everything'),
+      window.twig.discardFile(id, '../escape', 'unstaged'),
+      window.twig.discardFile(id, 'grid.txt', 'staged'),
+      window.twig.discardAll(id, 'everything'),
+      window.twig.discardSelection(id, 'grid.txt', 'stale-digest', [{ index: 0, lines: [1] }])
     ]);
     return results.map(result => result.status);
   });
-  assert.deepEqual(rejected, Array(4).fill('rejected'));
+  assert.deepEqual(rejected, Array(8).fill('rejected'));
 
   for (const theme of ['dark', 'light']) {
     await setTheme(theme);
@@ -234,7 +305,7 @@ try {
   }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  console.log('M3 Electron passed: line staging, per-section bulk staging, unstaging, commit, amend last commit, push badge, IPC validation, themes.');
+  console.log('M3 Electron passed: line staging, per-section bulk staging, unstaging, commit, amend last commit, discard (file, untracked, lines, sections) with Undo, push badge, IPC validation, themes.');
 } finally {
   if (app) await app.close();
   await rm(root, { recursive: true, force: true });

@@ -35,14 +35,15 @@ function validateQuery(query) {
  * Git or touching `exec.js`.
  * `--exclude=refs/stash` keeps the raw `WIP on …` / `index on …` commits out of
  * the row list: a stash is shown as a marker on the commit it was based on, not
- * as history of its own.
+ * as history of its own. `--exclude=refs/twig/*` does the same for 🌱 Twig's
+ * own bookkeeping — the backups a discard records under `refs/twig/discard`.
  * @param {{ limit?: number, skip?: number }} options
  * @returns {string[]}
  */
 export function buildHistoryArgv({ limit = 250, skip = 0 } = {}) {
   validateLimit(limit);
   validateSkip(skip);
-  return ['log', '--exclude=refs/stash', '--all', '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${limit}`, `--skip=${skip}`];
+  return ['log', '--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${limit}`, `--skip=${skip}`];
 }
 
 /**
@@ -90,38 +91,74 @@ export async function loadFileHistory({ cwd, log, file, limit = 250 }) {
   return { commits: parseFileHistory(result.stdout, file) };
 }
 
+/** What a history search looks at. The labels live in the renderer. */
+export const SEARCH_MODES = Object.freeze(['message', 'author', 'file', 'content', 'regex']);
+
+/** Glob metacharacters, escaped so a typed `*` or `[` stays a character. */
+const escapeGlob = text => text.replace(/[\\*?[\]]/g, match => `\\${match}`);
+
 /**
- * Builds the argv for a commit-message search across every ref. `--fixed-strings`
- * keeps the query literal (a user typing `(` is not writing a regex) and `-i`
- * makes it case-insensitive. `--grep` matches the subject and the body — the
- * same text the graph shows. Exported separately so the self-check can assert
- * the exact argv without spawning Git.
+ * Builds the argv for a search across every ref. Exported separately so the
+ * self-check can assert the exact argv without spawning Git.
+ *
+ * - `message`: `--grep`, the subject and body — literal (`--fixed-strings`: a
+ *   user typing `(` is not writing a regex) and case-insensitive.
+ * - `author`: `--author`, which matches the name or the email; literal and
+ *   case-insensitive too.
+ * - `file`: commits that changed a path containing the text anywhere, any
+ *   case — a pathspec after `--`, glob characters in the query escaped.
+ * - `content`: pickaxe `-S`, commits where the number of occurrences of the
+ *   text changed, i.e. where it appeared or disappeared. Literal, exact case.
+ * - `regex`: `-G`, commits whose added or removed lines match a regular
+ *   expression.
+ * Every query is one argv token after `=` / `-S` / `-G` or after `--`, so a
+ * text that looks like a flag stays text.
  * @param {string} query
  * @param {number} [limit]
+ * @param {'message' | 'author' | 'file' | 'content' | 'regex'} [mode]
  * @returns {string[]}
  */
-export function buildSearchArgv(query, limit = SEARCH_LIMIT) {
+export function buildSearchArgv(query, limit = SEARCH_LIMIT, mode = 'message') {
   const trimmed = validateQuery(query);
   validateLimit(limit);
-  return ['log', '--exclude=refs/stash', '--all', '--topo-order', '-z', '-i', '--fixed-strings', `--grep=${trimmed}`,
-    `--format=${FORMAT}`, `--max-count=${limit}`];
+  if (!SEARCH_MODES.includes(mode)) throw new TypeError('Unknown search mode');
+  const head = ['log', '--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--topo-order', '-z'];
+  const tail = [`--format=${FORMAT}`, `--max-count=${limit}`];
+  if (mode === 'message') return [...head, '-i', '--fixed-strings', `--grep=${trimmed}`, ...tail];
+  if (mode === 'author') return [...head, '-i', '--fixed-strings', `--author=${trimmed}`, ...tail];
+  if (mode === 'content') return [...head, `-S${trimmed}`, ...tail];
+  if (mode === 'regex') return [...head, `-G${trimmed}`, ...tail];
+  // A file anywhere whose path contains the text, and anything under a folder
+  // whose name does: `*` stops at `/` in glob magic, `**` does not.
+  const glob = escapeGlob(trimmed);
+  return [...head, ...tail, '--', `:(glob,icase)**/*${glob}*`, `:(glob,icase)**/*${glob}*/**`];
 }
 
 /**
- * Commits whose message matches `query`, newest first, across all refs. A query
- * that is a hex string is also resolved as a commit id (or a prefix of one), so
- * searching by SHA finds the commit even when its message holds none of those
- * digits. Refs are not read here.
- * @param {{ cwd: string, log: import('../command-log.js').CommandLog, query: string, limit?: number }} options
- * @returns {Promise<{ commits: import('./history-parser.js').Commit[], truncated: boolean }>}
+ * Commits matching `query` in `mode`, newest first, across all refs. In
+ * message mode a hex query is also resolved as a commit id (or a prefix of
+ * one), so searching by SHA finds the commit even when its message holds none
+ * of those digits. A pattern Git rejects (a broken regular expression) is an
+ * answer — `{ invalid }` with Git's reason — not a failure. A search replaced
+ * by a newer one is cancelled through `signal` and answers `{ cancelled }`.
+ * Refs are not read here.
+ * @param {{ cwd: string, log: import('../command-log.js').CommandLog, query: string, mode?: string, limit?: number, signal?: AbortSignal }} options
+ * @returns {Promise<{ commits: import('./history-parser.js').Commit[], truncated: boolean, invalid?: string, cancelled?: boolean }>}
  */
-export async function searchHistory({ cwd, log, query, limit = SEARCH_LIMIT }) {
+export async function searchHistory({ cwd, log, query, mode = 'message', limit = SEARCH_LIMIT, signal = null }) {
   const trimmed = validateQuery(query);
-  const result = await runGit({ argv: buildSearchArgv(trimmed, limit), cwd, log, operation: 'Search commit history' });
-  if (result.code !== 0) throw new Error('Git could not search commit history.');
+  const result = await runGit({ argv: buildSearchArgv(trimmed, limit, mode), cwd, log, operation: 'Search commit history', signal });
+  if (result.cancelled) return { commits: [], truncated: false, cancelled: true };
+  if (result.code !== 0) {
+    if (mode === 'regex' && /regex|regular expression|Invalid|brack|paren/i.test(result.stderr)) {
+      const reason = result.stderr.split('\n').map(line => line.replace(/^(fatal|error):\s*/, '').trim()).find(Boolean) || 'invalid pattern';
+      return { commits: [], truncated: false, invalid: `Git cannot use that pattern: ${reason}` };
+    }
+    throw new Error('Git could not search commit history.');
+  }
   const commits = parseHistoryV1(result.stdout);
   const truncated = commits.length >= limit;
-  if (SEARCH_HEX.test(trimmed) && !commits.some(commit => commit.oid.startsWith(trimmed.toLowerCase()))) {
+  if (mode === 'message' && SEARCH_HEX.test(trimmed) && !commits.some(commit => commit.oid.startsWith(trimmed.toLowerCase()))) {
     const resolved = await runGit({ argv: ['rev-parse', '--verify', '--quiet', `${trimmed}^{commit}`], cwd, log, operation: 'Resolve commit id' });
     const oid = resolved.stdout.trim();
     if (resolved.code === 0 && /^[0-9a-f]{40,64}$/i.test(oid) && !commits.some(commit => commit.oid === oid)) {

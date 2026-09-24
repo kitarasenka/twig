@@ -4,12 +4,14 @@ import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
 import { Console } from './Console.jsx';
 import { pickFailedEntry } from './console-focus.js';
+import { fetchExplanation, fetchStatusLine, intervalLabel, pullTitle } from './background-fetch-view.js';
 import HistoryWorkspace from '../features/graph/HistoryWorkspace.jsx';
 import GitProfile from '../features/settings/GitProfile.jsx';
 import Repositories from '../features/settings/Repositories.jsx';
 import CloneRepository from '../features/settings/CloneRepository.jsx';
 import Remotes from '../features/settings/Remotes.jsx';
 import SshSettings from '../features/settings/SshSettings.jsx';
+import useDiffPrefs from '../features/diff/useDiffPrefs.js';
 import ExecutionPanel from '../features/automations/ExecutionPanel.jsx';
 import { AGE_STOPS, ageTextClass } from '../features/graph/age-color.js';
 
@@ -49,6 +51,16 @@ export default function App() {
   const [dialog, setDialog] = useState(null);
   const [dialogBusy, setDialogBusy] = useState(false);
   const [info, setInfo] = useState(null);
+  // The external editor lives in main (it names a program to run); this is
+  // only its description, for the Settings row and the file menus.
+  const [editor, setEditor] = useState(null);
+  const [editorError, setEditorError] = useState('');
+  // Background fetch: the consent lives in main, which runs the fetch; the
+  // renderer only shows it and how the open repository's schedule stands.
+  const [fetchSettings, setFetchSettings] = useState(null);
+  const [fetchStatus, setFetchStatus] = useState(null);
+  const [fetchError, setFetchError] = useState('');
+  const [diffPrefs, setDiffPrefs] = useDiffPrefs();
   const [workspace, setWorkspace] = useState(null);
   const [entries, setEntries] = useState([]);
   const [consoleFocus, setConsoleFocus] = useState(null);
@@ -99,8 +111,17 @@ export default function App() {
         else { setEmptyOpen(true); setActive('new'); }
       })
       .catch(() => { if (alive) setStartupError('Desktop connection unavailable. Restart 🌱 Twig.'); });
+    window.twig.getEditor().then(value => { if (alive) setEditor(value); }).catch(() => {});
+    window.twig.getBackgroundFetch().then(value => { if (alive) setFetchSettings(value); }).catch(() => {});
     const unsubscribe = window.twig.onConsoleUpdate((update) => { if (alive) setEntries(current => applyConsoleUpdate(current, update)); });
     return () => { alive = false; unsubscribe(); };
+  }, []);
+  // "Other application…" opens a native picker in main; cancelling it leaves
+  // the previous choice in place, which is what comes back.
+  const chooseEditor = useCallback(async (preset) => {
+    setEditorError('');
+    try { setEditor(await window.twig.setEditor(preset)); }
+    catch { setEditorError('Could not save the editor choice.'); }
   }, []);
   useEffect(() => {
     const system = matchMedia('(prefers-color-scheme: dark)');
@@ -114,6 +135,27 @@ export default function App() {
     try { localStorage.setItem('twig:commit-colors', commitColors); } catch { /* Preference remains session-local if storage is unavailable. */ }
   }, [commitColors]);
   const branchName = repository?.status?.branch?.name || null;
+  const fetchRequest = useRef(0);
+  const readFetchStatus = useCallback(() => {
+    const request = ++fetchRequest.current;
+    if (!repositoryActive || !repository?.available) { setFetchStatus(null); return; }
+    window.twig.getBackgroundFetchStatus(repository.id)
+      .then(next => { if (request === fetchRequest.current) setFetchStatus(next); })
+      .catch(() => { if (request === fetchRequest.current) setFetchStatus(null); });
+  }, [repositoryActive, repository?.id, repository?.available]);
+  useEffect(() => { readFetchStatus(); }, [readFetchStatus, fetchSettings?.interval]);
+  // A finished background fetch may have moved remote-tracking refs: the
+  // badges are re-read (the watcher reloads the graph on its own).
+  useEffect(() => window.twig?.onBackgroundFetch?.(update => {
+    if (update.cwd !== repository?.path) return;
+    readFetchStatus();
+    setWorktreeVersion(value => value + 1);
+  }), [repository?.path, readFetchStatus]);
+  const chooseFetchInterval = useCallback(async (interval) => {
+    setFetchError('');
+    try { setFetchSettings(await window.twig.setBackgroundFetch(interval)); }
+    catch { setFetchError('Could not save the background fetch choice.'); }
+  }, []);
   useEffect(() => {
     const request = ++divergenceRequest.current;
     if (!repositoryActive || !repository?.available) { setDivergence({ ahead: 0, behind: 0, upstream: null }); return; }
@@ -334,6 +376,19 @@ export default function App() {
     }
     if (open) setDialog(null);
   }
+  /** A worktree or submodule opened from a repository screen: its tab comes up at once. */
+  const openWorkspaceTab = useCallback(next => {
+    if (!next) return;
+    ++selectionRequest.current;
+    setWorkspace(next);
+    if (next.activeId) {
+      setActive(`repository:${next.activeId}`);
+      setClosedTabs(current => { if (!current.has(next.activeId)) return current; const copy = new Set(current); copy.delete(next.activeId); return copy; });
+    }
+  }, []);
+  const acceptWorkspaceRef = useRef(null);
+  acceptWorkspaceRef.current = acceptWorkspace;
+  const updateWorkspace = useCallback(next => { if (next) acceptWorkspaceRef.current(next); }, []);
   function showManagerOutput() {
     showConsole();
     if (!dialogBusy) setDialog(null);
@@ -382,7 +437,7 @@ export default function App() {
       <div className="branch-select"><span>CURRENT BRANCH</span><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : unavailable} onClick={focusSearch}>{repositoryActive ? repository?.status?.branch?.name || (repository?.status?.branch?.detached ? 'Detached HEAD' : 'Unavailable') : 'main'}<ChevronDown /></Button></div>
       <div className="tool-group"><Button className="tool" icon={Undo2} title={`${undoState.undoReason} · ${mod}+Z`} reason={undoMoving ? 'Reversing the action…' : !repositoryActive ? unavailable : !undoState.undo ? undoState.undoReason : undefined} onClick={() => moveUndo('undo')}>Undo</Button><Button className="tool" icon={Redo2} title={`${undoState.redoReason} · ${mod}+Shift+Z`} reason={undoMoving ? 'Reversing the action…' : !repositoryActive ? unavailable : !undoState.redo ? undoState.redoReason : undefined} onClick={() => moveUndo('redo')}>Redo</Button></div>
       <div className="tool-group">
-        <Button className="tool" icon={ArrowDown} onClick={() => runSync('pull')}
+        <Button className="tool" icon={ArrowDown} onClick={() => runSync('pull')} title={repositoryActive ? pullTitle(fetchStatus) : undefined}
           reason={syncReason || (divergence.upstream ? undefined : 'Pull: this branch has no upstream')}>
           Pull{divergence.behind > 0 && <span className="badge">{divergence.behind}</span>}</Button>
         <Button className="tool" icon={ArrowUp} onClick={() => runSync(divergence.upstream ? 'push' : 'push-upstream')}
@@ -412,9 +467,9 @@ export default function App() {
             always-present demo tab mounts only while active, so its graph never
             collides with another tab's. */}
         {(!item.sandbox || active === `repository:${item.id}`) && (item.available
-          ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} mod={mod} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} toolbarSlot={bugHunterSlot} toolbarBusyReason={syncing ? `${syncing} is running` : undoMoving ? 'Reversing the action…' : undefined}
+          ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} mod={mod} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} platform={info?.platform} editor={editor?.label} toolbarSlot={bugHunterSlot} toolbarBusyReason={syncing ? `${syncing} is running` : undoMoving ? 'Reversing the action…' : undefined}
             filterRef={node => { if (node) repositoryFilters.current.set(item.id, node); else repositoryFilters.current.delete(item.id); }}
-            onConsole={showConsole} onRepositoryChanged={refreshRepository} />
+            onConsole={showConsole} onRepositoryChanged={refreshRepository} onOpenWorkspace={openWorkspaceTab} onWorkspace={updateWorkspace} />
           : <RepositoryReady repository={item} onOpen={openRepository} />)}
       </div>)}
       {active === 'new' && <main className="welcome"><div className="welcome-mark"><img src="./twig-logo.png" alt="" width="96" height="96" /></div><span className="eyebrow">YOUR NEXT WORKSPACE</span><h1>A clear view of your code.</h1><p>Open a folder, clone a repository, or choose one you have connected.</p><div className="welcome-actions"><Button icon={FolderOpen} className="primary" onClick={openRepository}>Open repository</Button><Button icon={ArrowDown} onClick={() => setDialog('Clone repository')}>Clone repository</Button><Button icon={GitBranch} onClick={() => setDialog('Repositories')}>Connected repositories</Button></div><div className="welcome-demo"><span className="demo-pill">DEMO</span><p>The <strong>workspace-demo</strong> tab is a real sandbox repository — every command runs against it.</p>{sandboxId
@@ -428,6 +483,24 @@ export default function App() {
         <label className="setting-row" htmlFor="theme"><span><strong>Appearance</strong><small>System follows your device setting.</small></span><select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
         <label className="setting-row" htmlFor="commit-colors"><span><strong>Commit colors</strong><small>Age shades the graph and the dates from brown roots to green new work.</small></span><select id="commit-colors" value={commitColors} onChange={(e) => setCommitColors(e.target.value)}><option value="age">Commit age</option><option value="lanes">Branch lanes</option></select></label>
         {commitColors === 'age' && <ul className="age-legend" aria-label="Commit age colors">{AGE_STOPS.map((stop, index) => <li key={stop.key} className={ageTextClass(index)}>{stop.label}</li>)}</ul>}
+        <label className="setting-row" htmlFor="syntax"><span><strong>Syntax highlighting</strong><small>Colours code by file type in diffs, staging and blame. Lines / Words is switched above each diff.</small></span>
+          <select id="syntax" value={diffPrefs.syntax ? 'on' : 'off'} onChange={(e) => setDiffPrefs({ syntax: e.target.value === 'on' })}><option value="on">On</option><option value="off">Off</option></select></label>
+        {editor && <div className="setting-row"><label htmlFor="editor"><strong>Open files with</strong><small className="editor-path">{
+          editor.preset === 'custom' ? editor.customPath
+            : editor.preset === 'system' ? (info?.platform === 'darwin' ? 'Your default text editor. Used by “Open in editor” in file menus.'
+              : 'The app your system opens that file type with. Program files are refused.')
+              : 'Used by “Open in editor” in file menus.'}</small></label>
+          <span className="setting-controls"><select id="editor" value={editor.preset} onChange={(e) => void chooseEditor(e.target.value)}>
+            {editor.presets.map(preset => <option key={preset.id} value={preset.id}>{preset.id === 'custom' && editor.preset === 'custom' ? editor.label : preset.label}</option>)}
+          </select>{editor.preset === 'custom' && <Button onClick={() => void chooseEditor('custom')}>Choose…</Button>}</span></div>}
+        {editorError && <p className="update-note" role="alert">{editorError}</p>}
+        {fetchSettings && <label className="setting-row" htmlFor="background-fetch"><span><strong>Background fetch</strong>
+          <small>{fetchExplanation(fetchSettings.interval)}</small>
+          {fetchSettings.interval > 0 && repositoryActive && fetchStatus && <small className="fetch-status" role="status">{repository?.name}: {fetchStatusLine(fetchStatus)}</small>}</span>
+          <select id="background-fetch" value={fetchSettings.interval} onChange={(e) => void chooseFetchInterval(Number(e.target.value))}>
+            {fetchSettings.intervals.map(minutes => <option key={minutes} value={minutes}>{intervalLabel(minutes)}</option>)}
+          </select></label>}
+        {fetchError && <p className="update-note" role="alert">{fetchError}</p>}
         <div className="setting-row"><span><strong>Updates</strong><small>Reads the latest release on GitHub once, when you press the button. Nothing is checked in the background, downloaded or installed.</small></span><Button icon={RefreshCw} reason={checkingUpdate ? 'Checking…' : undefined} onClick={checkUpdate}>Check for updates</Button></div>
         {update && <p className="update-note" role="status">{
           update.status === 'update' ? `Version ${update.latest} is available. You have ${update.current}.`

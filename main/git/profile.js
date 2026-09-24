@@ -1,7 +1,16 @@
 import { runGit } from './exec.js';
 
-export const PROFILE_KEYS = Object.freeze(['user.name', 'user.email', 'core.editor', 'pull.rebase', 'init.defaultBranch']);
-const PATTERN = '^(user[.](name|email)|core[.]editor|pull[.]rebase|init[.]defaultBranch)$';
+export const PROFILE_KEYS = Object.freeze(['user.name', 'user.email', 'core.editor', 'pull.rebase', 'init.defaultBranch',
+  'commit.gpgSign', 'tag.gpgSign', 'gpg.format', 'user.signingKey', 'gpg.ssh.allowedSignersFile']);
+// Git compares names in their canonical lower case; none of these holds a secret.
+const PATTERN = '^(user[.](name|email|signingkey)|core[.]editor|pull[.]rebase|init[.]defaultbranch|commit[.]gpgsign|tag[.]gpgsign|gpg[.]format|gpg[.]ssh[.]allowedsignersfile)$';
+/** Settings that take one of a few words; anything else is refused before Git sees it. */
+export const PROFILE_CHOICES = Object.freeze({
+  'pull.rebase': ['true', 'false', 'merges', 'interactive'],
+  'commit.gpgSign': ['true', 'false'],
+  'tag.gpgSign': ['true', 'false'],
+  'gpg.format': ['openpgp', 'ssh', 'x509']
+});
 
 function validateScope(scope) {
   if (scope !== 'global' && scope !== 'local') throw new TypeError('Invalid configuration scope');
@@ -41,8 +50,8 @@ export async function saveProfileValue(options) {
   if (value !== null && (typeof value !== 'string' || !value.trim() || value.length > 4096 || /[\0\r\n]/.test(value))) {
     throw new TypeError('Enter a non-empty, single-line value or remove the setting.');
   }
-  if (key === 'pull.rebase' && value !== null && !['true', 'false', 'merges', 'interactive'].includes(value)) {
-    throw new TypeError('Choose a supported pull strategy.');
+  if (Object.hasOwn(PROFILE_CHOICES, key) && value !== null && !PROFILE_CHOICES[key].includes(value)) {
+    throw new TypeError(key === 'pull.rebase' ? 'Choose a supported pull strategy.' : `Choose one of: ${PROFILE_CHOICES[key].join(', ')}.`);
   }
   if (key === 'init.defaultBranch' && value !== null) {
     if (value.startsWith('-') || value === 'HEAD') throw new TypeError('Invalid default branch name.');

@@ -82,7 +82,7 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
 
   function rename(name) {
     onDialog({
-      type: 'name', title: `Rename ${name}`, label: 'New branch name', placeholder: name, confirmLabel: 'Rename branch',
+      type: 'name', title: `Rename ${name}`, label: 'New branch name', placeholder: name, initialValue: name, confirmLabel: 'Rename branch',
       onConfirm: ({ name: next }) => void run(() => window.twig.renameBranch(repository.id, name, next), `Branch ${name} renamed to ${next}.`)
     });
   }

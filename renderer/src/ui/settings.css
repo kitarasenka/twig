@@ -11,6 +11,7 @@ dialog.wide:has(.git-profile) { width: min(700px, calc(100vw - var(--space-8)));
 .profile-controls { display: flex; gap: var(--space-2); }
 .profile-controls > input, .profile-controls > select { flex: 1; min-width: 0; width: 0; }
 .profile-effective { overflow-wrap: anywhere; }
+.profile-heading { margin: var(--space-4) 0 0; font-size: var(--text-md); }
 .profile-error { color: var(--danger); display: grid; gap: var(--space-2); }
 .ssh-config { width: 100%; resize: vertical; font-family: var(--font-mono); }
 .ssh-lines { margin-block: var(--space-3); display: grid; gap: var(--space-1); }

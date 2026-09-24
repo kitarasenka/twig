@@ -4,7 +4,10 @@
 /* This row must stay shrinkable: giving it a min-height pushes the commit
    form out of the clipped panel when the console is expanded, and an
    unreachable Commit button is worse than a cramped file list. */
-.worktree-body { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); flex: 1; min-height: 0; }
+/* The row is capped at the height it is given (`minmax(0, 1fr)`): an `auto`
+   row grew to the diff's full length, so a long diff spilled under the commit
+   form instead of scrolling inside its own panel. */
+.worktree-body { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 0; }
 .worktree-lists { overflow: auto; border-right: 1px solid var(--border); padding-bottom: var(--space-3); }
 .worktree-lists h3 { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3);
   font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
@@ -69,3 +72,7 @@
   .worktree-body { grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); }
   .stage-line { grid-template-columns: 20px 34px 34px minmax(0, 1fr); }
 }
+/* Discard and delete turn red only on hover or focus: at rest a column of red
+   icons would shout louder than the file names. Every one of them names what
+   it does and asks for confirmation, so colour is never the only warning. */
+button.discard:not(:disabled):hover, button.discard:not(:disabled):focus-visible { color: var(--danger); }

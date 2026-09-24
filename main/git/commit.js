@@ -31,7 +31,7 @@ export function parseChangedFiles(output) {
 
 export async function loadCommit({ cwd, log, oid }) {
   validateOid(oid);
-  const raw = await execute(cwd, log, ['show', '--no-patch', '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%B', oid, '--'], 'Read commit');
+  const raw = await execute(cwd, log, ['show', '--no-patch', '--no-show-signature', '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%B', oid, '--'], 'Read commit');
   const fields = raw.split('\0');
   if (fields.length !== 7) throw new Error('Invalid commit output');
   const [id, parentText, name, email, date, committedAt, message] = fields;

@@ -20,7 +20,9 @@ import path from 'node:path';
 // would show differently. `index` is deliberately absent: `git status` rewrites
 // it opportunistically, which a reload of ours runs, and watching it invites a
 // feedback loop. External `git add` is instead picked up on window focus.
-const WATCHED = /(^|[/\\])(HEAD|ORIG_HEAD|MERGE_HEAD|FETCH_HEAD|CHERRY_PICK_HEAD|REVERT_HEAD|packed-refs)$|(^|[/\\])(refs|logs|rebase-merge|rebase-apply|sequencer)([/\\]|$)/;
+// `FETCH_HEAD` is absent too: every fetch rewrites it, even the background one
+// that brought nothing, while a fetch that did bring something moves refs.
+const WATCHED = /(^|[/\\])(HEAD|ORIG_HEAD|MERGE_HEAD|CHERRY_PICK_HEAD|REVERT_HEAD|packed-refs)$|(^|[/\\])(refs|logs|rebase-merge|rebase-apply|sequencer)([/\\]|$)/;
 const DEBOUNCE_MS = 300;
 
 /** Resolve the real git directory without spawning Git: `.git` is a directory, or a file pointing at one. */

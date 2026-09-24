@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlignLeft, Archive, GitBranch, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow } from 'lucide-react';
+import { AlignLeft, Archive, Boxes, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
@@ -10,18 +10,28 @@ import CommitGraph, { UNCOMMITTED } from './CommitGraph.jsx';
 import WorktreeScreen from '../worktree/WorktreeScreen.jsx';
 import WorktreePanel from '../worktree/WorktreePanel.jsx';
 import { conflictCount, summarizeStatus } from '../worktree/worktree-summary.js';
+import { discardDialog } from '../worktree/discard-dialog.js';
+import { SEARCH_MODE_OPTIONS, searchEmpty, searchSummary } from './search-modes.js';
 import ConflictEditor from '../conflicts/ConflictEditor.jsx';
 import OperationBanner from '../ops/OperationBanner.jsx';
 import BisectBanner from '../ops/BisectBanner.jsx';
 import RefsScreen, { UpstreamDialog } from '../refs/RefsScreen.jsx';
 import { pushRefCommand, splitRemoteRef } from '../refs/remote-ref.js';
 import StashScreen from '../stash/StashScreen.jsx';
+import ReflogScreen from '../reflog/ReflogScreen.jsx';
+import WorktreesScreen from '../tools/WorktreesScreen.jsx';
+import SubmodulesScreen from '../tools/SubmodulesScreen.jsx';
+import WorktreeDialog from '../tools/WorktreeDialog.jsx';
 import AutomationsScreen from '../automations/AutomationsScreen.jsx';
 import ExecutionPanel from '../automations/ExecutionPanel.jsx';
 import { eventLabel, eventPhase } from '../automations/event-labels.js';
 import RebaseDialog from '../rebase/RebaseDialog.jsx';
+import PatchDialog from '../ops/PatchDialog.jsx';
+import { exportOrder } from '../ops/patch-view.js';
 import { ConfirmDialog, MessageDialog, NameDialog } from '../ops/dialogs.jsx';
 import { buildCommitMenu, buildMultiCommitMenu } from '../ops/commit-menu.js';
+import { buildRefMenu, buildSectionMenu } from '../refs/ref-menu.js';
+import { absolutePath, buildFileMenu } from '../diff/file-menu.js';
 import { buildRewordPlan } from '../ops/reword-plan.js';
 import { buildSquashPlan } from '../ops/squash-plan.js';
 import { createLaneLayout } from './layout.js';
@@ -37,11 +47,25 @@ const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [
 const NO_BISECT = { active: false, terms: { bad: 'bad', good: 'good' }, start: null, bad: null, goods: [],
   skipped: [], expected: null, remaining: null, steps: null, done: false, firstBad: null };
 /** The four centre-pane screens that replace the graph instead of selecting a commit. */
-const SCREENS = ['worktree', 'branches', 'stashes', 'automations'];
+const SCREENS = ['worktree', 'branches', 'stashes', 'reflog', 'worktrees', 'submodules', 'automations'];
 /** Values of `selected` that are not a commit oid and so have no commit to read. */
 const isCommitSelection = value => Boolean(value) && !SCREENS.includes(value) && value !== UNCOMMITTED;
+/** Shift+F10 or the Menu key: the keyboard way to a context menu, as in the graph. */
+const isMenuKey = event => event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
+/** Right-click and the menu keys on one element, opening at the pointer or under the element. */
+function contextMenuProps(open, keydown) {
+  return {
+    onContextMenu: event => { event.preventDefault(); event.stopPropagation(); open(event.clientX, event.clientY); },
+    onKeyDown: event => {
+      if (!isMenuKey(event)) { keydown?.(event); return; }
+      event.preventDefault();
+      const box = event.currentTarget.getBoundingClientRect();
+      open(box.left + 24, box.bottom);
+    }
+  };
+}
 
-function BranchTree({ refs, onSelect, drag, headBranch }) {
+function BranchTree({ refs, onSelect, onMenu, onRename, drag, headBranch }) {
   const folders = new Map();
   const leaves = [];
   for (const ref of refs) {
@@ -53,10 +77,17 @@ function BranchTree({ refs, onSelect, drag, headBranch }) {
       folders.get(folder).push({ ...ref, label: ref.label.slice(slash + 1) });
     }
   }
-  return <>{[...folders].map(([name, children]) => <details className="branch-folder" key={name} open><summary>{name}</summary><BranchTree refs={children} onSelect={onSelect} drag={drag} headBranch={headBranch} /></details>)}
-    {leaves.map(ref => <button {...drag.bind(refEndpoint(ref))} className={`real-branch ${ref.type === 'local' && ref.name === headBranch ? 'current-branch' : ''} ${drag.className(refEndpoint(ref))}`} key={ref.fullName}
-      title={`${ref.fullName} · Drag or Alt+D, then Alt+Enter on a target`} onClick={() => onSelect(ref.target)}>
-      {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.label}</span>{(ref.ahead > 0 || ref.behind > 0) && <small>↑{ref.ahead} ↓{ref.behind}</small>}</button>)}</>;
+  return <>{[...folders].map(([name, children]) => <details className="branch-folder" key={name} open><summary>{name}</summary><BranchTree refs={children} onSelect={onSelect} onMenu={onMenu} onRename={onRename} drag={drag} headBranch={headBranch} /></details>)}
+    {leaves.map(ref => {
+      const bound = drag.bind(refEndpoint(ref));
+      // F2 renames a local branch, the way it renames a file in a file manager.
+      const keydown = event => {
+        if (event.key === 'F2' && ref.type === 'local' && !event.altKey && !event.metaKey && !event.ctrlKey) { event.preventDefault(); onRename(ref); return; }
+        bound.onKeyDown?.(event);
+      };
+      return <button {...bound} {...contextMenuProps((x, y) => onMenu(ref, x, y), keydown)} className={`real-branch ${ref.type === 'local' && ref.name === headBranch ? 'current-branch' : ''} ${drag.className(refEndpoint(ref))}`} key={ref.fullName}
+      title={`${ref.fullName} · Drag or Alt+D, then Alt+Enter on a target · Right-click or Shift+F10 for actions${ref.type === 'local' ? ' · F2 to rename' : ''}`} onClick={() => onSelect(ref.target)}>
+      {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.label}</span>{(ref.ahead > 0 || ref.behind > 0) && <small>↑{ref.ahead} ↓{ref.behind}</small>}</button>; })}</>;
 }
 
 function Diff({ diff, onClose, onCommit, onBlame }) {
@@ -65,7 +96,7 @@ function Diff({ diff, onClose, onCommit, onBlame }) {
     {onBlame && <Button icon={AlignLeft} onClick={onBlame}>Blame</Button>}
     <Button icon={X} aria-label="Close diff" onClick={onClose} /></header>
     {onCommit && <div className="file-history-diff-heading"><code>{diff.oid.slice(0, 8)}</code><Button icon={GitBranch} onClick={onCommit}>Go to commit</Button></div>}
-    {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : diff.note ? <p className="empty-inline">{diff.note}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : diff.patch ? <DiffLines patch={diff.patch} /> : <p className="empty-inline">No changes for this file in this comparison.</p>}
+    {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : diff.note ? <p className="empty-inline">{diff.note}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : diff.patch ? <DiffLines patch={diff.patch} path={diff.file} /> : <p className="empty-inline">No changes for this file in this comparison.</p>}
   </section>;
 }
 
@@ -88,7 +119,7 @@ function FileHistory({ data, selected, onSelect, onClose, onConsole }) {
   </section>;
 }
 
-export default function HistoryWorkspace({ repository, active, mod, filterRef, onConsole, onRepositoryChanged, referencesRevision = 0, commitColors = 'lanes', toolbarSlot, toolbarBusyReason }) {
+export default function HistoryWorkspace({ repository, active, mod, platform, editor, filterRef, onConsole, onRepositoryChanged, onOpenWorkspace, onWorkspace, referencesRevision = 0, commitColors = 'lanes', toolbarSlot, toolbarBusyReason }) {
   const [data, setData] = useState({ commits: [], lanes: [], refs: [], nextSkip: 0, width: 1 });
   const dataRef = useRef(data);
   const layout = useRef(createLaneLayout());
@@ -97,6 +128,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   // When history last reloaded, so a disk change 🌱 Twig caused itself does not
   // bounce straight back as an "external change" reload.
   const lastReload = useRef(0);
+  const reloading = useRef(null);
   const refreshBusy = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -111,6 +143,9 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const [collapsed, setCollapsed] = useState(false);
   const [filter, setFilter] = useState('');
   const [search, setSearch] = useState(null);
+  // Where the search looks: messages (and hashes) by default, or the author,
+  // a changed path, or the code itself through Git's pickaxe (-S / -G).
+  const [searchMode, setSearchMode] = useState('message');
   const [diff, setDiff] = useState(null);
   // The open diff, read by the staging handlers: they are asynchronous, so a
   // closure over `diff` would re-read whatever was open when the click landed.
@@ -122,12 +157,17 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const [blame, setBlame] = useState(null);
   const [blameSel, setBlameSel] = useState(null);
   const [fileMenu, setFileMenu] = useState(null);
+  const [refMenu, setRefMenu] = useState(null);
   const [operation, setOperation] = useState(IDLE);
   const [bisect, setBisect] = useState(NO_BISECT);
   const [operationReady, setOperationReady] = useState(false);
   const [stashes, setStashes] = useState([]);
   const [remotes, setRemotes] = useState([]);
   const [marks, setMarks] = useState({});
+  // Git LFS, read with the refs: whether the repository uses it, and which of
+  // its files are still pointers in the working tree.
+  const [lfs, setLfs] = useState(null);
+  const [lfsPulling, setLfsPulling] = useState(false);
   const [menu, setMenu] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [conflict, setConflict] = useState(null);
@@ -141,7 +181,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const [dropRunning, setDropRunning] = useState(false);
   const drag = useGitDrag({ active: active && !working && !toolbarBusyReason && !dropDialog, revision: data.refs,
     onStart: () => {
-      setMenu(null); setFileMenu(null); setSelection([]);
+      setMenu(null); setFileMenu(null); setRefMenu(null); setSelection([]);
       if (!conflict) {
         setDiff(null); setFileHistory(null); diffRequest.current++;
         setSelected(value => SCREENS.includes(value) || value === UNCOMMITTED ? data.commits[0]?.oid || null : value);
@@ -207,36 +247,47 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   // graph simply stops highlighting a row. Our own actions still reload the
   // plain way, because after a checkout or a rebase the old selection is stale
   // on purpose.
-  const reload = useCallback(async ({ keepView = false } = {}) => {
-    lastReload.current = Date.now();
-    const epoch = ++generation.current;
-    // Reloading history must not throw the user out of the working tree
-    // screen: staging refreshes history, and the screen lives in `selected`.
-    busy.current = true; setLoading(true); setError('');
-    if (!keepView) {
-      setSelected(current => (SCREENS.includes(current) || current === UNCOMMITTED ? current : null));
-      setSelection([]); setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
-    }
-    try {
-      const [refs, stashList, remoteList, markMap] = await Promise.all([
-        window.twig.getRefs(repository.id),
-        window.twig.stashList(repository.id).catch(() => []),
-        window.twig.getRemotes(repository.id).catch(() => []),
-        window.twig.listMarks(repository.id).catch(() => ({}))
-      ]);
-      if (generation.current !== epoch) return;
-      setStashes(stashList);
-      setRemotes(remoteList);
-      setMarks(markMap);
-      layout.current = createLaneLayout(refs);
-      dataRef.current = { commits: [], lanes: [], refs, nextSkip: 0, width: 1 };
-      setData(dataRef.current);
-      busy.current = false;
-      await loadMore();
-      if (generation.current === epoch) lastReload.current = Date.now();
-    } catch {
-      if (generation.current === epoch) { setError('Could not load repository references.'); busy.current = false; setLoading(false); }
-    }
+  const reload = useCallback(({ keepView = false } = {}) => {
+    // Kept so `jump` can wait for it: a click that lands mid-reload (the
+    // BugHunter banner's "Show test commit" right after a step, a sidebar
+    // branch right after a checkout) would otherwise find history empty and
+    // busy, and silently do nothing.
+    const run = (async () => {
+      lastReload.current = Date.now();
+      const epoch = ++generation.current;
+      // Reloading history must not throw the user out of the working tree
+      // screen: staging refreshes history, and the screen lives in `selected`.
+      busy.current = true; setLoading(true); setError('');
+      if (!keepView) {
+        setSelected(current => (SCREENS.includes(current) || current === UNCOMMITTED ? current : null));
+        setSelection([]); setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
+      }
+      try {
+        const [refs, stashList, remoteList, markMap, lfsStatus] = await Promise.all([
+          window.twig.getRefs(repository.id),
+          window.twig.stashList(repository.id).catch(() => []),
+          window.twig.getRemotes(repository.id).catch(() => []),
+          window.twig.listMarks(repository.id).catch(() => ({})),
+          window.twig.getLfsStatus(repository.id).catch(() => null)
+        ]);
+        if (generation.current !== epoch) return;
+        setLfs(lfsStatus);
+        setStashes(stashList);
+        setRemotes(remoteList);
+        setMarks(markMap);
+        layout.current = createLaneLayout(refs);
+        dataRef.current = { commits: [], lanes: [], refs, nextSkip: 0, width: 1 };
+        setData(dataRef.current);
+        busy.current = false;
+        await loadMore();
+        if (generation.current === epoch) lastReload.current = Date.now();
+      } catch {
+        if (generation.current === epoch) { setError('Could not load repository references.'); busy.current = false; setLoading(false); }
+      }
+    })();
+    reloading.current = run;
+    void run.finally(() => { if (reloading.current === run) reloading.current = null; });
+    return run;
   }, [repository.id, loadMore]);
   const refreshOperation = useCallback(async () => {
     setOperationReady(false);
@@ -301,20 +352,22 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   useEffect(() => {
     if (searchQuery.length < 2) { setSearch(null); return; }
     let alive = true;
-    setSearch(current => ({ query: searchQuery, commits: current?.query === searchQuery ? current.commits : [],
-      lanes: current?.query === searchQuery ? current.lanes : [], truncated: false, loading: true, error: '' }));
+    const same = current => current?.query === searchQuery && current?.mode === searchMode;
+    setSearch(current => ({ query: searchQuery, mode: searchMode, commits: same(current) ? current.commits : [],
+      lanes: same(current) ? current.lanes : [], truncated: false, loading: true, error: '', invalid: '' }));
     const timer = setTimeout(async () => {
       try {
-        const { commits, truncated } = await window.twig.searchHistory(repository.id, searchQuery);
-        if (!alive) return;
-        setSearch({ query: searchQuery, commits, truncated, loading: false, error: '',
-          lanes: commits.map(commit => ({ oid: commit.oid, lane: 0, color: 0, segments: [] })) });
+        const result = await window.twig.searchHistory(repository.id, searchQuery, searchMode);
+        // A newer keystroke cancelled this search in main; its own answer is on the way.
+        if (!alive || result.cancelled) return;
+        setSearch({ query: searchQuery, mode: searchMode, commits: result.commits, truncated: result.truncated, loading: false, error: '',
+          invalid: result.invalid || '', lanes: result.commits.map(commit => ({ oid: commit.oid, lane: 0, color: 0, segments: [] })) });
       } catch {
-        if (alive) setSearch({ query: searchQuery, commits: [], lanes: [], truncated: false, loading: false, error: 'Could not search this repository’s history.' });
+        if (alive) setSearch({ query: searchQuery, mode: searchMode, commits: [], lanes: [], truncated: false, loading: false, invalid: '', error: 'Could not search this repository’s history.' });
       }
     }, 250);
     return () => { alive = false; clearTimeout(timer); };
-  }, [searchQuery, repository.id, referencesRevision]);
+  }, [searchQuery, searchMode, repository.id, referencesRevision]);
   const searchIndexMap = useMemo(() => new Map((search?.commits || []).map((commit, index) => [commit.oid, index])), [search]);
 
   /**
@@ -349,6 +402,25 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       return null;
     } finally { setWorking(false); }
   }, [reload, refreshOperation, onConsole, onRepositoryChanged]);
+
+  /**
+   * `git lfs pull`: downloads the LFS content of checked-out files in place of
+   * their pointers. No ref moves, so nothing enters the Undo chain; it reaches
+   * the network, so it can be cancelled.
+   */
+  const pullLfs = useCallback(async () => {
+    setLfsPulling(true); setNote('');
+    try {
+      const result = await window.twig.pullLfs(repository.id);
+      if (result.ok) setNote('Git LFS files downloaded.');
+      else { setNote(result.message); if (!result.cancelled) onConsole(); }
+    } catch (failure) { setNote(failure.message || 'git lfs pull failed.'); onConsole(); }
+    finally {
+      setLfsPulling(false);
+      setLfs(await window.twig.getLfsStatus(repository.id).catch(() => null));
+      onRepositoryChanged?.();
+    }
+  }, [repository.id, onConsole, onRepositoryChanged]);
 
   /**
    * Bisect answers with the marks Git left behind, not with an operation state,
@@ -446,7 +518,8 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     // anything else falls back to selecting just that commit.
     if (selectionSet.has(oid) && selection.length >= 2) {
       const commits = dataRef.current.commits.filter(item => selectionSet.has(item.oid));
-      setMenu({ commit, x, y, multi: commits, onBranch: commits.every(item => headAncestors.has(item.oid)) });
+      setMenu({ commit, x, y, multi: commits, onBranch: commits.every(item => headAncestors.has(item.oid)),
+        someOnBranch: commits.some(item => headAncestors.has(item.oid)) });
     } else {
       choose(oid);
       setMenu({ commit, x, y, multi: null });
@@ -500,10 +573,11 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
       copy: (text, what) => {
         void window.twig.copyText(text).then(() => setNote(`${what} copied.`)).catch(() => setNote('Could not copy that.'));
       },
+      exportPatch: () => void exportPatches([commit.oid]),
       // Ref actions, mirroring the "Branches and tags" screen. Deletion has no
       // inverse, so every mutating one opens the §6.5 dialog first.
       renameBranch: name => setDialog({
-        type: 'name', title: `Rename ${name}`, label: 'New branch name', placeholder: name, confirmLabel: 'Rename branch',
+        type: 'name', title: `Rename ${name}`, label: 'New branch name', placeholder: name, initialValue: name, confirmLabel: 'Rename branch',
         onConfirm: ({ name: next }) => perform(() => window.twig.renameBranch(repository.id, name, next), `Branch ${name} renamed to ${next}.`)
       }),
       setUpstream: ref => setDialog({
@@ -568,6 +642,76 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     if (!dirty) { run(); return; }
     setDialog({ type: 'confirm', title, command, consequence, confirmLabel, onConfirm: run });
   }
+
+  function copyText(text, what) {
+    void window.twig.copyText(text).then(() => setNote(`${what} copied.`)).catch(() => setNote('Could not copy that.'));
+  }
+
+  /**
+   * A sidebar ref's menu: the commit handlers aimed at the commit the ref
+   * points to, plus what only makes sense for a ref — rebasing onto it,
+   * comparing it with HEAD, branching or tagging from it by name.
+   */
+  function refHandlers(ref) {
+    const base = commitHandlers({ oid: ref?.target || headOid || '', parents: [], subject: '', body: '' });
+    const target = headBranch || 'HEAD';
+    return {
+      ...base,
+      show: item => void jump(item.target),
+      openWorktree: name => openWorktreeDialog(name),
+      checkoutDetached: item => confirmIfDirty({
+        title: `Check out ${item.name}`, command: ['checkout', '--detach', item.target, '--'],
+        consequence: 'HEAD will be detached: new commits will belong to no branch until you create one.',
+        confirmLabel: 'Check out',
+        run: () => performGated(null, 'post-checkout', () => window.twig.checkoutRef(repository.id, item.target, true), `Checked out ${item.name} with a detached HEAD.`)
+      }),
+      rebaseOnto: item => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, item.target, null), `Rebased ${target} onto ${item.name}.`),
+      // The same compare a drag-and-drop offers: the ref against HEAD, read-only.
+      compare: item => {
+        selectionAnchor.current = item.target; jumpRequest.current++;
+        setSelected(item.target); setSelection([]); setRange({ base: headOid, oid: item.target });
+        setDetail(true); setDiff(null); setFileHistory(null); diffRequest.current++;
+      },
+      createBranchFrom: item => setDialog({
+        type: 'name', title: `Create a branch from ${item.name}`, label: 'Branch name', placeholder: 'feature/short-description',
+        confirmLabel: 'Create branch', extra: 'Check it out straight away',
+        onConfirm: ({ name, checked }) => perform(() => window.twig.createBranch(repository.id, name, item.target, checked), `Branch ${name} created.`)
+      }),
+      createTagAt: () => base.createTag(),
+      createBranchAtHead: () => commitHandlers({ oid: headOid, parents: [] }).createBranch(),
+      createTagAtHead: () => commitHandlers({ oid: headOid, parents: [] }).createTag(),
+      fetch: () => void perform(() => window.twig.runSync(repository.id, 'fetch-prune', null), 'Fetched.'),
+      manage: () => choose('branches'),
+      copy: copyText
+    };
+  }
+
+  /**
+   * A file row's menu. Opening and revealing go through main, which resolves
+   * the path inside this repository's working tree and picks the editor from
+   * its own setting; a refusal (the file is gone, it would run as a program,
+   * the editor is not installed) is a note, and only a launch that actually
+   * failed points at the console, where it is journaled.
+   */
+  const fileHandlers = {
+    openInEditor: async path => {
+      try {
+        const result = await window.twig.openInEditor(repository.id, path);
+        setNote(result.ok ? `Opened ${path} in ${result.editor}.` : result.message);
+        if (!result.ok && result.reason === 'failed') onConsole();
+      } catch { setNote('Could not open that file.'); }
+    },
+    reveal: async path => {
+      try {
+        const result = await window.twig.revealFile(repository.id, path);
+        if (result.missing) setNote(`${path} is not in the working tree; showing ${result.shown === '.' ? 'the repository folder' : result.shown} instead.`);
+      } catch { setNote('Could not show that file.'); }
+    },
+    copyPath: path => copyText(path, 'Path'),
+    copyFullPath: path => copyText(absolutePath(repository.path, path), 'Full path'),
+    fileHistory: path => void openFileHistory(path),
+    blame: (path, oid) => openBlame(path, oid)
+  };
 
   /**
    * Rewording the tip is `commit --amend`, which touches nothing but HEAD, so
@@ -647,6 +791,72 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     } finally { setWorking(false); }
   }
 
+  // Worktrees and submodules open as tabs of their own; App switches to them.
+  const [toolsRefresh, setToolsRefresh] = useState(0);
+  function openWorktreeDialog(branch = null) { setDialog({ type: 'worktree', branch }); }
+  async function openTab(open) {
+    setNote('');
+    try { onOpenWorkspace?.(await open()); }
+    catch (failure) { setNote(failure.message || 'Could not open it as a tab.'); }
+  }
+  async function createWorktree(request) {
+    setWorking(true); setNote('');
+    try {
+      const result = await window.twig.addWorktree(repository.id, request);
+      if (!result.ok) { setNote(result.message); onConsole(); return; }
+      setNote(`Worktree for ${request.branch} created in ${result.path}.`);
+      setToolsRefresh(value => value + 1);
+      if (request.create) void reload();
+      onOpenWorkspace?.(result.workspace);
+    } catch (failure) { setNote(failure.message || 'Could not add the worktree.'); onConsole(); }
+    finally { setWorking(false); }
+  }
+
+  /** `git format-patch` of the given commits (oldest first) into one file the save dialog names. */
+  async function exportPatches(oids) {
+    setNote('');
+    try {
+      const result = await window.twig.exportPatches(repository.id, oids);
+      if (result.cancelled) return;
+      if (result.ok) setNote(`${result.count === 1 ? 'Patch' : `${result.count} patches`} saved to ${result.path}.`);
+      else { setNote(result.message); onConsole(); }
+    } catch (failure) { setNote(failure.message || 'Could not export the patch.'); onConsole(); }
+  }
+
+  /** Pick a patch file in the native dialog; main says what it holds before anything runs. */
+  async function openPatch() {
+    setNote('');
+    try {
+      const patch = await window.twig.choosePatch(repository.id);
+      if (!patch) return;
+      if (patch.invalid) { setNote(`${patch.name}: ${patch.reason}`); return; }
+      setDialog({ type: 'patch', patch });
+    } catch (failure) { setNote(failure.message || 'Could not read that file.'); }
+  }
+
+  /**
+   * Cherry-pick or revert of a multi-selection, one sequencer run. The graph
+   * lists commits newest first; a pick replays them oldest first, the order
+   * they were made in, and a revert undoes them newest first.
+   */
+  function openPickMany(kind, commits) {
+    const oids = commits.map(commit => commit.oid);
+    const ordered = kind === 'cherry-pick' ? [...oids].reverse() : oids;
+    const count = commits.length;
+    const target = headBranch || 'HEAD';
+    setDialog({
+      type: 'confirm', danger: false,
+      title: kind === 'cherry-pick' ? `Cherry-pick ${count} commits` : `Revert ${count} commits`,
+      command: kind === 'cherry-pick' ? ['cherry-pick', ...ordered] : ['revert', '--no-edit', ...ordered],
+      consequence: kind === 'cherry-pick'
+        ? `${count} new commits are made on ${target}, oldest first, with the same changes and messages. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.`
+        : `${count} new commits are made on ${target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.`,
+      confirmLabel: kind === 'cherry-pick' ? `Cherry-pick ${count} commits` : `Revert ${count} commits`,
+      onConfirm: () => void perform(() => (kind === 'cherry-pick' ? window.twig.cherryPickMany : window.twig.revertMany)(repository.id, ordered),
+        kind === 'cherry-pick' ? `Cherry-picked ${count} commits.` : `Reverted ${count} commits.`)
+    });
+  }
+
   async function openRebase(oid) {
     setWorking(true); setNote('');
     try {
@@ -710,6 +920,8 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   async function jump(oid) {
     const request = ++jumpRequest.current;
     setError('');
+    if (reloading.current) await reloading.current.catch(() => {});
+    if (jumpRequest.current !== request) return;
     while (!dataRef.current.commits.some(commit => commit.oid === oid) && dataRef.current.nextSkip !== null) {
       if (!await loadMore() || jumpRequest.current !== request) return;
     }
@@ -830,7 +1042,22 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
   const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
   const stagingActions = {
     busy: staging,
-    reasons: { stage: stageReason, unstage: stageReason, stageAll: stageAllReason, unstageAll: unstageAllReason },
+    reasons: { stage: stageReason, unstage: stageReason, stageAll: stageAllReason, unstageAll: unstageAllReason,
+      discardAll: stageAllReason,
+      // Main refuses these too; the disabled button says why before the click.
+      discard: (file, section) => stageReason
+        || (file.status === 'U' ? 'Resolve the conflict first' : undefined)
+        || (section === 'unstaged' && file.status === 'A' ? 'Only marked for tracking (git add -N): unstage it first' : undefined) },
+    // Discarding always asks first (§6.5), then runs like staging does: the
+    // status is re-read and the open diff refreshed, history is left alone.
+    discard: (file, section) => setDialog({ type: 'confirm',
+      ...discardDialog({ kind: section === 'untracked' ? 'untracked' : 'file', path: file.path }),
+      onConfirm: () => void runStaging(() => window.twig.discardFile(repository.id, file.path, section),
+        () => `${section === 'untracked' ? `Deleted ${file.path}` : `Discarded changes to ${file.path}`}. Undo brings ${section === 'untracked' ? 'it' : 'them'} back.`) }),
+    discardAll: scope => setDialog({ type: 'confirm',
+      ...discardDialog({ kind: scope === 'untracked' ? 'untracked-all' : 'tracked', paths: (scope === 'untracked' ? summary.untracked : summary.unstaged).map(file => file.path) }),
+      onConfirm: () => void runStaging(() => window.twig.discardAll(repository.id, scope),
+        outcome => `${scope === 'untracked' ? `Deleted ${plural(outcome.count, 'untracked file')}` : `Discarded changes to ${plural(outcome.count, 'file')}`}. Undo brings them back.`) }),
     stage: file => void runStaging(() => window.twig.stageFile(repository.id, file.path), () => `Staged ${file.path}.`),
     unstage: file => void runStaging(
       () => window.twig.unstageFile(repository.id, file.path, Boolean(repository.status?.branch?.unborn)),
@@ -872,7 +1099,11 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     || (loading ? 'History is loading' : undefined)
     || (!data.commits.length ? 'This repository has no commits to search' : undefined)
     || (!hunterCommit ? 'Select a commit with the bug in the history first' : undefined);
-  const visibleRefs = data.refs.filter(ref => ref.name.toLowerCase().includes(filter.toLowerCase()));
+  // The sidebar filters refs by name only when the search is about names and
+  // messages; an author or a code fragment says nothing about branch names.
+  const visibleRefs = searchMode === 'message' ? data.refs.filter(ref => ref.name.toLowerCase().includes(filter.toLowerCase())) : data.refs;
+  const headRef = headBranch ? data.refs.find(ref => ref.type === 'local' && ref.name === headBranch) || null : null;
+  const headInfo = { branch: headBranch, oid: headOid, detached: Boolean(repository.status?.branch?.detached) };
   const showDetail = detail && !conflict && !screen;
   return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${fileHistory || blame ? fileHistoryWidth : width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
     {active && toolbarSlot && createPortal(
@@ -888,18 +1119,29 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
             <GitBranch /><span>Branches and tags</span><small>{data.refs.length}</small></button>
           <button className={`real-branch ${screen === 'stashes' ? 'selected' : ''}`} onClick={() => choose('stashes')}>
             <Archive /><span>Stashes</span><small>{stashes.length}</small></button>
+          <button className={`real-branch ${screen === 'reflog' ? 'selected' : ''}`} onClick={() => choose('reflog')} title="Where HEAD and each branch have been — recover lost work">
+            <History /><span>Reflog</span></button>
+          <button className={`real-branch ${screen === 'worktrees' ? 'selected' : ''}`} onClick={() => choose('worktrees')} title="Other checkouts of this repository, each in its own folder">
+            <FolderGit2 /><span>Worktrees</span></button>
+          <button className={`real-branch ${screen === 'submodules' ? 'selected' : ''}`} onClick={() => choose('submodules')} title="Repositories pinned inside this one">
+            <Boxes /><span>Submodules</span></button>
           <button className={`real-branch ${screen === 'automations' ? 'selected' : ''}`} onClick={() => choose('automations')}>
             <Workflow /><span>Automations</span></button>
         </nav>
-        <div className="sidebar-sections">{[['LOCAL', 'local'], ['REMOTE', 'remote'], ['TAGS', 'tag']].map(([label, type]) => <details key={type} open><summary>{label}<span>{data.refs.filter(ref => ref.type === type).length}</span></summary>
-          <BranchTree refs={visibleRefs.filter(ref => ref.type === type).map(ref => ({ ...ref, label: ref.name }))} onSelect={jump} drag={drag} headBranch={headBranch} />
+        <div className="sidebar-sections">{[['LOCAL', 'local'], ['REMOTE', 'remote'], ['TAGS', 'tag']].map(([label, type]) => <details key={type} open><summary {...contextMenuProps((x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ section: type, label, x, y }); })}>{label}<span>{data.refs.filter(ref => ref.type === type).length}</span></summary>
+          <BranchTree refs={visibleRefs.filter(ref => ref.type === type).map(ref => ({ ...ref, label: ref.name }))} onSelect={jump} drag={drag} headBranch={headBranch}
+            onMenu={(ref, x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ ref, x, y }); }}
+            onRename={ref => { if (operation.kind === 'none' && !working) refHandlers(ref).renameBranch(ref.name); }} />
           {!visibleRefs.some(ref => ref.type === type) && <p className="section-empty">No matching {label.toLowerCase()} refs</p>}
-        </details>)}</div><div className="sidebar-footer"><span>{repository.status?.branch?.name || 'Detached HEAD'}</span><Button icon={PanelLeftClose} aria-label="Collapse repository sidebar" onClick={() => setCollapsed(true)} /></div>
+        </details>)}</div><div className="sidebar-footer"><span {...(headRef ? { tabIndex: 0, title: `${headRef.name} · Right-click or Shift+F10 for actions`,
+          ...contextMenuProps((x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ ref: headRef, x, y }); }) } : {})}>{repository.status?.branch?.name || 'Detached HEAD'}</span><Button icon={PanelLeftClose} aria-label="Collapse repository sidebar" onClick={() => setCollapsed(true)} /></div>
       </>}
     </aside>
     {!collapsed && <Splitter side="left" width={sidebarWidth} onWidth={setSidebarWidth} label="Repository sidebar width" />}
     <main className="graph-panel" aria-label="Repository history">
-      <header className="graph-heading"><div><GitBranch /><strong>History</strong><span className="count">{data.commits.length} loaded</span></div><div>{!detail && <Button icon={PanelRightOpen} aria-label="Show commit details" onClick={() => setDetail(true)} />}<Button icon={RefreshCw} reason={loading ? 'History is loading' : undefined}
+      <header className="graph-heading"><div><GitBranch /><strong>History</strong><span className="count">{data.commits.length} loaded</span></div><div>{!detail && <Button icon={PanelRightOpen} aria-label="Show commit details" onClick={() => setDetail(true)} />}<Button icon={FileInput}
+        reason={working ? 'Wait for the current action' : operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : undefined}
+        title="Apply a .patch or .mbox file: commits through git am, a plain diff through git apply" onClick={() => void openPatch()}>Apply patch…</Button><Button icon={RefreshCw} reason={loading ? 'History is loading' : undefined}
         onClick={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }}>Refresh</Button></div></header>
       {error && <div className="history-error" role="alert">{error}<button onClick={onConsole}>Show output</button></div>}
       {drag.state && <div className="git-drag-status" role="status">
@@ -915,12 +1157,23 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         blockedReason={operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : dirty ? 'Commit or stash your changes before the next test' : undefined}
         selectedCommit={!screen && !range ? data.commits[indexMap.get(selected)] : null}
         onStep={(step, oid = null) => void performBisect(step, oid)} onOpenCommit={jump} />
+      {lfs?.used && (lfs.installed === false || lfs.missing > 0 || lfsPulling) && <div className="lfs-banner" role="status">
+        <HardDrive aria-hidden="true" />
+        {lfs.installed === false
+          ? <span>This repository keeps large files in <strong>Git LFS</strong>, but git-lfs is not installed. Those files are small pointers until you install it and run <code>git lfs install</code>.</span>
+          : <span title={lfs.missingPaths.join('\n')}><strong>{lfs.missing} of {lfs.files}</strong> Git LFS {lfs.files === 1 ? 'file is' : 'files are'} still {lfs.missing === 1 ? 'a pointer' : 'pointers'} here{lfs.missingPaths[0] ? `, like ${lfs.missingPaths[0]}` : ''}.</span>}
+        {lfs.installed && <Button icon={HardDrive} reason={lfsPulling ? 'Downloading…' : working ? 'Wait for the current action' : undefined} onClick={() => void pullLfs()}
+          title="Runs git lfs pull: downloads the content of these files and puts it in place of their pointers">Download (git lfs pull)</Button>}
+        {lfsPulling && <Button onClick={() => void window.twig.cancelRepositoryTool(repository.id)}>Cancel</Button>}
+      </div>}
       <div hidden={Boolean(diff) || Boolean(fileHistory) || Boolean(blame) || Boolean(conflict) || Boolean(screen)} className="history-slot">
         {search ? <div className="search-results">
           <div className="search-results-heading" role="status">
-            <span>{search.loading ? `Searching for “${search.query}”…`
-              : search.error ? search.error
-              : `${search.commits.length}${search.truncated ? '+' : ''} ${search.commits.length === 1 ? 'commit matches' : 'commits match'} “${search.query}”`}</span>
+            <span>{searchSummary({ ...search, count: search.commits.length })}</span>
+            <label className="search-mode"><span>Search in</span>
+              <select aria-label="Search in" value={searchMode} onChange={event => setSearchMode(event.target.value)}>
+                {SEARCH_MODE_OPTIONS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select></label>
             <Button onClick={() => setFilter('')}>Clear search results</Button>
           </div>
           {search.loading ? <div className="loading-shell" aria-label="Searching history">{Array.from({ length: 6 }, (_, i) => <div className="skeleton" key={i} />)}</div>
@@ -928,7 +1181,7 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
             : search.commits.length ? <CommitGraph commits={search.commits} lanes={search.lanes} laneCount={1} refMap={refMap} indexMap={searchIndexMap} selected={selected} head={repository.status?.branch?.oid}
                 onSelect={oid => choose(oid)} onMenu={openMenu} loadMore={NOOP} hasMore={false} loading={false} summary={null} stashes={[]} marks={marks}
                 onUncommitted={NOOP} onStashes={NOOP} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />
-              : <p className="empty-inline">No commit message or hash matches “{search.query}”. The sidebar still shows matching branches and tags.</p>}
+              : <p className="empty-inline">{search.invalid || searchEmpty(search.query, search.mode)}</p>}
         </div>
         : loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
@@ -941,8 +1194,16 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} />}
       {!conflict && screen === 'stashes' && <StashScreen repository={repository} busy={working}
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} />}
+      {!conflict && screen === 'reflog' && <ReflogScreen repository={repository} refs={data.refs} headBranch={headBranch} operation={operation} busy={working}
+        onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} onJump={oid => void jump(oid)} />}
       {!conflict && screen === 'worktree' && <WorktreeScreen repository={repository} operation={operation} onConsole={onConsole} onChanged={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }}
         runAutomation={runAutomation} onBack={() => choose(data.commits[0]?.oid || null)} />}
+      {!conflict && screen === 'worktrees' && <WorktreesScreen repository={repository} busy={working} refreshKey={toolsRefresh}
+        onBack={() => choose(data.commits[0]?.oid || null)} onNew={branch => openWorktreeDialog(branch)} onOpen={folder => openTab(() => window.twig.openWorktree(repository.id, folder))}
+        onDialog={setDialog} onWorkspace={next => onWorkspace?.(next)} onConsole={onConsole} />}
+      {!conflict && screen === 'submodules' && <SubmodulesScreen repository={repository} busy={working} refreshKey={toolsRefresh}
+        onBack={() => choose(data.commits[0]?.oid || null)} onOpen={folder => openTab(() => window.twig.openSubmodule(repository.id, folder))}
+        onDialog={setDialog} onChanged={() => onRepositoryChanged?.()} onConsole={onConsole} />}
       {!conflict && screen === 'automations' && <AutomationsScreen repository={repository} refreshKey={automationRefresh} busy={working || Boolean(execution)}
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onChanged={() => setAutomationRefresh(value => value + 1)}
         onRunEvent={(event, options) => void runAutomation(event, options)} />}
@@ -964,25 +1225,45 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
         : <p className="empty-inline">Select a commit to view this file’s changes.</p>}
     </aside>}
     {showDetail && !fileHistory && !blame && uncommitted && <WorktreePanel summary={summary} branch={headBranch} open={diff}
+      onFileMenu={(file, section, x, y) => { setMenu(null); setRefMenu(null); setFileMenu({ path: file.path, section, status: file.status, x, y }); }}
       actions={stagingActions} error={stagingError} onConsole={onConsole} onDismissError={() => setStagingError('')}
       onFile={openWorktreeFile} onStaging={() => choose('worktree')} onClose={() => setDetail(false)} />}
     {showDetail && !fileHistory && !blame && !uncommitted && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile}
       onFileMenu={(path, x, y) => setFileMenu({ path, x, y })} onConsole={onConsole} range={range} commitColors={commitColors} remotes={remotes}
       mark={commitState.commit ? marks[commitState.commit.oid] || null : null} onSetMark={applyMark} onClearMark={removeMark} />}
     {fileMenu && <Menu x={fileMenu.x} y={fileMenu.y} label={`Actions for ${fileMenu.path}`} onClose={() => setFileMenu(null)}
-      items={[
-        { key: 'file-history', text: 'File history', hint: 'Every commit that changed this file', icon: History, run: () => void openFileHistory(fileMenu.path) },
-        { key: 'blame', text: 'Blame history', hint: 'Who last changed each line, with steps into the past', icon: AlignLeft,
-          reason: /^[0-9a-f]{7,64}$/i.test(commitState.commit?.oid || selected || '') ? undefined : 'Select a committed version first',
-          run: () => openBlame(fileMenu.path, commitState.commit?.oid || selected) }
-      ]} />}
+      items={buildFileMenu({
+        path: fileMenu.path, platform, editor,
+        // A commit's file is blamed at that commit; an uncommitted one at HEAD,
+        // unless it is new and HEAD has no version of it to blame.
+        blameOid: fileMenu.section
+          ? (fileMenu.status === 'A' ? null : headOid)
+          : [commitState.commit?.oid, selected].find(oid => /^[0-9a-f]{7,64}$/i.test(oid || '')) || null,
+        tracked: fileMenu.section !== 'untracked',
+        move: fileMenu.section ? (fileMenu.section === 'staged' ? 'unstage' : 'stage') : null,
+        discard: fileMenu.section === 'unstaged' ? 'changes' : fileMenu.section === 'untracked' ? 'untracked' : null,
+        handlers: { ...fileHandlers,
+          discard: () => stagingActions.discard({ path: fileMenu.path, status: fileMenu.status }, fileMenu.section),
+          discardReason: fileMenu.section && fileMenu.section !== 'staged' ? stagingActions.reasons.discard({ status: fileMenu.status }, fileMenu.section) : undefined,
+          move: () => (fileMenu.section === 'staged' ? stagingActions.unstage : stagingActions.stage)({ path: fileMenu.path }),
+          moveReason: fileMenu.section === 'staged' ? stagingActions.reasons.unstage : stagingActions.reasons.stage }
+      })} />}
+    {refMenu && <Menu x={refMenu.x} y={refMenu.y} onClose={() => setRefMenu(null)}
+      label={refMenu.ref ? `Actions for ${refMenu.ref.name}` : `Actions for ${refMenu.label}`}
+      items={refMenu.ref
+        ? buildRefMenu({ ref: refMenu.ref, head: headInfo, remotes: remotes.map(remote => remote.name), operation, handlers: refHandlers(refMenu.ref) })
+        : buildSectionMenu({ type: refMenu.section, head: headInfo, remotes: remotes.map(remote => remote.name), operation, handlers: refHandlers(null) })} />}
     {menu && <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)}
       label={menu.multi ? `Actions for ${menu.multi.length} selected commits` : `Actions for commit ${menu.commit.oid.slice(0, 7)}`}
       items={menu.multi
         ? buildMultiCommitMenu({
-          commits: menu.multi, operation, dirty, onCurrentBranch: menu.onBranch,
+          commits: menu.multi, operation, dirty, onCurrentBranch: menu.onBranch, someOnCurrentBranch: menu.someOnBranch,
+          head: { branch: headBranch },
           handlers: {
             squash: () => void openSquash(menu.multi),
+            cherryPick: () => openPickMany('cherry-pick', menu.multi),
+            exportPatch: () => void exportPatches(exportOrder(menu.multi)),
+            revert: () => openPickMany('revert', menu.multi),
             copyShas: () => void window.twig.copyText(menu.multi.map(commit => commit.oid).join('\n'))
               .then(() => setNote(`${menu.multi.length} SHAs copied.`)).catch(() => setNote('Could not copy that.'))
           }
@@ -1006,6 +1287,12 @@ export default function HistoryWorkspace({ repository, active, mod, filterRef, o
     {dialog?.type === 'message' && <MessageDialog {...dialog} onClose={() => setDialog(null)} />}
     {dialog?.type === 'upstream' && <UpstreamDialog branch={dialog.branch} current={dialog.current} candidates={dialog.candidates}
       onClose={() => setDialog(null)} onConfirm={dialog.onConfirm} />}
+    {dialog?.type === 'worktree' && <WorktreeDialog repository={repository} refs={data.refs} headOid={headOid} headBranch={headBranch}
+      initialBranch={dialog.branch} onClose={() => setDialog(null)} onCreate={request => void createWorktree(request)} />}
+    {dialog?.type === 'patch' && <PatchDialog patch={dialog.patch} branch={headBranch} onClose={() => setDialog(null)}
+      onApply={index => void (dialog.patch.kind === 'mbox'
+        ? perform(() => window.twig.applyPatchCommits(repository.id, dialog.patch.token), `${dialog.patch.commits.length === 1 ? 'Patch' : `${dialog.patch.commits.length} patches`} applied as commits.`)
+        : perform(() => window.twig.applyPatchFiles(repository.id, dialog.patch.token, index), `Patch applied to the files${index ? ' and staged' : ''}.`))} />}
     {dialog?.type === 'rebase' && <RebaseDialog commits={dialog.commits} onClose={() => setDialog(null)}
       onRun={entries => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, dialog.oid, entries), 'Rebase finished.')} />}
     {execution && <ExecutionPanel event={execution.event} label={execution.label} phase={execution.phase}

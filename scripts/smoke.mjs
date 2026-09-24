@@ -47,10 +47,16 @@ try {
     'getBisectState', 'runBisect', 'listMarks', 'setMark', 'clearMark',
     'getBlame', 'getReverseBlame', 'getBlameBefore', 'cancelBlame',
     'cloneRepository', 'getRemotes', 'removeRepository', 'resetDemoWorkspace', 'setDemoWorkspaceVisible', 'getUndoState', 'moveUndo', 'onUndoUpdate',
-    'watchRepository', 'onRepositoryChange',
+    'watchRepository', 'onRepositoryChange', 'getReflog', 'moveBranchTo',
+    'getBackgroundFetch', 'setBackgroundFetch', 'getBackgroundFetchStatus', 'onBackgroundFetch',
     'getSshKeys', 'getSshConfig', 'generateSshKey', 'saveSshConfig', 'testSshConnection', 'cancelSshConnection', 'secureSshKey',
     'getAutomationConfig', 'saveAutomationConfig', 'trustAutomations', 'runAutomation', 'cancelAutomation', 'getAutomationRuns', 'getAutomationRun', 'onAutomationStep',
-    'runConsoleCommand'].sort());
+    'runConsoleCommand', 'getEditor', 'setEditor', 'openInEditor', 'revealFile',
+    'discardFile', 'discardAll', 'discardSelection',
+    'cherryPickMany', 'revertMany', 'getSignature', 'getLfsStatus', 'pullLfs', 'cancelRepositoryTool',
+    'exportPatches', 'choosePatch', 'applyPatchCommits', 'applyPatchFiles',
+    'getSubmodules', 'updateSubmodules', 'openSubmodule',
+    'getWorktrees', 'planWorktree', 'addWorktree', 'removeWorktree', 'pruneWorktrees', 'openWorktree'].sort());
   const security = await app.evaluate(({ BrowserWindow }) => {
     const prefs = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
     return { sandbox: prefs.sandbox, contextIsolation: prefs.contextIsolation, nodeIntegration: prefs.nodeIntegration };
@@ -89,6 +95,28 @@ try {
   await search.fill('repository-tabs');
   await page.getByRole('button', { name: 'repository-tabs', exact: true }).waitFor();
   await search.fill('');
+  // Syntax colours: a JavaScript change in the demo history is coloured by
+  // role, the toolbar names the language, and Settings turns it off and on
+  // for every diff at once.
+  await page.getByRole('listbox', { name: 'Commit history', exact: true }).getByRole('option').filter({ hasText: 'Add duration to command entries' }).click();
+  await page.getByRole('button', { name: 'Modified app/console.js', exact: true }).click();
+  const codeDiff = page.getByRole('region', { name: 'File diff', exact: true });
+  await codeDiff.locator('.syn-keyword', { hasText: 'export' }).first().waitFor();
+  assert.equal(await codeDiff.locator('.diff-language').textContent(), 'JavaScript');
+  assert.ok(await codeDiff.locator('.diff-lines.diff-syntax').count() === 1);
+  assert.equal(await codeDiff.locator('.diff-added .diff-marker').first().textContent(), '+');
+  // The coloured text is still the text: every character of the added line is there.
+  assert.equal(await codeDiff.locator('.diff-added').last().locator('> span:last-child').textContent(), '+export const showsDuration = true;');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Syntax highlighting').selectOption('off');
+  await page.keyboard.press('Escape');
+  assert.equal(await codeDiff.locator('[class*="syn-"]').count(), 0, 'off means plain text everywhere');
+  assert.equal(await codeDiff.locator('.diff-language').textContent(), 'JavaScript · no highlighting');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByLabel('Syntax highlighting').selectOption('on');
+  await page.keyboard.press('Escape');
+  await codeDiff.locator('.syn-keyword').first().waitFor();
+  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
   // The console lives at the bottom and opens from its own status bar; the
   // toolbar has no second switch for it.
   assert.equal(await page.locator('.toolbar').getByRole('button', { name: /Terminal/ }).count(), 0);
@@ -96,7 +124,7 @@ try {
   await page.getByRole('textbox', { name: 'Search command log' }).waitFor();
   // It opens on "My": the startup Git check is 🌱 Twig's own command, so it is
   // in Full History only.
-  const versionCheck = page.getByText(/git --no-pager -c color.ui=false --version/);
+  const versionCheck = page.getByText(/git --no-pager -c color.ui=false -c log.showSignature=false --version/);
   assert.equal(await page.getByRole('button', { name: 'My', exact: true }).getAttribute('aria-pressed'), 'true', 'the console opens on My');
   assert.equal(await versionCheck.count(), 0, 'the startup check is not one of the user actions');
   await page.getByRole('button', { name: 'Full History', exact: true }).click();

@@ -125,9 +125,9 @@ assertRejects(record(SHA1_A, '', 'a', 'a@example.com', '2026-01-01T00:00:00Z', '
 
 // --- buildHistoryArgv: pure argv builder, no Git spawned ---
 
-assert.deepEqual(buildHistoryArgv(), ['log', '--exclude=refs/stash', '--all', '--topo-order', '-z',
+assert.deepEqual(buildHistoryArgv(), ['log', '--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--topo-order', '-z',
   '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=250', '--skip=0']);
-assert.deepEqual(buildHistoryArgv({ limit: 50, skip: 100 }), ['log', '--exclude=refs/stash', '--all', '--topo-order', '-z',
+assert.deepEqual(buildHistoryArgv({ limit: 50, skip: 100 }), ['log', '--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--topo-order', '-z',
   '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=50', '--skip=100']);
 
 for (const limit of [0, -1, 501, 1.5, '250', NaN, Infinity]) {
@@ -156,7 +156,7 @@ for (const limit of [0, -1, 501, 1.5, '250', NaN, Infinity]) {
 
 // --- buildSearchArgv: literal, case-insensitive `git log --grep` over all refs ---
 
-assert.deepEqual(buildSearchArgv('fix login'), ['log', '--exclude=refs/stash', '--all', '--topo-order', '-z', '-i', '--fixed-strings',
+assert.deepEqual(buildSearchArgv('fix login'), ['log', '--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--topo-order', '-z', '-i', '--fixed-strings',
   '--grep=fix login', '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=200']);
 // The query is trimmed and stays one argv token after `--grep=`, so a regex- or
 // flag-looking search string is matched literally, never interpreted.

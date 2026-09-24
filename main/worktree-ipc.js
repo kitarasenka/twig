@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { loadWorktree, loadWorktreeDiff } from './git/worktree.js';
 import { applySelection, intentToAdd, stageAll, stageFile, unstageAll, unstageFile } from './git/stage.js';
+import { discardAll, discardFile, discardSelection } from './git/discard.js';
 import { createCommit, stashPop, stashPush } from './git/commit-ops.js';
 import { loadStashDiff, loadStashes, loadStashFiles, runStashAction } from './git/stash.js';
 import { loadDivergence, pushRef, runSync } from './git/sync.js';
@@ -28,7 +29,9 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
       const repo = repositories.snapshot().repositories.find(item => item.id === args[0]);
       if (!repo || !repo.available) throw new Error('Repository is unavailable');
       const run = () => read({ cwd: repo.path, log: journal }, ...args.slice(1));
-      const kind = channel === 'stash:action' && ['apply', 'pop'].includes(args[1]) ? `stash:${args[1]}` : channel;
+      // Every discard is one kind for Undo: its inverse comes from the backup it recorded.
+      const kind = channel === 'stash:action' && ['apply', 'pop'].includes(args[1]) ? `stash:${args[1]}`
+        : channel.startsWith('worktree:discard') ? 'worktree:discard' : channel;
       const parameters = kind !== channel ? [args[2]] : args.slice(1);
       return ['worktree:read', 'worktree:diff', 'stash:list', 'stash:files', 'stash:diff', 'sync:divergence', 'sync:cancel', 'sync:run', 'sync:push-ref', 'sync:drop'].includes(channel)
         ? run() : undo.perform(repo.path, kind, parameters, run);
@@ -77,6 +80,25 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
       ...options, path: file, hunks: current.hunks, selection, reverse: staged,
       added: current.added, deleted: current.deleted, mode: current.mode
     });
+  });
+
+  /**
+   * Discarding. Like the bulk stage actions, a section is named, never listed:
+   * main reads what it holds now. A single path must still be in the section
+   * it was discarded from, and a line selection carries the digest of the diff
+   * it was made on. Each one backs the files up first (see git/discard.js).
+   */
+  handler('worktree:discard', 3, (options, path, section) => {
+    if (!['unstaged', 'untracked'].includes(section)) throw new Error('Invalid discard request');
+    return discardFile({ ...options, path: asPath(path), section });
+  });
+  handler('worktree:discard-all', 2, (options, scope) => {
+    if (!['tracked', 'untracked'].includes(scope)) throw new Error('Invalid discard request');
+    return discardAll({ ...options, scope });
+  });
+  handler('worktree:discard-lines', 4, (options, path, digest, selection) => {
+    if (typeof digest !== 'string' || !Array.isArray(selection)) throw new Error('Invalid discard request');
+    return discardSelection({ ...options, path: asPath(path), digest, selection });
   });
 
   handler('worktree:commit', 4, (options, message, amend, expectedHead) => {

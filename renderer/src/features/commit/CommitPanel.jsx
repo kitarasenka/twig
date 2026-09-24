@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, FilePenLine, Github, Gitlab, X } from 'lucide-react';
+import { ExternalLink, FilePenLine, Github, Gitlab, ShieldAlert, ShieldCheck, ShieldQuestion, ShieldX, X } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import { AGE_STOPS, ageStop, ageTextClass } from '../graph/age-color.js';
 import { MARK_COLORS, MARK_LABELS } from '../graph/mark-color.js';
 import { forgeLabel, forgeLinks } from './forge-url.js';
+import { signatureView } from './signature-view.js';
 import FileStatus from '../diff/FileStatus.jsx';
 
 function ForgeIcon({ forge, ...props }) {
@@ -61,6 +62,17 @@ function saveShowDetails(show) {
   try { localStorage.setItem('twig:commit-details', show ? 'show' : 'hide'); } catch { /* private mode */ }
 }
 
+const SIGNATURE_ICONS = { good: ShieldCheck, warn: ShieldAlert, bad: ShieldX, none: ShieldQuestion };
+
+/** Icon and words both carry the verdict; the tone only colours the icon. */
+function SignatureLine({ signature }) {
+  const view = signatureView(signature);
+  const Icon = SIGNATURE_ICONS[view.tone];
+  return <p className={`signature-line signature-${view.tone}`} title={view.detail}>
+    <Icon aria-hidden="true" /><strong>{view.label}</strong><span>{view.detail}</span>
+  </p>;
+}
+
 export default function CommitPanel({ repositoryId, commit, loading, error, onClose, onParent, onFile, onFileMenu, onConsole, range, commitColors = 'lanes', remotes = [], mark = null, onSetMark, onClearMark }) {
   const [tree, setTree] = useState(false);
   const [all, setAll] = useState(false);
@@ -78,6 +90,17 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
       .then(files => { if (alive) setAllFiles(files); }).catch(() => { if (alive) setFileError('Could not load the file tree.'); });
     return () => { alive = false; };
   }, [repositoryId, commit?.oid, all, range]);
+  // Verifying runs gpg or ssh-keygen through Git, so it is read after the
+  // commit itself and never holds the panel up.
+  const [signature, setSignature] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    setSignature(null);
+    if (commit?.oid && !range && window.twig.getSignature) window.twig.getSignature(repositoryId, commit.oid)
+      .then(result => { if (alive) setSignature({ oid: commit.oid, ...result }); })
+      .catch(() => { if (alive) setSignature({ oid: commit.oid, error: true }); });
+    return () => { alive = false; };
+  }, [repositoryId, commit?.oid, range]);
   const files = useMemo(() => (all && !range ? allFiles || [] : commit?.files || [])
     .filter(file => file.path.toLowerCase().includes(filter.toLowerCase()))
     .slice().sort((a, b) => (sort === 'status' ? a.status.localeCompare(b.status) : 0) || a.path.localeCompare(b.path, 'en')),
@@ -119,6 +142,7 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
           </div>}
         </div>}
         <h2>{commit.subject || '(no subject)'}</h2>
+        {!range && signature?.signed && <SignatureLine signature={signature} />}
         {!range && <button type="button" className="text-button details-toggle" aria-expanded={showDetails}
           onClick={() => { const next = !showDetails; setShowDetails(next); saveShowDetails(next); }}>
           {showDetails ? 'Hide details' : 'Show details'}
@@ -129,7 +153,8 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
             <strong>{commit.author.name}{links?.authorCommits && <a className="forge-link" href={links.authorCommits} rel="noreferrer" title={`Commits by ${commit.author.name} on ${forgeLabel(links.forge)}`}><ForgeIcon forge={links.forge} aria-hidden="true" /></a>}</strong>
             <span>{EMAIL.test(email) ? <a className="text-link" href={`mailto:${email}`}>{email}</a> : email}</span>
           </div></div>
-          <dl className="metadata"><dt>Authored</dt><dd>{new Date(commit.author.date).toLocaleString('en-GB')}</dd><dt>Committed</dt><dd className={ageTextClass(age)} title={age === null ? undefined : AGE_STOPS[age].label}>{new Date(commit.committedAt).toLocaleString('en-GB')}</dd><dt>Parents</dt><dd>{commit.parents.length ? commit.parents.map(oid => <button key={oid} className="text-button" onClick={() => onParent(oid)}>{oid.slice(0, 8)}</button>) : 'Root commit'}</dd></dl>
+          <dl className="metadata"><dt>Authored</dt><dd>{new Date(commit.author.date).toLocaleString('en-GB')}</dd><dt>Committed</dt><dd className={ageTextClass(age)} title={age === null ? undefined : AGE_STOPS[age].label}>{new Date(commit.committedAt).toLocaleString('en-GB')}</dd><dt>Parents</dt><dd>{commit.parents.length ? commit.parents.map(oid => <button key={oid} className="text-button" onClick={() => onParent(oid)}>{oid.slice(0, 8)}</button>) : 'Root commit'}</dd>
+            {!range && <><dt>Signature</dt><dd>{signature?.error ? 'Could not be read' : signatureView(signature).label}</dd></>}</dl>
         </>}
         <div className="files-heading"><FilePenLine /><strong>{commit.files.length} changed files</strong></div>
         {commit.parents.length > 1 && !range && <p className="muted">Compared with first parent</p>}

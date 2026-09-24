@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, FilePenLine, FilePlus2, Minus, Plus } from 'lucide-react';
+import { Check, FilePenLine, FilePlus2, Minus, Plus, Trash2, Undo2 } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import FileStatus from '../diff/FileStatus.jsx';
 import StageDiff from './StageDiff.jsx';
+import { ConfirmDialog } from '../ops/dialogs.jsx';
+import { discardDialog } from './discard-dialog.js';
 
 const EMPTY = { staged: [], unstaged: [], untracked: [], branch: null };
 
-function FileRow({ entry, active, onOpen, onPrimary, primaryIcon: Icon, primaryLabel, busy }) {
+function FileRow({ entry, active, onOpen, onPrimary, primaryIcon: Icon, primaryLabel, busy, discard = null }) {
   return <div className={`worktree-file ${active ? 'selected' : ''}`}>
     <button className="worktree-open" onClick={onOpen} title={entry.path}>
       <FileStatus status={entry.status} /><span>{entry.path}</span>
     </button>
+    {discard && <Button className="discard" icon={discard.icon} aria-label={`${discard.label} ${entry.path}`} reason={discard.reason} onClick={discard.run} />}
     <Button icon={Icon} aria-label={`${primaryLabel} ${entry.path}`} reason={busy ? 'Git is working' : undefined} onClick={onPrimary} />
   </div>;
 }
@@ -25,6 +28,7 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
   const [message, setMessage] = useState('');
   const [notice, setNotice] = useState('');
   const [amend, setAmend] = useState(false);
+  const [confirm, setConfirm] = useState(null);
   const amendBase = useRef(null);
   const generation = useRef(0);
   const diffRequest = useRef(0);
@@ -108,6 +112,36 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
     if (payload.length === 0) return;
     await window.twig.applySelection(repository.id, open.path, open.staged, diff.digest, payload);
   }, open?.staged ? 'Unstaged the selected lines.' : 'Staged the selected lines.');
+
+  /**
+   * Discarding always asks first (§6.5) with the exact command, then runs like
+   * any other action here. Main backs the files up before touching them, so
+   * the notice can promise that Undo brings them back.
+   */
+  const askDiscard = (request, run, after) => setConfirm({ ...discardDialog(request), onConfirm: () => guard(run, after) });
+  const discardReason = (entry, section) => (busy ? 'Git is working'
+    : entry.status === 'U' ? 'Resolve the conflict first'
+      : section === 'unstaged' && entry.status === 'A' ? 'Only marked for tracking (git add -N): unstage it first' : undefined);
+  const discardRow = (entry, section) => ({
+    icon: section === 'untracked' ? Trash2 : Undo2,
+    label: section === 'untracked' ? 'Delete' : 'Discard changes to',
+    reason: discardReason(entry, section),
+    run: () => askDiscard({ kind: section === 'untracked' ? 'untracked' : 'file', path: entry.path },
+      () => window.twig.discardFile(repository.id, entry.path, section),
+      `${section === 'untracked' ? `Deleted ${entry.path}` : `Discarded changes to ${entry.path}`}. Undo brings ${section === 'untracked' ? 'it' : 'them'} back.`)
+  });
+  const discardAllAction = scope => askDiscard(
+    { kind: scope === 'untracked' ? 'untracked-all' : 'tracked', paths: (scope === 'untracked' ? tree.untracked : tree.unstaged).map(entry => entry.path) },
+    () => window.twig.discardAll(repository.id, scope),
+    `${scope === 'untracked' ? 'Deleted the untracked files' : 'Discarded every unstaged change'}. Undo brings them back.`);
+  const discardSelected = selected => {
+    const payload = Object.entries(selected).filter(([, lines]) => lines.length > 0).map(([index, lines]) => ({ index: Number(index), lines }));
+    const lines = payload.reduce((total, entry) => total + entry.lines.length, 0);
+    if (!lines) return;
+    askDiscard({ kind: 'lines', path: open.path, lines },
+      () => window.twig.discardSelection(repository.id, open.path, diff.digest, payload),
+      `Discarded ${lines} line${lines === 1 ? '' : 's'} of ${open.path}. Undo brings them back.`);
+  };
 
   const busyOp = operation && operation.kind !== 'none' ? operation.kind : null;
   const amendToggleReason = busy ? 'Git is working'
@@ -196,8 +230,10 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
         <section aria-label="Unstaged changes">
           <h3><FilePenLine /> Changes <span className="count">{tree.unstaged.length}</span>
             {tree.unstaged.length > 0 && <Button className="bulk" icon={Plus} reason={bulkReason}
-              onClick={() => bulk(() => window.twig.stageAll(repository.id, 'tracked'), count => `Staged ${count} file${count === 1 ? '' : 's'}.`)}>Stage all</Button>}</h3>
-          {tree.unstaged.map(entry => <FileRow key={`u-${entry.path}`} entry={entry} busy={busy}
+              onClick={() => bulk(() => window.twig.stageAll(repository.id, 'tracked'), count => `Staged ${count} file${count === 1 ? '' : 's'}.`)}>Stage all</Button>}
+            {tree.unstaged.length > 0 && <Button className="bulk discard" icon={Undo2} reason={bulkReason}
+              onClick={() => discardAllAction('tracked')}>Discard all</Button>}</h3>
+          {tree.unstaged.map(entry => <FileRow key={`u-${entry.path}`} entry={entry} busy={busy} discard={discardRow(entry, 'unstaged')}
             active={open?.path === entry.path && !open?.staged}
             onOpen={() => openDiff(entry.path, false)} primaryIcon={Plus} primaryLabel="Stage"
             onPrimary={() => guard(() => window.twig.stageFile(repository.id, entry.path), 'Staged.')} />)}
@@ -206,8 +242,10 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
         <section aria-label="Untracked files">
           <h3><FilePlus2 /> Untracked <span className="count">{tree.untracked.length}</span>
             {tree.untracked.length > 0 && <Button className="bulk" icon={Plus} reason={bulkReason}
-              onClick={() => bulk(() => window.twig.stageAll(repository.id, 'untracked'), count => `Staged ${count} new path${count === 1 ? '' : 's'}.`)}>Stage all</Button>}</h3>
-          {tree.untracked.map(entry => <FileRow key={`n-${entry.path}`} entry={entry} busy={busy}
+              onClick={() => bulk(() => window.twig.stageAll(repository.id, 'untracked'), count => `Staged ${count} new path${count === 1 ? '' : 's'}.`)}>Stage all</Button>}
+            {tree.untracked.length > 0 && <Button className="bulk discard" icon={Trash2} reason={bulkReason}
+              onClick={() => discardAllAction('untracked')}>Delete all</Button>}</h3>
+          {tree.untracked.map(entry => <FileRow key={`n-${entry.path}`} entry={entry} busy={busy} discard={discardRow(entry, 'untracked')}
             active={open?.path === entry.path}
             onOpen={() => trackAndOpen(entry.path)}
             primaryIcon={Plus} primaryLabel="Stage"
@@ -217,7 +255,8 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
       </div>
       <div className="worktree-detail">
         {open && diff && <StageDiff file={open.path} diff={diff} staged={open.staged} selection={selection}
-          onSelection={setSelection} onApply={apply} busy={busy} onClose={() => { setOpen(null); setDiff(null); }} />}
+          onSelection={setSelection} onApply={apply} busy={busy} onClose={() => { setOpen(null); setDiff(null); }}
+          onDiscard={open.staged || diff.added || diff.deleted ? null : discardSelected} />}
         {open && !diff && <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div>}
         {!open && <p className="muted stage-empty">Pick a file to stage or unstage individual lines. Selecting an untracked file starts tracking it so its lines can be picked.</p>}
       </div>
@@ -238,5 +277,6 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
           {amend ? 'Amend last commit' : `Commit ${tree.staged.length} file${tree.staged.length === 1 ? '' : 's'}`}</Button>
       </div>
     </form>
+    {confirm && <ConfirmDialog {...confirm} onClose={() => setConfirm(null)} />}
   </div>;
 }

@@ -3,7 +3,11 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const askpass = fileURLToPath(new URL('./askpass.cjs', import.meta.url));
-const baseArgs = ['--no-pager', '-c', 'color.ui=false'];
+// `log.showSignature` set by the person would make every `log` and `show` print
+// the signature program's output into stdout, in the middle of the NUL-separated
+// records the parsers read. An explicit `--show-signature` typed in the console
+// still wins over it.
+const baseArgs = ['--no-pager', '-c', 'color.ui=false', '-c', 'log.showSignature=false'];
 
 function validArguments(argv) {
   return Array.isArray(argv) && argv.length > 0 && argv.every(argument => typeof argument === 'string');

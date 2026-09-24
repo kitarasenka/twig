@@ -1,5 +1,7 @@
 import { validateOid, validateFile } from './commit.js';
 import { validateRefName } from './refs-ops.js';
+import { discardInverse } from './discard-plan.js';
+import { moveBranchInverse } from './reflog-plan.js';
 
 function branchName(value) {
   validateRefName(value);
@@ -26,11 +28,32 @@ export function buildUndoPlan(entry, direction) {
   }
   const undo = direction === 'undo';
   let commands; let destructive = false;
+  if (kind === 'worktree:discard') {
+    if (!args || typeof args !== 'object' || !Array.isArray(args.paths) || !Array.isArray(args.removed) || !args.paths.length) throw new TypeError('Invalid saved discard');
+    validateOid(args.before); validateOid(args.after);
+    args.paths.forEach(validateFile);
+    const known = new Set(args.paths);
+    if (args.removed.some(file => !known.has(file))) throw new TypeError('Invalid saved discard');
+    // Both directions only rewrite the recorded paths, and the Undo chain has
+    // already checked they are exactly as the discard left them (or as Undo
+    // restored them), so nothing unrecorded can be lost.
+    return { commands: discardInverse(args, direction), destructive: false,
+      explanation: undo ? 'Restores the discarded files from the backup 🌱 Twig recorded before discarding.'
+        : 'Discards the same changes again. The backup stays in refs/twig/discard.' };
+  }
+  if (kind === 'reflog:move-branch') {
+    if (!Array.isArray(args) || args.length !== 4) throw new TypeError('Invalid saved branch move');
+    branchName(args[0]); validateOid(args[1]); validateOid(args[2]);
+    // Each direction is guarded: update-ref swaps only from the recorded tip,
+    // and reset --keep refuses to overwrite uncommitted changes.
+    return { commands: moveBranchInverse(args, direction), destructive: false,
+      explanation: undo ? `Moves ${args[0]} back to ${args[1].slice(0, 7)}, where it was before.` : `Moves ${args[0]} to ${args[2].slice(0, 7)} again.` };
+  }
   if (kind === 'worktree:commit' || kind === 'ops:reword') {
     // A reword always has a commit under it; only a first commit undoes to nothing.
     commands = undo && !before.head ? [['update-ref', '-d', 'HEAD', after.head]]
       : [reset('--soft', undo ? before.head : after.head)];
-  } else if (['ops:merge', 'ops:revert', 'ops:cherry-pick'].includes(kind)) {
+  } else if (['ops:merge', 'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am'].includes(kind)) {
     destructive = true; commands = [reset('--hard', undo ? before.head : after.head)];
   } else if (kind === 'refs:checkout') commands = [checkout(undo ? before : after)];
   else if (kind === 'refs:create-branch') {
@@ -55,14 +78,17 @@ export function buildUndoPlan(entry, direction) {
 export function inverseReason(kind, before, after, args) {
   if (before.operation !== 'none' || after.operation !== 'none') return 'An interrupted Git operation must be completed or aborted first.';
   if (kind === 'sync:push-ref') return 'A ref was published or deleted remotely. Undo cannot reverse publication.';
-  if (kind === 'sync:run') return args[0]?.startsWith('fetch') ? 'Fetch refreshed remote references and ended the Undo chain.'
+  if (kind === 'sync:run') return args[0]?.startsWith('fetch') ? 'Fetch brought new tags and ended the Undo chain.'
     : `${args[0]} may have published or integrated commits. Use an explicit Git operation to reverse it.`;
   if (kind === 'ops:rebase') return 'Rebase rewrites history and ends the Undo chain.';
-  if (['ops:merge', 'ops:revert', 'ops:cherry-pick'].includes(kind) && (!before.clean || !after.clean)) return 'This operation included working-tree changes; a hard reset would lose them.';
+  if (kind === 'submodules:update') return 'Updating submodules moves their checkouts. Undo does not move them back.';
+  if (kind.startsWith('worktrees:')) return 'Adding or removing a worktree ends the Undo chain.';
+  if (kind === 'patch:apply') return 'A patch applied to the files ends the Undo chain. Its changes can be discarded like any other.';
+  if (['ops:merge', 'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am'].includes(kind) && (!before.clean || !after.clean)) return 'This operation included working-tree changes; a hard reset would lose them.';
   if (['stash:pop', 'stash:apply'].includes(kind) && (!before.clean || !after.paths.length)) return 'Stash restoration cannot be separated safely from the existing working tree.';
   if (kind === 'stash:pop' && args[0] > 0) return 'Undo cannot safely restore the position of a popped stash below the top entry.';
   if (kind === 'refs:checkout' && !before.head) return 'Checkout from an unborn branch has no revision to restore.';
   if (kind === 'refs:create-branch' && !before.head) return 'There is no previous revision to restore.';
-  if (!['worktree:commit', 'ops:reword', 'ops:merge', 'ops:revert', 'ops:cherry-pick', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind)) return `${kind.replaceAll(':', ' ')} ends the Undo chain.`;
+  if (!['worktree:discard', 'reflog:move-branch', 'worktree:commit', 'ops:reword', 'ops:merge', 'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind)) return `${kind.replaceAll(':', ' ')} ends the Undo chain.`;
   return null;
 }

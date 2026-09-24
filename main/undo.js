@@ -19,6 +19,8 @@ export class UndoService {
     return this.#states.get(cwd);
   }
   #break(cwd, reason) { this.#states.set(cwd, { undo: [], redo: [], reason }); }
+  /** Whether a person's action (or an Undo/Redo) is running on this repository right now. */
+  isBusy(cwd) { return this.#busy.has(cwd); }
   onChange(listener) { this.#listeners.add(listener); return () => this.#listeners.delete(listener); }
   #emit(cwd) { this.#versions.set(cwd, (this.#versions.get(cwd) || 0) + 1); for (const listener of this.#listeners) listener(cwd); }
   async #save() {
@@ -65,10 +67,15 @@ export class UndoService {
       try { result = await action(); } catch (error) { failure = error; }
       const after = await captureState({ cwd, log: this.log });
       const changed = before.digest !== after.digest;
-      const irreversibleAttempt = ['sync:run', 'sync:push-ref', 'sync:drop', 'ops:rebase'].includes(kind) && !(failure instanceof TypeError) && !result?.notStarted;
+      // A fetch only moves remote-tracking refs, which the Undo state leaves
+      // out, so it ends the chain only when it changed something else (tags).
+      const fetchOnly = kind === 'sync:run' && typeof args[0] === 'string' && args[0].startsWith('fetch');
+      const irreversibleAttempt = ['sync:run', 'sync:push-ref', 'sync:drop', 'ops:rebase'].includes(kind) && !fetchOnly && !(failure instanceof TypeError) && !result?.notStarted;
       if (changed || irreversibleAttempt) {
         let reason = inverseReason(kind, before, after, args);
         if (failure || result?.ok === false) reason = 'The operation did not finish normally. Continue or abort it explicitly.';
+        if (!reason && kind === 'worktree:discard' && !result?.undo) reason = 'The discard did not record its backup. Its content is in refs/twig/discard.';
+        if (!reason && kind === 'reflog:move-branch' && !result?.undo) reason = 'The branch move did not report where it started.';
         if (kind === 'refs:create-branch' && !reason) {
           const ancestor = await runGit({ cwd, log: this.log, argv: ['merge-base', '--is-ancestor', args[1], before.head], operation: 'Background: check safe branch deletion' });
           if (ancestor.code !== 0) reason = 'The new branch contains unmerged commits; branch -d would refuse its deletion.';
@@ -77,7 +84,11 @@ export class UndoService {
         else {
           const active = this.#state(cwd);
           // Only branch/stash parameters are needed; never persist commit bodies or file contents.
-          const savedArgs = ['refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind) ? args : [];
+          // A discard keeps the ids of its two backup commits and the paths — the
+          // content itself lives in Git's object store under refs/twig/discard.
+          // A reflog move keeps the branch name and its two ends.
+          const savedArgs = ['worktree:discard', 'reflog:move-branch'].includes(kind) ? result.undo
+            : ['refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind) ? args : [];
           active.undo.push({ kind, args: savedArgs, before, after }); active.undo = active.undo.slice(-100);
           active.redo = []; active.reason = '';
         }
@@ -102,8 +113,10 @@ export class UndoService {
         this.#break(cwd, 'The repository changed before confirmation. Nothing was reversed.');
         throw new Error(this.#state(cwd).reason);
       }
-      for (const argv of plan.commands) {
-        const result = await runGit({ cwd, log: this.log, argv, operation: `${direction === 'undo' ? 'Undo' : 'Redo'} ${entry.kind}` });
+      for (const command of plan.commands) {
+        // A command is argv, or { argv, stdin } when its path list goes over stdin.
+        const { argv, stdin = null } = Array.isArray(command) ? { argv: command } : command;
+        const result = await runGit({ cwd, log: this.log, argv, stdin, operation: `${direction === 'undo' ? 'Undo' : 'Redo'} ${entry.kind}` });
         if (result.code !== 0) {
           this.#break(cwd, 'The inverse stopped. Inspect Git output and resolve the repository explicitly.');
           throw new Error(this.#state(cwd).reason);

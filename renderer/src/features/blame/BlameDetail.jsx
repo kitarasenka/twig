@@ -55,7 +55,7 @@ export default function BlameDetail({ repositoryId, sel, onJump, onConsole }) {
         <div className="files-heading"><strong>Diff of {sel.path.split('/').at(-1)}</strong></div>
         {diff?.loading ? <div className="skeleton" aria-label="Loading diff" />
           : diff?.binary ? <p className="muted">Binary file — no text diff.</p>
-          : diff?.patch ? <DiffLines patch={diff.patch} />
+          : diff?.patch ? <DiffLines patch={diff.patch} path={path} />
           : <p className="muted">This commit did not change {sel.path.split('/').at(-1)} against its first parent.</p>}
       </>}
     </div>

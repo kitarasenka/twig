@@ -212,6 +212,14 @@ coarse pointers get 44px targets. System theme by default; explicit theme persis
   --mark-violet: #d0a9ff;
   --mark-slate: #b0becb;
   --danger: #ffc2b2;
+  --danger-bg: #2b1512;
+  --syntax-keyword: #f4afda;
+  --syntax-string: #f2ba5b;
+  --syntax-number: #f4b49f;
+  --syntax-comment: #b9c8be;
+  --syntax-function: #9fc7f4;
+  --syntax-type: #d4b9f3;
+  --syntax-property: #3cddd7;
   --shadow: 0 16px 48px #00000066;
   --overlay: #00000080;
 }
@@ -242,6 +250,14 @@ coarse pointers get 44px targets. System theme by default; explicit theme persis
   --mark-violet: #7b3fbf;
   --mark-slate: #556370;
   --danger: #973b2e;
+  --danger-bg: #f6e1da;
+  --syntax-keyword: #951567;
+  --syntax-string: #6d4809;
+  --syntax-number: #8e2f10;
+  --syntax-comment: #425448;
+  --syntax-function: #114e95;
+  --syntax-type: #6620b6;
+  --syntax-property: #105956;
   --shadow: 0 16px 48px #102d2326;
   --overlay: #102d2366;
 }
@@ -348,3 +364,12 @@ continuous decorative motion, stock social proof and unsupported speed claims.
 Spacing: 92 px section rhythm (62 px on mobile), 20 px feature gaps, 25–32 px
 card padding. Existing 6–12 px radii, app shadows and palette tokens. The
 original logo stays in navigation/footer; the hero demonstrates the product.
+
+## Syntax colours in diffs (2026-09-24)
+
+- Seven roles, one token each per theme: `--syntax-keyword`, `-string`, `-number`, `-comment`, `-function`, `-type`, `-property`. Prism's dozens of token names fold into these; identifiers, operators and punctuation keep `--text`.
+- Hues are spread (pink, amber, salmon, grey, blue, violet, teal) and the lightness is **computed**, not eyeballed: every role holds at least 4.5:1 on all 16 backgrounds code can sit on — `bg`, `surface`, `surface-raised`, `surface-hover`, `accent-bg`, `danger-bg`, and the added/removed word tints over each of them. `scripts/checks/syntax.mjs` recomputes this from `tokens.css` and the tint percentages in `history.css`.
+- New `--danger-bg` tints removed lines (dark `#2b1512`, light `#f6e1da`); before, a removed line was told apart only by red text, which syntax colouring replaces.
+- Word tints lowered from 26 % / 34 % to 20 % / 22 % so the syntax colours keep their contrast on them; underline (added) and strike-through (removed) still carry the meaning without colour.
+- Comments are also italic: under the contrast floor the dark-theme comment grey sits close to the text colour, and shape is a second carrier.
+- Rejected: colouring the added/removed pieces in plain `--text` inside changes (loses the syntax exactly where the eye lands); a separate "diff theme" palette (would duplicate the app palette the brief asks to reuse).

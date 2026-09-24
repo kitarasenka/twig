@@ -1,12 +1,13 @@
 import { AlertTriangle, CheckCircle2, FileWarning } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 
-const LABELS = { merge: 'Merge', 'cherry-pick': 'Cherry-pick', revert: 'Revert', rebase: 'Rebase' };
+const LABELS = { merge: 'Merge', 'cherry-pick': 'Cherry-pick', revert: 'Revert', rebase: 'Rebase', am: 'Applying patches' };
 const STEPS = {
   merge: [['continue', 'Continue'], ['abort', 'Abort']],
   'cherry-pick': [['continue', 'Continue'], ['skip', 'Skip this commit'], ['abort', 'Abort']],
   revert: [['continue', 'Continue'], ['skip', 'Skip this commit'], ['abort', 'Abort']],
-  rebase: [['continue', 'Continue'], ['skip', 'Skip this commit'], ['abort', 'Abort']]
+  rebase: [['continue', 'Continue'], ['skip', 'Skip this commit'], ['abort', 'Abort']],
+  am: [['continue', 'Continue'], ['skip', 'Skip this patch'], ['abort', 'Abort']]
 };
 
 /**

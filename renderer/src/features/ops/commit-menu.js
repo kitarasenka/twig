@@ -1,5 +1,55 @@
-import { Bookmark, BookmarkX, ClipboardCopy, Combine, GitBranch, GitCommitHorizontal, GitMerge, Link2, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Trash2, Undo2, Upload } from 'lucide-react';
+import { Bookmark, BookmarkX, ClipboardCopy, Combine, FileOutput, GitBranch, GitCommitHorizontal, GitMerge, Link2, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Trash2, Undo2, Upload } from 'lucide-react';
 import { squashable } from './squash-plan.js';
+
+/**
+ * What can be done to one ref itself — rename, upstream, publish, delete — the
+ * same set the "Branches and tags" screen offers. Shared by the commit menu
+ * (for the refs on that row) and the sidebar menu (for the ref under the
+ * pointer), so the two can never drift apart. Deleting a ref has no inverse,
+ * so each item that mutates goes through the §6.5 confirmation the handlers
+ * open, not straight to the command.
+ */
+export function refActionItems({ ref, remotes = [], head = {}, reason, handlers }) {
+  const remoteNames = (Array.isArray(remotes) ? remotes : []).filter(name => typeof name === 'string' && name);
+  const perRemote = (make) => remoteNames.map(make);
+  if (ref.type === 'local') {
+    const current = ref.name === head.branch;
+    return [
+      { key: `ref-rename-${ref.fullName}`, icon: PenLine, text: `Rename ${ref.name}…`, reason, run: () => handlers.renameBranch(ref.name) },
+      { key: `ref-upstream-${ref.fullName}`, icon: Link2, text: `Set upstream for ${ref.name}…`, reason, run: () => handlers.setUpstream(ref) },
+      ...perRemote(name => ({
+        key: `ref-publish-${ref.fullName}-${name}`, icon: Upload,
+        text: remoteNames.length > 1 ? `Publish ${ref.name} to ${name}` : `Publish ${ref.name}`,
+        reason, run: () => handlers.publishBranch(ref.name, name)
+      })),
+      { key: `ref-delete-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete ${ref.name}`,
+        reason: reason || (current ? 'A checked-out branch cannot be deleted' : undefined),
+        run: () => handlers.deleteBranch(ref.name) }
+    ];
+  }
+  if (ref.type === 'remote') {
+    return [
+      { key: `ref-checkout-remote-${ref.fullName}`, icon: GitCommitHorizontal, text: `Check out ${ref.name} as a new branch…`, reason, run: () => handlers.checkoutRemote(ref) },
+      { key: `ref-delete-remote-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete ${ref.name} on its remote`, reason, run: () => handlers.deleteRemoteBranch(ref) }
+    ];
+  }
+  if (ref.type === 'tag') {
+    return [
+      ...perRemote(name => ({
+        key: `ref-tag-publish-${ref.fullName}-${name}`, icon: Upload,
+        text: remoteNames.length > 1 ? `Publish ${ref.name} to ${name}` : `Publish ${ref.name}`,
+        reason, run: () => handlers.publishTag(ref, name)
+      })),
+      { key: `ref-tag-delete-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete tag ${ref.name}`, reason, run: () => handlers.deleteTag(ref) },
+      ...perRemote(name => ({
+        key: `ref-tag-delete-remote-${ref.fullName}-${name}`, icon: Trash2, danger: true,
+        text: remoteNames.length > 1 ? `Delete ${ref.name} on ${name}` : `Delete ${ref.name} on its remote`,
+        reason, run: () => handlers.deleteTagOnRemote(ref, name)
+      }))
+    ];
+  }
+  return [];
+}
 
 /**
  * The items of the commit context menu (§8.2), as data.
@@ -35,47 +85,7 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
 
   // Everything the "Branches and tags" screen does to a ref, offered on the
   // commit the ref sits on — but only for the refs that actually point here.
-  // Deleting a ref has no inverse, so each item that mutates goes through the
-  // §6.5 confirmation the handlers open, not straight to the command.
-  const remoteNames = (Array.isArray(remotes) ? remotes : []).filter(name => typeof name === 'string' && name);
-  const perRemote = (make) => remoteNames.map(make);
-  const refItems = [];
-  for (const ref of refs) {
-    if (ref.type === 'local') {
-      const current = ref.name === head.branch;
-      refItems.push(
-        { key: `ref-rename-${ref.fullName}`, icon: PenLine, text: `Rename ${ref.name}…`, reason, run: () => handlers.renameBranch(ref.name) },
-        { key: `ref-upstream-${ref.fullName}`, icon: Link2, text: `Set upstream for ${ref.name}…`, reason, run: () => handlers.setUpstream(ref) },
-        ...perRemote(name => ({
-          key: `ref-publish-${ref.fullName}-${name}`, icon: Upload,
-          text: remoteNames.length > 1 ? `Publish ${ref.name} to ${name}` : `Publish ${ref.name}`,
-          reason, run: () => handlers.publishBranch(ref.name, name)
-        })),
-        { key: `ref-delete-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete ${ref.name}`,
-          reason: reason || (current ? 'A checked-out branch cannot be deleted' : undefined),
-          run: () => handlers.deleteBranch(ref.name) }
-      );
-    } else if (ref.type === 'remote') {
-      refItems.push(
-        { key: `ref-checkout-remote-${ref.fullName}`, icon: GitCommitHorizontal, text: `Check out ${ref.name} as a new branch…`, reason, run: () => handlers.checkoutRemote(ref) },
-        { key: `ref-delete-remote-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete ${ref.name} on its remote`, reason, run: () => handlers.deleteRemoteBranch(ref) }
-      );
-    } else if (ref.type === 'tag') {
-      refItems.push(
-        ...perRemote(name => ({
-          key: `ref-tag-publish-${ref.fullName}-${name}`, icon: Upload,
-          text: remoteNames.length > 1 ? `Publish ${ref.name} to ${name}` : `Publish ${ref.name}`,
-          reason, run: () => handlers.publishTag(ref, name)
-        })),
-        { key: `ref-tag-delete-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete tag ${ref.name}`, reason, run: () => handlers.deleteTag(ref) },
-        ...perRemote(name => ({
-          key: `ref-tag-delete-remote-${ref.fullName}-${name}`, icon: Trash2, danger: true,
-          text: remoteNames.length > 1 ? `Delete ${ref.name} on ${name}` : `Delete ${ref.name} on its remote`,
-          reason, run: () => handlers.deleteTagOnRemote(ref, name)
-        }))
-      );
-    }
-  }
+  const refItems = refs.flatMap(ref => refActionItems({ ref, remotes, head, reason, handlers }));
   if (refItems.length) items.push(...refItems, { separator: true });
 
   for (const ref of branches) {
@@ -147,6 +157,12 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
   );
   if (mark) items.push({ key: 'unmark', icon: BookmarkX, text: 'Remove mark', run: handlers.removeMark });
 
+  if (handlers.exportPatch) {
+    items.push({ separator: true }, {
+      key: 'export-patch', icon: FileOutput, text: `Export ${short} as a patch…`, hint: 'git format-patch',
+      reason: commit.parents.length > 1 ? 'A merge commit has no single diff to export' : undefined, run: handlers.exportPatch
+    });
+  }
   items.push(
     { separator: true },
     { key: 'copy-sha', icon: ClipboardCopy, text: 'Copy full SHA', run: () => handlers.copy(commit.oid, 'SHA') },
@@ -167,19 +183,49 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
  *
  * @param {{ oid: string, parents: string[] }[]} commits newest-first, as the graph lists them
  */
-export function buildMultiCommitMenu({ commits, operation = { kind: 'none' }, dirty = false, onCurrentBranch = true, handlers }) {
+export function buildMultiCommitMenu({ commits, operation = { kind: 'none' }, dirty = false, onCurrentBranch = true,
+  someOnCurrentBranch = onCurrentBranch, head = {}, handlers }) {
   const busy = operation.kind !== 'none';
+  const busyReason = busy ? `Finish or abort the ${operation.kind} first` : undefined;
   const check = squashable(commits);
   const items = [];
   if (check.ok && onCurrentBranch) {
     items.push({
       key: 'squash', icon: Combine, text: `Squash ${commits.length} commits into one…`,
       hint: 'replays them as a single commit',
-      reason: busy ? `Finish or abort the ${operation.kind} first` : dirty ? 'Commit or stash your changes first' : undefined,
+      reason: busyReason || (dirty ? 'Commit or stash your changes first' : undefined),
       run: handlers.squash
     });
     items.push({ separator: true });
   }
+  // Cherry-pick and revert of a selection are kept even when they cannot run,
+  // with the reason: which commits are on the branch is not visible at a glance.
+  const target = head.branch || 'HEAD';
+  const merge = commits.some(commit => commit.parents.length > 1)
+    ? 'A merge commit is selected; cherry-pick or revert merge commits one at a time' : undefined;
+  if (handlers.cherryPick) {
+    items.push({
+      key: 'cherry-pick-many', icon: Scissors, text: `Cherry-pick ${commits.length} commits onto ${target}…`,
+      hint: 'oldest first', reason: busyReason || merge
+        || (someOnCurrentBranch ? `${onCurrentBranch ? 'These commits are' : 'Some of these commits are'} already on ${target}` : undefined),
+      run: handlers.cherryPick
+    });
+  }
+  if (handlers.revert) {
+    items.push({
+      key: 'revert-many', icon: Undo2, text: `Revert ${commits.length} commits…`,
+      hint: 'newest first, one revert commit each', reason: busyReason || merge
+        || (!onCurrentBranch ? `Only commits on ${target} can be reverted here` : undefined),
+      run: handlers.revert
+    });
+  }
+  if (handlers.exportPatch) {
+    items.push({
+      key: 'export-patches', icon: FileOutput, text: `Export ${commits.length} commits as a patch…`, hint: 'one file, oldest first',
+      reason: merge ? 'A merge commit is selected; it has no single diff to export' : undefined, run: handlers.exportPatch
+    });
+  }
+  if (handlers.cherryPick || handlers.revert || handlers.exportPatch) items.push({ separator: true });
   items.push({ key: 'copy-shas', icon: ClipboardCopy, text: `Copy ${commits.length} SHAs`, run: handlers.copyShas });
   return items;
 }

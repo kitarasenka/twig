@@ -135,7 +135,7 @@ export default function StashScreen({ repository, busy, onBack, onPerform, onDia
           {diff.loading ? <div className="loading-shell"><div className="skeleton" /></div>
             : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p>
               : diff.binary ? <p className="empty-inline">Binary file. A text diff is unavailable.</p>
-                : <DiffLines patch={diff.patch} label={`Diff of ${diff.path}`} />}
+                : <DiffLines patch={diff.patch} path={diff.path} label={`Diff of ${diff.path}`} />}
         </div>}
       </div>}
     </div>

@@ -3,6 +3,10 @@ import { ArrowLeft, ArrowRight, ChevronsLeft, GitBranch, History, RotateCcw, X }
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import { cacheKey, readCache, writeCache } from './blame-cache.js';
+import { languageFor } from '../diff/languages.js';
+import useHighlighter from '../diff/useHighlighter.js';
+import { splitByRanges } from '../diff/diff-view.js';
+import useDiffPrefs from '../diff/useDiffPrefs.js';
 
 const ROW = 22;
 const OVERSCAN = 8;
@@ -99,6 +103,12 @@ export default function BlameView({ repository, seed, onClose, onJump, onConsole
   const lines = useMemo(() => (data && !data.error ? data.lines : []), [data]);
   const commits = data && !data.error ? data.commits : {};
   const colours = useMemo(() => colourMap(lines), [lines]);
+  // The whole version is highlighted once, as one block, so a comment that
+  // spans lines is coloured on each of them; only the visible rows render.
+  const [diffPrefs] = useDiffPrefs();
+  const language = diffPrefs.syntax ? languageFor(entry.path) : null;
+  const highlight = useHighlighter(Boolean(language));
+  const syntax = useMemo(() => (highlight ? highlight(lines.map(line => line.content), language) : null), [lines, language, highlight]);
   const total = lines.length;
   const start = Math.max(0, Math.floor(viewport.top / ROW) - OVERSCAN);
   const end = Math.min(total, Math.ceil((viewport.top + viewport.height) / ROW) + OVERSCAN);
@@ -261,7 +271,9 @@ export default function BlameView({ repository, seed, onClose, onJump, onConsole
                 </>}
               </span>
               <span className="blame-lineno">{line.line}</span>
-              <span className="blame-code">{line.content === '' ? ' ' : line.content}</span>
+              <span className="blame-code">{line.content === '' ? ' ' : syntax?.[index]
+                ? splitByRanges(line.content, 0, syntax[index]).map((piece, n) => (piece.cls ? <span key={n} className={piece.cls}>{piece.text}</span> : piece.text))
+                : line.content}</span>
             </div>;
           })}
         </div>

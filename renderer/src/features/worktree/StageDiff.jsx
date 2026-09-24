@@ -1,18 +1,28 @@
 import { useMemo } from 'react';
 import Button from '../../ui/Button.jsx';
 import { segmentHunkLines } from '../diff/intraline.js';
+import { lineSpans, sideSyntax } from '../diff/diff-view.js';
+import { languageFor } from '../diff/languages.js';
+import useHighlighter from '../diff/useHighlighter.js';
+import { DiffPieces, DiffToolbar } from '../diff/DiffLines.jsx';
+import useDiffPrefs from '../diff/useDiffPrefs.js';
 
 const changeable = line => line.kind !== 'context';
 const MARKER = { add: '+', delete: '-' };
-const SEGMENT_CLASS = { add: 'diff-seg-add', del: 'diff-seg-del' };
 
-/** A hunk line's text: whole, or per-character spans when only part changed. */
-function LineText({ line, segments }) {
-  const marker = MARKER[line.kind] ?? ' ';
-  if (!segments) return <>{marker}{line.text || ' '}</>;
-  return <>{marker}{segments.map((seg, index) => seg.type === 'same'
-    ? seg.text
-    : <span key={index} className={SEGMENT_CLASS[seg.type]}>{seg.text}</span>)}</>;
+/**
+ * Syntax ranges for every line of every hunk, each side of a hunk highlighted
+ * as one block (see `sideSyntax`), returned as `[hunk][line]`.
+ */
+function hunkSyntax(hunks, highlight, language) {
+  const flat = [];
+  for (const hunk of hunks) {
+    flat.push({ kind: 'hunk', text: '' });
+    for (const line of hunk.lines) flat.push({ kind: line.kind, text: line.text });
+  }
+  const ranges = sideSyntax(flat, lines => highlight(lines, language));
+  let at = 0;
+  return hunks.map(hunk => { at++; return hunk.lines.map(() => ranges[at++]); });
 }
 
 /** Old/new line numbers for the gutter, derived from the hunk header. */
@@ -30,9 +40,13 @@ function numbering(hunk) {
   });
 }
 
-export default function StageDiff({ file, diff, staged, selection, onSelection, onApply, busy, onClose }) {
+export default function StageDiff({ file, diff, staged, selection, onSelection, onApply, onDiscard = null, busy, onClose }) {
+  const [prefs] = useDiffPrefs();
+  const language = languageFor(file);
   const gutters = useMemo(() => diff.hunks.map(numbering), [diff.hunks]);
   const segments = useMemo(() => diff.hunks.map(hunk => segmentHunkLines(hunk.lines)), [diff.hunks]);
+  const highlight = useHighlighter(prefs.syntax && Boolean(language));
+  const syntax = useMemo(() => (highlight ? hunkSyntax(diff.hunks, highlight, language) : null), [diff.hunks, language, highlight]);
   const selectedCount = Object.values(selection).reduce((total, lines) => total + lines.length, 0);
   const verb = staged ? 'Unstage' : 'Stage';
 
@@ -51,6 +65,8 @@ export default function StageDiff({ file, diff, staged, selection, onSelection, 
     <header className="panel-heading">
       <code title={file}>{file}</code>
       <span className="diff-actions">
+        {onDiscard && <Button className="discard" reason={selectedCount === 0 ? 'Select lines to discard' : busy ? 'Git is working' : undefined}
+          onClick={() => onDiscard(selection)}>{`Discard ${selectedCount} selected`}</Button>}
         <Button className="primary" reason={selectedCount === 0 ? `Select lines to ${verb.toLowerCase()}` : busy ? 'Git is working' : undefined}
           onClick={() => onApply(selection)}>{`${verb} ${selectedCount} selected`}</Button>
         <Button onClick={onClose} aria-label="Close diff">Close</Button>
@@ -58,7 +74,8 @@ export default function StageDiff({ file, diff, staged, selection, onSelection, 
     </header>
     {diff.binary && <p className="empty-inline">Binary file changed. Stage it whole; there is no text diff to pick from.</p>}
     {!diff.binary && diff.hunks.length === 0 && <p className="empty-inline">No textual changes in this file.</p>}
-    <div className="diff-scroll">
+    {!diff.binary && diff.hunks.length > 0 && <DiffToolbar language={language} words={false} />}
+    <div className={`diff-scroll${syntax ? ' diff-syntax' : ''}`}>
       {diff.hunks.map((hunk, hunkIndex) => {
         const lines = hunk.lines.map((line, index) => (changeable(line) ? index : -1)).filter(index => index >= 0);
         const chosen = selection[hunkIndex] || [];
@@ -81,7 +98,8 @@ export default function StageDiff({ file, diff, staged, selection, onSelection, 
                 : <span className="stage-line-spacer" />}
               <span className="line-number">{gutter.old ?? ''}</span>
               <span className="line-number">{gutter.next ?? ''}</span>
-              <span className="line-text"><LineText line={line} segments={segments[hunkIndex][lineIndex]} /></span>
+              <span className="line-text"><DiffPieces marker={MARKER[line.kind] ?? ' '}
+                pieces={lineSpans(line.text, syntax?.[hunkIndex][lineIndex] ?? null, segments[hunkIndex][lineIndex])} /></span>
             </div>;
           })}
           {hunk.lines.some(line => line.noNewline) && <div className="stage-line no-newline"><span className="stage-line-spacer" /><span className="line-number" /><span className="line-number" /><span className="line-text">\ No newline at end of file</span></div>}
