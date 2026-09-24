@@ -52,7 +52,7 @@ export default function ExecutionPanel({ event, label, steps, phase, result, blo
       {verdict === 'blocked' && <><ShieldAlert aria-hidden="true" /> {noun} blocked</>}
       {verdict === 'bypassed' && <><ShieldAlert aria-hidden="true" /> Checks skipped for this {noun.toLowerCase()}</>}
       {verdict === 'running' && <><Loader className="spin" aria-hidden="true" /> Running checks…</>}
-      {steps.length > 0 && <span className="count">· {passed} passed · {failed} failed</span>}
+      {steps.length > 0 && <span className="count">{passed} passed · {failed} failed</span>}
     </div>
     <ul className="step-list">
       {steps.map((step, index) => <StepRow key={index} step={step} open={openStep === index}
@@ -72,9 +72,9 @@ export default function ExecutionPanel({ event, label, steps, phase, result, blo
       <div className="dialog-actions">
         {!done && <Button onClick={onClose}>Run in background</Button>}
         {done && blocked && <>
-          <Button onClick={onRetry}>Fix and retry</Button>
-          <Button onClick={onRunAgain}>Run again</Button>
-          <Button className="danger" onClick={onBypass}>{phase === 'pre' ? 'Bypass once' : 'Dismiss'}</Button>
+          <Button className="primary" onClick={onRetry}>Fix and retry</Button>
+          <Button className="secondary" onClick={onRunAgain}>Run again</Button>
+          <Button className={phase === 'pre' ? 'danger quiet' : ''} onClick={onBypass}>{phase === 'pre' ? 'Bypass once' : 'Dismiss'}</Button>
         </>}
         {done && !blocked && <Button className="primary" onClick={onClose}>Close</Button>}
       </div>

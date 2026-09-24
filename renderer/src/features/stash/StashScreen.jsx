@@ -117,7 +117,7 @@ export default function StashScreen({ repository, busy, onBack, onPerform, onDia
           <Button reason={reason} onClick={() => void act(current, 'apply')}>Apply</Button>
           <Button className="primary" reason={reason} onClick={() => void act(current, 'pop')}>Pop</Button>
           <Button icon={GitBranch} reason={reason} onClick={() => toBranch(current)}>Branch…</Button>
-          <Button icon={Trash2} className="danger" reason={reason} onClick={() => drop(current)}>Drop</Button>
+          <Button icon={Trash2} className="danger quiet" reason={reason} onClick={() => drop(current)}>Drop</Button>
         </div>
         <ul className="stash-files" aria-label={`Files in ${current.ref}`}>
           {files.length === 0 && <li className="empty-inline">This stash changes no tracked file.</li>}

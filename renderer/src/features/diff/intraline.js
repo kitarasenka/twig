@@ -22,9 +22,14 @@ const MAX_LINE = 400;
 // edit, and a partial highlight would be confetti — show them whole instead.
 const MIN_SIMILARITY = 0.2;
 
-// A replaced token pair is only refined to the character when they still share
-// this much; otherwise the whole old token is removed and the new one added.
-const REFINE_SIMILARITY = 0.25;
+// A replaced token pair is only refined to the character when it reads as a
+// light edit: at least half the characters shared, and the changes gathered in
+// at most two places per side. `rememberTabs` → `keyboardNav` shares a third of
+// its letters scattered across the word; refining it struck out `rem`, `em`, `s`
+// and read as noise, so such a pair is shown as one word replaced by another.
+const REFINE_SIMILARITY = 0.5;
+const REFINE_MAX_RUNS = 2;
+const NUMBER = /^\p{N}+$/u;
 
 const TOKEN = /\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu;
 
@@ -85,9 +90,12 @@ function refine(ops) {
   for (let k = 0; k < ops.length; k++) {
     const op = ops[k];
     const next = ops[k + 1];
-    if (op.type === 'delete' && next && next.type === 'insert') {
+    // A number is one value: 250 → 500 is a replaced number, never "2 struck, 0 added".
+    if (op.type === 'delete' && next && next.type === 'insert' && !(NUMBER.test(op.text) && NUMBER.test(next.text))) {
       const chars = diffSequences([...op.text], [...next.text]);
-      if (sharedLength(chars) / Math.max(op.text.length, next.text.length) >= REFINE_SIMILARITY) {
+      const runs = type => chars.filter(piece => piece.type === type).length;
+      if (sharedLength(chars) / Math.max(op.text.length, next.text.length) >= REFINE_SIMILARITY
+        && runs('delete') <= REFINE_MAX_RUNS && runs('insert') <= REFINE_MAX_RUNS) {
         out.push(...chars);
         k++;
         continue;

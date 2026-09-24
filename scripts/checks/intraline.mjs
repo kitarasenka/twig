@@ -28,6 +28,14 @@ assert.equal(segmentPair('same text', 'same text'), null);
 const dropped = check('сорока', 'сорок');
 assert.deepEqual(dropped.old, [{ type: 'same', text: 'сорок' }, { type: 'del', text: 'а' }]);
 assert.deepEqual(dropped.new, [{ type: 'same', text: 'сорок' }]);
+// Letters shared all over a word are not an edit: the identifier is replaced whole.
+const renamed = check('export const rememberTabs = true;', 'export const keyboardNav = true;');
+assert.deepEqual(renamed.old, [{ type: 'same', text: 'export const ' }, { type: 'del', text: 'rememberTabs' }, { type: 'same', text: ' = true;' }]);
+assert.deepEqual(renamed.new, [{ type: 'same', text: 'export const ' }, { type: 'add', text: 'keyboardNav' }, { type: 'same', text: ' = true;' }]);
+// A number is one value.
+const bumped = check('const total = 250;', 'const total = 500;');
+assert.deepEqual(bumped.old.find(segment => segment.type === 'del'), { type: 'del', text: '250' });
+assert.deepEqual(bumped.new.find(segment => segment.type === 'add'), { type: 'add', text: '500' });
 
 // A middle edit keeps both ends untouched.
 const middle = check('const width = m + 1;', 'const width = n + 1;');

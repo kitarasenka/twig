@@ -125,22 +125,6 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
       {error && <p role="alert">{error} <button onClick={onConsole}>Show output</button></p>}
       {!loading && !error && commit && <>
         {range && <p className="muted">Changes from {range.base.slice(0, 8)} to {range.oid.slice(0, 8)}</p>}
-        {!range && onSetMark && <div className="mark-editor">
-          <p className="mark-label">{mark ? 'Mark' : 'Mark this commit'}</p>
-          <div className="mark-swatches" role="group" aria-label="Commit mark colour">
-            {MARK_COLORS.map(color => <button key={color} type="button"
-              className={`mark-swatch mark-${color} ${mark?.color === color ? 'active' : ''}`}
-              aria-pressed={mark?.color === color} aria-label={MARK_LABELS[color]} title={MARK_LABELS[color]}
-              onClick={() => onSetMark(commit.oid, color, noteDraft)} />)}
-            {mark && <button type="button" className="text-button" onClick={() => onClearMark(commit.oid)}>Remove mark</button>}
-          </div>
-          {mark && <div className="mark-note">
-            <textarea aria-label="Mark note" placeholder="Note (optional)" rows={2} maxLength={2000}
-              value={noteDraft} onChange={e => setNoteDraft(e.target.value)} />
-            <Button onClick={() => onSetMark(commit.oid, mark.color, noteDraft)}
-              reason={noteDraft === (mark.note || '') ? 'The note is unchanged' : undefined}>Save note</Button>
-          </div>}
-        </div>}
         <h2>{commit.subject || '(no subject)'}</h2>
         {!range && signature?.signed && <SignatureLine signature={signature} />}
         {!range && <button type="button" className="text-button details-toggle" aria-expanded={showDetails}
@@ -156,10 +140,26 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
           <dl className="metadata"><dt>Authored</dt><dd>{new Date(commit.author.date).toLocaleString('en-GB')}</dd><dt>Committed</dt><dd className={ageTextClass(age)} title={age === null ? undefined : AGE_STOPS[age].label}>{new Date(commit.committedAt).toLocaleString('en-GB')}</dd><dt>Parents</dt><dd>{commit.parents.length ? commit.parents.map(oid => <button key={oid} className="text-button" onClick={() => onParent(oid)}>{oid.slice(0, 8)}</button>) : 'Root commit'}</dd>
             {!range && <><dt>Signature</dt><dd>{signature?.error ? 'Could not be read' : signatureView(signature).label}</dd></>}</dl>
         </>}
-        <div className="files-heading"><FilePenLine /><strong>{commit.files.length} changed files</strong></div>
+        {!range && onSetMark && <div className="mark-editor">
+          <div className="mark-swatches" role="group" aria-label="Commit mark colour">
+            <span className="mark-label">{mark ? 'Mark' : 'Mark this commit'}</span>
+            {MARK_COLORS.map(color => <button key={color} type="button"
+              className={`mark-swatch mark-${color} ${mark?.color === color ? 'active' : ''}`}
+              aria-pressed={mark?.color === color} aria-label={MARK_LABELS[color]} title={MARK_LABELS[color]}
+              onClick={() => onSetMark(commit.oid, color, noteDraft)} />)}
+            {mark && <button type="button" className="text-button mark-remove" onClick={() => onClearMark(commit.oid)}>Remove mark</button>}
+          </div>
+          {mark && <div className="mark-note">
+            <textarea aria-label="Mark note" placeholder="Note (optional)" rows={2} maxLength={2000}
+              value={noteDraft} onChange={e => setNoteDraft(e.target.value)} />
+            <Button className="secondary" onClick={() => onSetMark(commit.oid, mark.color, noteDraft)}
+              reason={noteDraft === (mark.note || '') ? 'The note is unchanged' : undefined}>Save note</Button>
+          </div>}
+        </div>}
+        <div className="files-heading"><FilePenLine /><strong>{commit.files.length} changed file{commit.files.length === 1 ? '' : 's'}</strong></div>
         {commit.parents.length > 1 && !range && <p className="muted">Compared with first parent</p>}
         <div className="file-controls"><div className="segmented"><button aria-pressed={!tree} onClick={() => setTree(false)}>Path</button><button aria-pressed={tree} onClick={() => setTree(true)}>Tree</button></div><label><input type="checkbox" checked={all && !range} disabled={Boolean(range)} onChange={e => setAll(e.target.checked)} /> All files</label></div>
-        <div className="file-controls"><input aria-label="Filter commit files" placeholder="Filter files" value={filter} onChange={e => setFilter(e.target.value)} /><select aria-label="Sort commit files" value={sort} onChange={e => setSort(e.target.value)}><option value="path">Path</option><option value="status">Status</option></select></div>
+        <div className="file-controls"><input aria-label="Filter commit files" placeholder="Filter files" value={filter} onChange={e => setFilter(e.target.value)} /><select aria-label="Sort commit files" value={sort} onChange={e => setSort(e.target.value)}><option value="path">Sort by path</option><option value="status">Sort by status</option></select></div>
         {fileError && <p role="alert">{fileError}<button onClick={onConsole}>Show output</button></p>}
         {all && !allFiles && !range ? <div className="skeleton" aria-label="Loading files" /> : tree ? <FileTree files={files} onFile={onFile} onFileMenu={onFileMenu} /> : files.map(file => <button className="commit-file" key={file.path} onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{file.path}</span></button>)}
         {!files.length && (!all || allFiles) && <p className="muted">No matching files.</p>}

@@ -177,20 +177,20 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
               onClick={() => void run(() => window.twig.checkoutRef(repository.id, ref.name, false), `Checked out ${ref.name}.`)}>Check out</Button>
             <Button icon={Pencil} reason={reason} title="Rename this branch" aria-label={`Rename ${ref.name}`} onClick={() => rename(ref.name)} />
             <Button icon={Link2} reason={reason} title="Choose the upstream branch" aria-label={`Upstream for ${ref.name}`} onClick={() => setUpstreamFor(ref)} />
-            <Button icon={Trash2} className="danger" title="Delete this branch" aria-label={`Delete ${ref.name}`}
+            <Button icon={Trash2} className="danger quiet" title="Delete this branch" aria-label={`Delete ${ref.name}`}
               reason={reason || (ref.name === headBranch ? 'A checked-out branch cannot be deleted' : undefined)}
               onClick={() => void deleteBranch(ref.name)} />
           </>}
           {ref.type === 'remote' && <>
             <Button reason={reason} onClick={() => checkoutRemote(ref)}>Check out as new branch</Button>
-            <Button icon={Trash2} className="danger" reason={reason} title="Delete this branch on its remote" aria-label={`Delete ${ref.name} on its remote`}
+            <Button icon={Trash2} className="danger quiet" reason={reason} title="Delete this branch on its remote" aria-label={`Delete ${ref.name} on its remote`}
               onClick={() => deleteRemoteBranch(ref)} />
           </>}
           {ref.type === 'tag' && <>
             <Button icon={Upload} reason={reason || (remote ? undefined : 'No remote is configured')}
               onClick={() => pushTag(ref, false)}>Push</Button>
-            <Button icon={Trash2} className="danger" reason={reason} title="Delete this tag" aria-label={`Delete tag ${ref.name}`} onClick={() => deleteTag(ref)} />
-            <Button className="danger" reason={reason || (remote ? undefined : 'No remote is configured')}
+            <Button icon={Trash2} className="danger quiet" reason={reason} title="Delete this tag" aria-label={`Delete tag ${ref.name}`} onClick={() => deleteTag(ref)} />
+            <Button className="danger quiet" reason={reason || (remote ? undefined : 'No remote is configured')}
               onClick={() => pushTag(ref, true)}>Delete on remote</Button>
           </>}
         </div>

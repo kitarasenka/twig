@@ -84,11 +84,18 @@ export function Console({ expanded, onToggle, mod, entries, repositoryId = null,
     return (mode === 'all' || isUserCommand(entry.operation)) && source.includes(query.toLowerCase());
   }).slice().reverse();
   const latest = entries.at(-1);
+  // The status bar speaks for the person, like the "My" filter: the last thing
+  // they asked for, by name. The app's own reads (and their long argv) stay in
+  // Full History; the exact command is one hover or one click away.
+  const mine = entries.findLast(entry => isUserCommand(entry.operation));
+  const outcome = entry => (entry.code === null ? 'running' : entry.code === 0 ? `done · ${elapsed(entry)}` : `failed with exit code ${entry.code} · ${elapsed(entry)}`);
   async function copy(value) { try { await navigator.clipboard.writeText(value); } catch { /* Clipboard access may be unavailable in a locked-down desktop session. */ } }
   return <section className={`console ${expanded ? 'expanded' : ''}`} aria-label="Command console">
     <button className="console-status" onClick={onToggle} aria-expanded={expanded} title={`Terminal · ${mod}+J`}>
       <Terminal /><strong>CONSOLE</strong><ChevronDown className={expanded ? '' : 'rotate'} />
-      <span>{latest ? `${commandText(latest)} · ${latest.code ?? '…'} · ${elapsed(latest)}` : 'No commands run yet'}</span><span className="console-tail">{latest?.state === 'running' ? 'Running' : '🌱 Twig'}</span>
+      <span className={`console-last ${mine && mine.code !== null && mine.code !== 0 ? 'failed' : ''}`} title={mine ? commandText(mine) : undefined}>
+        {mine ? <>{mine.operation || commandText(mine)} <small>{outcome(mine)}</small></> : 'Nothing you ran yet'}</span>
+      <span className="console-tail">{latest?.state === 'running' ? `Running: ${latest.operation || 'git'}` : '🌱 Twig'}</span>
     </button>
     {expanded && <div className="console-body">
       <div className="console-tools"><div className="segmented" aria-label="Command filter"><button aria-pressed={mode === 'all'} onClick={() => setMode('all')} title="Every git command, including the ones 🌱 Twig runs on its own">Full History</button><button aria-pressed={mode === 'mine'} onClick={() => setMode('mine')} title="Only the commands you asked for">My</button></div><label className="console-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands" aria-label="Search command log" /></label><kbd>{mod}+J</kbd></div>

@@ -29,7 +29,7 @@ export default function OperationBanner({ state, busy, onStep, onOpenConflict })
         ? 'Nothing is conflicted any more. Continue to finish it.'
         : `${state.conflicts.length} file${state.conflicts.length === 1 ? '' : 's'} still conflicted.`}</span>
       <div className="operation-actions">
-        {(STEPS[state.kind] || []).map(([step, text]) => <Button key={step} className={step === 'abort' ? 'danger' : step === 'continue' ? 'primary' : ''}
+        {(STEPS[state.kind] || []).map(([step, text]) => <Button key={step} className={step === 'abort' ? 'danger quiet' : step === 'continue' ? 'primary' : 'secondary'}
           reason={busy ? `${label} is running` : step === 'continue' && !state.resolved ? 'Resolve every conflict first' : undefined}
           onClick={() => onStep(step)}>{text}</Button>)}
       </div>

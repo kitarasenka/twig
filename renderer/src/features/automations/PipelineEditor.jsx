@@ -39,7 +39,7 @@ function ConditionList({ conditions, onChange, phase }) {
         {condition.type === 'messageContains' && <input type="text" aria-label="Text" placeholder="[skip-checks]" value={condition.text || ''} onChange={e => set(index, { text: e.target.value })} />}
         <label className="switch"><input type="checkbox" checked={condition.negate === true} onChange={e => set(index, { negate: e.target.checked })} /><span className="track" />not</label>
       </div>
-      <Button icon={Trash2} className="danger" aria-label="Remove condition" onClick={() => onChange(conditions.filter((_, i) => i !== index))} />
+      <Button icon={Trash2} className="danger quiet" aria-label="Remove condition" onClick={() => onChange(conditions.filter((_, i) => i !== index))} />
     </div>)}
     <Button icon={Plus} onClick={() => onChange([...conditions, { type: 'branch', pattern: '*' }])}>Add condition</Button>
   </div>;
@@ -57,7 +57,7 @@ function ActionRow({ action, index, count, phase, onChange, onRemove, onReorder 
       <Button icon={ChevronUp} aria-label="Move action up" reason={index === 0 ? 'First' : undefined} onClick={() => onReorder(index, index - 1)} />
       <Button icon={ChevronDown} aria-label="Move action down" reason={index === count - 1 ? 'Last' : undefined} onClick={() => onReorder(index, index + 1)} />
     </div>
-    <div className="rule-body" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+    <div className="rule-body stacked">
       <div className="row">
         <label style={{ flex: 1 }}><span>Name</span>
           <input type="text" value={action.name || ''} placeholder={ACTION_LABELS[action.type]} onChange={e => set({ name: e.target.value })} /></label>
@@ -88,10 +88,10 @@ function ActionRow({ action, index, count, phase, onChange, onRemove, onReorder 
       </div>}
       {action.type === 'secretScan' && <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>Scans the added lines of the staged changes for common credential formats. Nothing leaves your machine.</p>}
       <label className="switch"><input type="checkbox" checked={action.continueOnError === true} onChange={e => set({ continueOnError: e.target.checked })} /><span className="track" />Keep going if this fails</label>
-      <details><summary style={{ fontSize: 'var(--text-xs)', color: 'var(--muted)' }}>Only run this action when…</summary>
+      <details><summary>Only run this action when…</summary>
         <ConditionList conditions={action.conditions || []} phase={phase} onChange={conditions => set({ conditions })} /></details>
     </div>
-    <Button icon={Trash2} className="danger" aria-label="Remove action" onClick={onRemove} />
+    <Button icon={Trash2} className="danger quiet" aria-label="Remove action" onClick={onRemove} />
   </li>;
 }
 
@@ -113,7 +113,7 @@ export default function PipelineEditor({ pipeline, onSave, onCancel }) {
             {HOOK_EVENTS.map(ev => <option key={ev.hook} value={ev.hook}>{ev.label} ({ev.hook})</option>)}
           </select></label>
       </div>
-      <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>{HOOK_EVENTS.find(ev => ev.hook === draft.event)?.hint}</p>
+      <p className="field-hint">{HOOK_EVENTS.find(ev => ev.hook === draft.event)?.hint}</p>
       {phase === 'pre' && <label><span>If a step fails</span>
         <select value={draft.onFailure} onChange={e => patch({ onFailure: e.target.value })}>
           <option value="block">Block the {draft.event === 'pre-push' ? 'push' : draft.event === 'commit-msg' ? 'commit' : 'operation'}</option>

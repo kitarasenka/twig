@@ -151,10 +151,14 @@ const rows = annotatePatch(patch);
   assert.ok(plain[1].pieces.some(piece => piece.cls.includes('syn-keyword')), 'context is coloured');
 }
 {
-  // Word mode replaces whole words; line mode may still refine to the character.
+  // Word mode replaces whole words. Line mode refines a lightly edited word to
+  // the character, but a number stays one value there too: 250 → 500 is never
+  // "2 struck, 0 added".
   const seg = segmentPair("'--max-count=250'", "'--max-count=500'");
   assert.deepEqual(seg.merged.filter(piece => piece.type !== 'same').map(piece => [piece.type, piece.text]), [['del', '250'], ['add', '500']]);
-  assert.ok(seg.new.some(piece => piece.type === 'add' && piece.text.length < 3), 'line mode keeps its character refinement');
+  assert.deepEqual(seg.new.filter(piece => piece.type === 'add').map(piece => piece.text), ['500'], 'line mode keeps a number whole');
+  const typo = segmentPair('recieve it', 'receive it');
+  assert.ok(typo.new.some(piece => piece.type === 'add' && piece.text === 'i'), 'line mode keeps its character refinement for words');
 }
 
 // --- preferences -------------------------------------------------------------------------------

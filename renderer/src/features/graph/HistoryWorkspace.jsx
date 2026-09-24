@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlignLeft, Archive, Boxes, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow } from 'lucide-react';
+import { AlignLeft, Archive, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
@@ -138,7 +138,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   const [commitState, setCommitState] = useState({ commit: null, loading: false, error: '' });
   const [detail, setDetail] = useState(true);
   const [width, setWidth] = useState(PANEL_DEFAULT);
-  const [fileHistoryWidth, setFileHistoryWidth] = useState(PANEL_DEFAULT);
+  const [fileHistoryWidth, setFileHistoryWidth] = useState(FILE_HISTORY_PANEL_SIZE.defaultWidth);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_SIZE.defaultWidth);
   const [collapsed, setCollapsed] = useState(false);
   const [filter, setFilter] = useState('');
@@ -1107,12 +1107,13 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   const showDetail = detail && !conflict && !screen;
   return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${fileHistory || blame ? fileHistoryWidth : width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
     {active && toolbarSlot && createPortal(
-      <Button className="tool bughunter-tool" reason={hunterReason}
-        title={hunterCommit ? `Start from ${hunterCommit.oid.slice(0, 7)}: choose a commit where the bug is present` : undefined}
-        onClick={() => { if (!hunterReason) void performBisect('start', hunterCommit.oid); }}>🌱 BugHunter (bisect)</Button>, toolbarSlot)}
+      <Button className="tool bughunter-tool" icon={Bug} reason={hunterReason}
+        title={hunterCommit ? `🌱 BugHunter (git bisect): start from ${hunterCommit.oid.slice(0, 7)}, a commit where the bug is present` : '🌱 BugHunter (git bisect)'}
+        onClick={() => { if (!hunterReason) void performBisect('start', hunterCommit.oid); }}>BugHunter</Button>, toolbarSlot)}
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} aria-label="Repository navigation">
       {collapsed ? <Button icon={PanelLeftOpen} aria-label="Expand repository sidebar" onClick={() => setCollapsed(false)} /> : <>
-        <div className="sidebar-filter"><Search /><input ref={filterRef} aria-label="Search commits and references" placeholder={`Search commits & refs · ${mod}+F`} value={filter} onChange={event => setFilter(event.target.value)} />
+        <div className="sidebar-filter"><Search /><input ref={filterRef} aria-label="Search commits and references" placeholder="Search" value={filter} onChange={event => setFilter(event.target.value)} />
+          {!filter && <kbd className="sidebar-filter-key" aria-hidden="true">{mod}+F</kbd>}
           {filter && <button className="sidebar-filter-clear" aria-label="Clear search" onClick={() => setFilter('')}><X /></button>}</div>
         <nav className="sidebar-nav" aria-label="Repository screens">
           <button className={`real-branch ${screen === 'branches' ? 'selected' : ''}`} onClick={() => choose('branches')}>
@@ -1134,7 +1135,10 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
             onRename={ref => { if (operation.kind === 'none' && !working) refHandlers(ref).renameBranch(ref.name); }} />
           {!visibleRefs.some(ref => ref.type === type) && <p className="section-empty">No matching {label.toLowerCase()} refs</p>}
         </details>)}</div><div className="sidebar-footer"><span {...(headRef ? { tabIndex: 0, title: `${headRef.name} · Right-click or Shift+F10 for actions`,
-          ...contextMenuProps((x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ ref: headRef, x, y }); }) } : {})}>{repository.status?.branch?.name || 'Detached HEAD'}</span><Button icon={PanelLeftClose} aria-label="Collapse repository sidebar" onClick={() => setCollapsed(true)} /></div>
+          ...contextMenuProps((x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ ref: headRef, x, y }); }) } : {})}><strong>{repository.status?.branch?.name || 'Detached HEAD'}</strong>
+          {headRef && <small className="sidebar-upstream">{headRef.upstream
+            ? <>→ {headRef.upstream}{headRef.ahead || headRef.behind ? ` · ${[headRef.ahead && `${headRef.ahead} to push`, headRef.behind && `${headRef.behind} to pull`].filter(Boolean).join(', ')}` : ' · in sync'}</>
+            : 'Not published'}</small>}</span><Button icon={PanelLeftClose} aria-label="Collapse repository sidebar" onClick={() => setCollapsed(true)} /></div>
       </>}
     </aside>
     {!collapsed && <Splitter side="left" width={sidebarWidth} onWidth={setSidebarWidth} label="Repository sidebar width" />}

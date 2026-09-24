@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, RefreshCw, Settings, Undo2, Upload, UserRound, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Bug, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, RefreshCw, Settings, Undo2, Upload, UserRound, X } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
 import { Console } from './Console.jsx';
@@ -454,7 +454,7 @@ export default function App() {
       <div className="tool-group">
         <span className="bughunter-tool-slot" ref={setBugHunterSlot}>
           {!workspace?.repositories.some(item => item.available && active === `repository:${item.id}`) &&
-            <Button className="tool bughunter-tool" reason={unavailable}>🌱 BugHunter (bisect)</Button>}
+            <Button className="tool bughunter-tool" icon={Bug} reason={unavailable}>BugHunter</Button>}
         </span>
       </div>
     </section>

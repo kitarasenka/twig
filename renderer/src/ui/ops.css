@@ -24,6 +24,10 @@
 .menu-empty { margin: 0; padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--text-xs); }
 
 .danger { border-color: var(--danger); color: var(--danger); }
+/* The confirming button of a destructive dialog keeps the border; an inline
+   delete or an escape hatch is danger-coloured but never the loudest control. */
+.danger.quiet { border-color: transparent; }
+.danger:disabled { border-color: var(--border); color: var(--muted); }
 .warn { color: var(--danger); }
 .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
 .dialog-actions .muted { margin-right: auto; font-size: var(--text-xs); }
@@ -97,6 +101,11 @@ dialog.wide { width: min(920px, calc(100vw - var(--space-8))); }
 .conflict-apply label { color: var(--muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
 .conflict-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--border); }
 .conflict-column { background: var(--surface); padding: var(--space-1) var(--space-2); min-width: 0; }
+/* Without a recorded base the middle column only says so; it shrinks to that
+   sentence and gives the room to the two sides that can actually be picked. */
+.conflict-columns:has(.conflict-base-missing) { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.conflict-base-missing { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-xs); white-space: nowrap; }
+.conflict-base-missing svg { width: 13px; height: 13px; cursor: help; }
 .conflict-column h5 { display: flex; justify-content: space-between; gap: var(--space-2); margin: 0 0 var(--space-1);
   font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .conflict-column h5 small { font-weight: 400; }

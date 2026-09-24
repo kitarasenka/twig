@@ -8,8 +8,11 @@
 .real-history-columns { color: var(--muted); font-size: var(--text-xs); min-height: 34px; border-bottom: 1px solid var(--border); align-items: stretch; min-width: var(--table-min-width); }
 .real-history-columns > span { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; padding-inline: var(--space-2); }
 .col-resize { position: absolute; top: 0; bottom: 0; right: -6px; width: 11px; z-index: 2; cursor: col-resize; touch-action: none; }
-.col-resize::before { content: ''; position: absolute; inset: 0; margin: auto; width: 2px; background: var(--border); }
-.col-resize:hover::before, .col-resize.active::before { background: var(--accent); }
+.col-resize::before { content: ''; position: absolute; inset: 0; margin: auto; width: 2px; height: 16px; border-radius: 1px; background: var(--border); }
+/* The last column's handle sits before the slack track; a full divider there drew
+   an empty sixth column. It shows on hover and focus instead. */
+.real-history-columns > span:last-child .col-resize:not(:hover, :focus-visible, .active)::before { background: transparent; }
+.col-resize:hover::before, .col-resize.active::before { height: 100%; background: var(--accent); }
 .col-resize:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
 .real-history-scroll { flex: 1; overflow: auto; min-height: 0; }
 .real-history-scroll:focus-visible, .diff-lines:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -20,9 +23,12 @@
 .real-commit-row .ref-cell { align-self: stretch; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; padding-block: var(--space-1); }
 .real-commit-row .ref-line { display: flex; align-items: center; gap: var(--space-1); max-width: 100%; min-width: 0; overflow: hidden; }
 .real-commit-row:hover { background: var(--surface-hover); }
-.real-commit-row.selected { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); }
+/* Selection is a ring, not only a tint: a mark tints the row too, and a green
+   mark on a selected row used to look like plain selection. */
+.real-commit-row.selected { background: var(--accent-bg); box-shadow: inset 0 0 0 1px var(--accent), inset 2px 0 var(--accent); }
 .real-commit-row.multi-selected { background: color-mix(in srgb, var(--accent-bg) 60%, transparent); box-shadow: inset 2px 0 color-mix(in srgb, var(--accent) 45%, transparent); }
 .real-commit-row.new-day { box-shadow: inset 0 1px var(--border); }
+.real-commit-row.new-day.selected { box-shadow: inset 0 0 0 1px var(--accent), inset 2px 0 var(--accent); }
 .real-commit-row .ref-line > svg { color: var(--accent); }
 .real-commit-row .date-cell, .real-commit-row .author-col { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lane-cell { position: relative; align-self: stretch; width: var(--graph-width); height: 100%; }
@@ -63,21 +69,24 @@
 .mark-blue { --mark-color: var(--mark-blue); }
 .mark-violet { --mark-color: var(--mark-violet); }
 .mark-slate { --mark-color: var(--mark-slate); }
-.real-commit-row.marked { background: color-mix(in srgb, var(--mark-color) 16%, var(--bg)); }
-.real-commit-row.marked:hover { background: color-mix(in srgb, var(--mark-color) 26%, var(--surface-hover)); }
-.real-commit-row.marked.selected { background: color-mix(in srgb, var(--mark-color) 24%, var(--accent-bg)); }
+.real-commit-row.marked { background: color-mix(in srgb, var(--mark-color) 12%, var(--bg)); }
+.real-commit-row.marked:hover { background: color-mix(in srgb, var(--mark-color) 20%, var(--surface-hover)); }
+.real-commit-row.marked.selected { background: color-mix(in srgb, var(--mark-color) 16%, var(--accent-bg)); }
 .real-commit-row.marked::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--mark-color); }
 .real-lane circle.mark-node { fill: none; stroke: var(--mark-color); stroke-width: 2.5; }
 .mark-chip { display: inline-flex; align-items: center; flex: none; margin-right: var(--space-1); color: var(--mark-color); }
 .mark-chip svg { width: 14px; height: 14px; }
-.mark-editor { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
-.mark-label { margin: 0; color: var(--muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
+.mark-editor { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
+.mark-label { margin: 0 var(--space-1) 0 0; color: var(--muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
 .mark-swatches { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 .mark-swatch { width: 18px; height: 18px; min-height: 18px; padding: 0; border-radius: 999px; border: 1px solid var(--border);
   background: var(--mark-color); }
 .mark-swatch.active { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--mark-color); }
+.mark-remove { margin-left: auto; font-size: var(--text-sm); }
 .mark-note { display: flex; flex-direction: column; gap: var(--space-2); }
-.mark-note textarea { width: 100%; resize: vertical; font: var(--text-sm) var(--font-ui); }
+.mark-note textarea { width: 100%; resize: vertical; font: var(--text-sm)/1.5 var(--font-ui); color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); }
+.mark-note .button-wrap { align-self: flex-start; }
 /* Uncommitted work is the one row a person comes back to all day, so it reads
    as a band across the top of the graph rather than one more line of text:
    accent tint, an accent bar down the left, an icon chip and the breakdown of
@@ -108,6 +117,8 @@
 .search-results .history { flex: 1; min-height: 0; }
 .sidebar-filter-clear { position: absolute; right: var(--space-1); padding: var(--space-1); min-height: 0; color: var(--muted); background: none; border: 0; }
 .sidebar-filter-clear svg { width: 14px; height: 14px; }
+.sidebar-filter-key { position: absolute; right: var(--space-2); padding: 0 var(--space-1); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--muted); font-size: 10px; pointer-events: none; }
 .real-branch { display: flex; width: 100%; justify-content: flex-start; min-height: var(--row-height); border-radius: 0; padding-inline: var(--space-3); font-size: var(--text-sm); }
 .real-branch span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .real-branch small { color: var(--muted); margin-left: auto; }
@@ -311,10 +322,16 @@
 .worktree-panel-file button { min-height: 22px; padding: 0 var(--space-1); color: var(--muted); }
 .worktree-panel-file:hover button { color: var(--text); }
 .worktree-panel-file button svg { width: 14px; height: 14px; }
-.worktree-panel .files-heading .bulk { margin-left: var(--space-2); }
-.worktree-panel .files-heading .bulk.discard { margin-left: var(--space-1); }
-
-.worktree-panel .files-heading .bulk button { min-height: 22px; padding: 0 var(--space-2); font-size: var(--text-xs); }
+/* Moving a file is the panel's main gesture: an accent square the size of a row,
+   not a grey glyph that only lights up on hover. */
+.worktree-panel-file button.move { width: 26px; min-height: 26px; color: var(--accent); border-color: var(--border); }
+.worktree-panel-file button.move:hover:not(:disabled) { background: var(--accent-bg); border-color: var(--accent); }
+.worktree-panel-file button.move:disabled { color: var(--muted); }
+.worktree-panel .worktree-panel-summary { color: var(--muted); font-size: var(--text-sm); }
+.worktree-panel .worktree-panel-summary strong { color: var(--text); font-weight: 500; }
+.worktree-panel .files-heading .button-wrap:has(> .bulk) { margin-left: var(--space-2); }
+.worktree-panel .files-heading .button-wrap:has(> .bulk.discard) { margin-left: var(--space-1); }
+.worktree-panel .files-heading button.bulk { min-height: 22px; padding: 0 var(--space-2); font-size: var(--text-xs); }
 .worktree-panel .worktree-panel-error { padding: var(--space-2) 0; font-size: var(--text-sm); }
 
 /* A Git LFS pointer change, shown as the stored file instead of three lines of hashes. */

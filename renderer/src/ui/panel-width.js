@@ -17,10 +17,12 @@ const PANEL_SIZE = { min: PANEL_MIN, max: PANEL_MAX, defaultWidth: PANEL_DEFAULT
 /**
  * The file-history diff panel may grow to twice the normal maximum: it shows a
  * full file diff on its own, with no graph row to read alongside it, so the
- * extra width is useful there and nowhere else. The graph floor in
+ * extra width is useful there and nowhere else. It also starts wide: at the
+ * normal 306 px a diff line was cut off while the commit list beside it — a
+ * handful of short rows — sat half empty. The graph floor in
  * `panelWidthLimits` still stops it before the graph collapses.
  */
-export const FILE_HISTORY_PANEL_SIZE = { min: PANEL_MIN, max: PANEL_MAX * 2, defaultWidth: PANEL_DEFAULT };
+export const FILE_HISTORY_PANEL_SIZE = { min: PANEL_MIN, max: PANEL_MAX * 2, defaultWidth: PANEL_MAX };
 const GRAPH_MIN = 240;
 
 /** `available` is the combined width of the graph and the panel being resized. */

@@ -373,3 +373,14 @@ original logo stays in navigation/footer; the hero demonstrates the product.
 - Word tints lowered from 26 % / 34 % to 20 % / 22 % so the syntax colours keep their contrast on them; underline (added) and strike-through (removed) still carry the meaning without colour.
 - Comments are also italic: under the contrast floor the dark-theme comment grey sits close to the text colour, and shape is a second carrier.
 - Rejected: colouring the added/removed pieces in plain `--text` inside changes (loses the syntax exactly where the eye lands); a separate "diff theme" palette (would duplicate the app palette the brief asks to reuse).
+
+## UI/UX pass over the app (2026-09-24)
+
+Reviewed the ten fresh `shots:site` frames. No new tokens; everything below reuses the palette.
+
+- Button levels: `primary` (accent tint + accent border) is the one next step; new `secondary` (neutral `--border`) an alternative; a plain button a quiet one. `danger` keeps its border only as the confirming button of a destructive dialog; inline deletes and escape hatches (`Bypass once`, `Abort`, trash icons in lists) are `danger quiet` — danger-coloured, never the loudest control. A disabled `primary` or `danger` drops to the plain look, so it cannot pass for the next step.
+- `.text-button` is set in Fira Sans; Fira Code stays for commit ids, paths and commands (`.metadata dd .text-button` keeps it for parent ids).
+- Graph selection is a ring (`inset 0 0 0 1px --accent`) on `--accent-bg`, not only a tint; mark tints dropped from 16/26/24 % to 12/20/16 %. A green mark on a selected row used to read as plain selection.
+- Disclosure chevrons are drawn with borders in the Lucide stroke (1.7) instead of the platform's filled triangle, for every `<summary>`.
+- Toolbar counts sit on the icon's corner (`.tool .badge`), so Push/Pull labels share the baseline; BugHunter is icon + one word like its neighbours.
+- Rejected: moving the column headers to left alignment (centred headers were a deliberate earlier choice); widening the automation form past 820 px (a form reads better narrow — the extra boxes were the problem, not the width).

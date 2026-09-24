@@ -67,12 +67,11 @@ export default function WorktreePanel({ summary, branch, open, actions, error, o
   const bulkReason = section => (section === 'staged' ? actions.reasons.unstageAll : actions.reasons.stageAll);
   return <aside className="commit-detail worktree-panel" aria-label="Uncommitted changes">
     <header className="panel-heading">
-      <span>UNCOMMITTED <code>{summary.paths} {summary.paths === 1 ? 'file' : 'files'}</code></span>
+      <span>UNCOMMITTED CHANGES</span>
       <Button icon={X} aria-label="Close uncommitted changes" onClick={onClose} />
     </header>
     <div className="detail-content">
-      <h2>Uncommitted changes</h2>
-      <p className="muted">{summaryLabel(summary)}{branch ? ` on ${branch}` : ''}</p>
+      <p className="worktree-panel-summary">{summaryLabel(summary)}{branch ? <> on <strong>{branch}</strong></> : ''}</p>
       {conflicts > 0 && <p className="worktree-panel-conflicts" role="status">
         {conflicts === 1 ? '1 file has a conflict' : `${conflicts} files have conflicts`} to resolve before this can be committed.</p>}
       {error && <div className="history-error worktree-panel-error" role="alert">{error}
@@ -102,7 +101,7 @@ export default function WorktreePanel({ summary, branch, open, actions, error, o
               <FileStatus status={file.status} /><span>{file.path}</span></button>
             {discard && <Button className="discard" icon={discard.icon} aria-label={`${discard.label} ${file.path}`}
               reason={actions.reasons.discard(file, section.key)} onClick={() => actions.discard(file, section.key)} />}
-            <Button icon={rule.icon} aria-label={`${rule.label} ${file.path}`}
+            <Button className="move" icon={rule.icon} aria-label={`${rule.label} ${file.path}`} title={`${rule.label} ${file.path}`}
               reason={section.key === 'staged' ? actions.reasons.unstage : actions.reasons.stage}
               onClick={() => move(section.key, file)} /></div>)}
           {!section.files.length && <p className="muted">{query ? 'No match here.' : section.empty}</p>}

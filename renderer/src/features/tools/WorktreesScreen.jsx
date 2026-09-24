@@ -83,7 +83,7 @@ export default function WorktreesScreen({ repository, busy, refreshKey = 0, onBa
         <div className="tool-actions">
           <Button icon={ExternalLink} reason={entry.current ? 'This worktree is open in this tab' : entry.prunable ? 'Its folder is gone' : entry.bare ? 'A bare repository has no files to show' : undefined}
             onClick={() => void onOpen(entry.path)}>Open as tab</Button>
-          <Button icon={Trash2} className="danger" reason={worktreeRemoveReason(entry, busy || working)} onClick={() => confirmRemove(entry)}>Remove…</Button>
+          <Button icon={Trash2} className="danger quiet" reason={worktreeRemoveReason(entry, busy || working)} onClick={() => confirmRemove(entry)}>Remove…</Button>
         </div>
       </li>)}
     </ul>

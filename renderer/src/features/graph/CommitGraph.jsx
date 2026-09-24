@@ -299,7 +299,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
       aria-pressed={selected === UNCOMMITTED} title="Show the uncommitted files in the details panel"
       onClick={onUncommitted}>
       <span className="worktree-row-icon"><FilePenLine aria-hidden="true" /></span>
-      <span className="worktree-row-text">Uncommitted changes, {summary.paths} files</span>
+      <span className="worktree-row-text">Uncommitted changes, {summary.paths} file{summary.paths === 1 ? '' : 's'}</span>
       <span className="worktree-row-chips">{summaryChips(summary).map(chip =>
         <span className={`worktree-chip chip-${chip.key}`} key={chip.key}>{chip.text}</span>)}</span>
     </button>}

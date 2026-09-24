@@ -48,9 +48,17 @@
 
 /* editor */
 .pipeline-editor { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); max-width: 820px; }
-.pipeline-editor fieldset { border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-3); margin: 0; }
-.pipeline-editor legend { padding: 0 var(--space-2); color: var(--muted); font-size: var(--text-xs);
+/* One level of boxes: a section is a heading over a rule, and only the actions
+   themselves are cards. Every field in a section sits on the same 12 px rhythm. */
+.pipeline-editor fieldset { display: flex; flex-direction: column; gap: var(--space-3); border: 0; border-top: 1px solid var(--border);
+  border-radius: 0; padding: var(--space-3) 0 0; margin: 0; min-width: 0; }
+.pipeline-editor legend { padding: 0 var(--space-2) 0 0; color: var(--muted); font-size: var(--text-xs);
   text-transform: uppercase; letter-spacing: .04em; }
+.pipeline-editor fieldset > .button-wrap, .pipeline-editor .rule-list > .button-wrap { align-self: flex-start; }
+.pipeline-editor .field-hint { margin-top: calc(var(--space-2) * -1); color: var(--muted); font-size: var(--text-xs); }
+.pipeline-editor label.switch { flex-direction: row; align-self: flex-start; }
+.pipeline-editor details { margin: 0; }
+.pipeline-editor details > summary { padding-inline: 0; font-size: var(--text-xs); color: var(--muted); width: fit-content; }
 .pipeline-editor label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-sm); }
 .pipeline-editor .row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-end; }
 .pipeline-editor input[type='text'], .pipeline-editor select, .pipeline-editor textarea {
@@ -58,13 +66,14 @@
 .pipeline-editor textarea { resize: vertical; }
 .pipeline-editor .field-error { color: var(--danger); font-size: var(--text-xs); }
 
-.rule-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.rule-list { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .rule-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; padding: var(--space-2);
   border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
 .rule-row .grip { color: var(--muted); flex: none; }
 .rule-row .rule-move { display: flex; flex-direction: column; }
 .rule-row code { font-size: var(--text-xs); background: var(--surface-raised); padding: 0 var(--space-1); border-radius: var(--radius-sm); }
 .rule-row .rule-body { flex: 1; min-width: 160px; display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.rule-row .rule-body.stacked { flex-direction: column; align-items: stretch; gap: var(--space-3); }
 .rule-row .rule-command { flex: 1; min-width: 200px; }
 
 /* execution: overlay + inline panel + log detail share step rows */
@@ -115,4 +124,5 @@
 .run-entry.bypassed > .step-icon { color: var(--mark-amber); }
 .run-detail { border-bottom: 1px solid var(--border); background: var(--surface); }
 
+.runner-summary { color: var(--muted); font-size: var(--text-sm); width: fit-content; }
 .automations-empty { margin: var(--space-8) auto; max-width: 420px; text-align: center; color: var(--muted); }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Redo2, Save, Undo2, X } from 'lucide-react';
+import { Check, Info, Redo2, Save, Undo2, X } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import { hasConflictMarkers, parseConflictFile, resolveRegion } from './conflict-parser.js';
 
@@ -21,7 +21,8 @@ function SideColumn({ name, title, lines, picked, onToggle }) {
   // or zdiff3. Saying so beats an unexplained empty column, and the whole file
   // is still one click away below.
   if (!lines) return <div className="conflict-column"><h5>{title}</h5>
-    <p className="muted">Not in the markers — Git writes it only with <code>merge.conflictStyle=zdiff3</code>. The whole file is below.</p></div>;
+    <p className="muted conflict-base-missing" title="Git writes the base into the markers only with merge.conflictStyle=zdiff3 (or diff3). The whole base file is below.">
+      Not in the markers <Info aria-label="Why the base is missing" /></p></div>;
   return <div className={`conflict-column side-${name}`}>
     <h5>{title}<small>{lines.length} line{lines.length === 1 ? '' : 's'}</small></h5>
     {lines.length === 0 && <p className="muted">Empty on this side.</p>}
@@ -159,8 +160,8 @@ export default function ConflictEditor({ repositoryId, file, onClose, onResolved
       <div className="diff-actions">
         <Button icon={Undo2} aria-label="Undo in the conflict editor" reason={past.length === 0 ? 'Nothing to undo here' : undefined} onClick={undo} />
         <Button icon={Redo2} aria-label="Redo in the conflict editor" reason={future.length === 0 ? 'Nothing to redo here' : undefined} onClick={redo} />
-        <Button onClick={() => whole('ours')} reason={busy ? 'Working' : undefined}>Use ours</Button>
-        <Button onClick={() => whole('theirs')} reason={busy ? 'Working' : undefined}>Use theirs</Button>
+        <Button onClick={() => whole('ours')} reason={busy ? 'Working' : undefined} title="Take our side in every conflict of this file">Take all ours</Button>
+        <Button onClick={() => whole('theirs')} reason={busy ? 'Working' : undefined} title="Take their side in every conflict of this file">Take all theirs</Button>
         <Button icon={Save} className="primary" onClick={() => save()} reason={busy || !data || data.binary ? busy ? 'Saving' : 'This file has no text to save' : undefined}>Save and mark resolved</Button>
         <Button icon={X} aria-label="Close the conflict editor" onClick={onClose} />
       </div>

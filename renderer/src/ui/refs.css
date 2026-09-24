@@ -120,8 +120,6 @@ button.danger:disabled { border-color: var(--border); }
 .bisect-result > svg { color: var(--accent); }
 .bisect-help { margin: var(--space-2) 0; }
 .bisect-help summary { display: flex; align-items: center; gap: var(--space-1); width: fit-content; cursor: pointer; color: var(--muted); }
-.bisect-help summary::before { content: '›'; }
-.bisect-help[open] summary::before { content: '⌄'; }
 .bisect-help summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .bisect-help svg { width: 14px; height: 14px; }
 .bisect-help ol { padding-left: var(--space-6); line-height: 1.5; }

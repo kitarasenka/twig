@@ -286,7 +286,7 @@ try {
   await page.getByRole('heading', { name: 'Feature branch', exact: true }).waitFor();
   // The uncommitted row selects instead of navigating: the graph stays on
   // screen and the details panel on the right lists what changed.
-  await page.getByRole('button', { name: /Uncommitted changes, 1 files/ }).click();
+  await page.getByRole('button', { name: /Uncommitted changes, 1 file\b/ }).click();
   const uncommitted = page.getByRole('complementary', { name: 'Uncommitted changes', exact: true });
   await uncommitted.waitFor();
   assert.ok(await list.isVisible(), 'selecting the uncommitted row keeps the graph on screen');

@@ -25,7 +25,7 @@ function PipelineCard({ pipeline, busy, onToggle, onEdit, onRun, onDuplicate, on
       <Button icon={Play} reason={busy ? 'A pipeline is running' : undefined} onClick={onRun}>Run now</Button>
       <Button icon={Pencil} onClick={onEdit}>Edit</Button>
       <Button icon={Copy} aria-label={`Duplicate ${pipeline.name}`} onClick={onDuplicate} />
-      <Button icon={Trash2} className="danger" aria-label={`Delete ${pipeline.name}`} onClick={onDelete} />
+      <Button icon={Trash2} className="danger quiet" aria-label={`Delete ${pipeline.name}`} onClick={onDelete} />
     </div>
   </div>;
 }
@@ -109,7 +109,7 @@ export default function AutomationsScreen({ repository, refreshKey, busy, onBack
       </div>
 
       <details className="automations-group">
-        <summary style={{ cursor: 'pointer', color: 'var(--muted)', fontSize: 'var(--text-sm)' }}>Runner settings</summary>
+        <summary className="runner-summary">Runner settings</summary>
         <div className="pipeline-editor" style={{ padding: 'var(--space-2) 0' }}>
           <label><span>Extra PATH entries (one per line) — directories to find tools like <code>npm</code></span>
             <textarea rows={2} value={config.settings.extraPath.join('\n')}
