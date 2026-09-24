@@ -37,7 +37,7 @@ try {
   // exposed to the renderer has to fail this check rather than ship.
   assert.deepEqual(await page.evaluate(() => Object.keys(window.twig).sort()), [
     'applySelection', 'cancelSync', 'checkoutRef', 'cherryPick', 'compareCommits', 'copyText', 'createBranch',
-    'checkForUpdate', 'createCommit', 'createTag', 'getAppInfo', 'getCommit', 'getCommitFiles', 'getConsoleEntries',
+    'checkForUpdate', 'getUpdateState', 'downloadUpdate', 'cancelUpdate', 'installUpdate', 'setAutoUpdateCheck', 'onUpdateState', 'createCommit', 'createTag', 'getAppInfo', 'getCommit', 'getCommitFiles', 'getConsoleEntries',
     'getDivergence', 'getFileDiff', 'getFileHistory', 'getGitProfile', 'getHistoryPage', 'getOperationState', 'getRebaseCandidates', 'getRefs',
     'getWorkspace', 'getWorktreeDiff', 'markConflictResolved', 'searchHistory', 'mergeRevision', 'onConsoleUpdate', 'openRepository',
     'readConflict', 'readWorktree', 'rebaseOnto', 'resetTo', 'revertCommit', 'rewordCommit', 'runSequencer', 'runSync',
@@ -138,6 +138,16 @@ try {
   const updateButton = page.getByRole('button', { name: 'Check for updates', exact: true });
   await updateButton.waitFor();
   assert.equal(await updateButton.isDisabled(), false, 'the update check is available from Settings');
+  // The automatic check is opt-in: Off on a fresh profile, and so no update
+  // button in the top bar and no request at all during this run.
+  assert.equal(await page.getByLabel('Check automatically').inputValue(), 'off');
+  const updateState = await page.evaluate(() => window.twig.getUpdateState());
+  assert.equal(updateState.status, 'idle');
+  assert.equal(updateState.auto, false);
+  assert.equal(updateState.installable, false, 'running from source installs nothing');
+  assert.equal(await page.locator('.update-button').count(), 0);
+  // Invalid requests are refused, not answered.
+  await assert.rejects(page.evaluate(() => window.twig.setAutoUpdateCheck('yes')), /Invalid update request/);
   await page.keyboard.press('Escape');
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();

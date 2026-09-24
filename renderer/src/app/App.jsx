@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, Bug, ChevronDown, FolderOpen, GitBranch, Layers, Plus, Redo2, RefreshCw, Settings, Undo2, Upload, UserRound, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Bug, ChevronDown, Download, FolderOpen, GitBranch, Layers, LoaderCircle, Plus, Redo2, RefreshCw, RotateCw, Settings, Undo2, Upload, UserRound, X } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
 import { Console } from './Console.jsx';
 import { pickFailedEntry } from './console-focus.js';
 import { fetchExplanation, fetchStatusLine, intervalLabel, pullTitle } from './background-fetch-view.js';
+import { autoCheckExplanation, installVerb, percent, toolbarUpdate, updateStatusLine } from './update-view.js';
 import HistoryWorkspace from '../features/graph/HistoryWorkspace.jsx';
 import GitProfile from '../features/settings/GitProfile.jsx';
 import Repositories from '../features/settings/Repositories.jsx';
@@ -44,8 +45,10 @@ export default function App() {
   const [active, setActive] = useState('');
   const [emptyOpen, setEmptyOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
+  // The in-app update lives in main (it downloads and installs); this is the
+  // state it broadcasts, for the top-bar button and Settings → Updates.
   const [update, setUpdate] = useState(null);
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateError, setUpdateError] = useState('');
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [bugHunterSlot, setBugHunterSlot] = useState(null);
   const [dialog, setDialog] = useState(null);
@@ -113,8 +116,10 @@ export default function App() {
       .catch(() => { if (alive) setStartupError('Desktop connection unavailable. Restart 🌱 Twig.'); });
     window.twig.getEditor().then(value => { if (alive) setEditor(value); }).catch(() => {});
     window.twig.getBackgroundFetch().then(value => { if (alive) setFetchSettings(value); }).catch(() => {});
+    window.twig.getUpdateState().then(value => { if (alive) setUpdate(value); }).catch(() => {});
+    const unsubscribeUpdate = window.twig.onUpdateState(value => { if (alive) setUpdate(value); });
     const unsubscribe = window.twig.onConsoleUpdate((update) => { if (alive) setEntries(current => applyConsoleUpdate(current, update)); });
-    return () => { alive = false; unsubscribe(); };
+    return () => { alive = false; unsubscribe(); unsubscribeUpdate(); };
   }, []);
   // "Other application…" opens a native picker in main; cancelling it leaves
   // the previous choice in place, which is what comes back.
@@ -225,12 +230,21 @@ export default function App() {
     } finally { setSyncing(null); }
   }
 
-  /** The only network call the app makes for itself, and only on this click. */
-  async function checkUpdate() {
-    setCheckingUpdate(true);
-    try { setUpdate(await window.twig.checkForUpdate()); }
-    catch { setUpdate({ status: 'error', message: 'The update check could not run.', url: 'https://github.com/kitarasenka/twig/releases' }); }
-    finally { setCheckingUpdate(false); }
+  /** Every update step is one press; main answers with its state and keeps broadcasting it. */
+  async function runUpdate(step) {
+    setUpdateError('');
+    try {
+      const next = step === 'check' ? await window.twig.checkForUpdate()
+        : step === 'download' ? await window.twig.downloadUpdate()
+          : step === 'cancel' ? await window.twig.cancelUpdate()
+            : await window.twig.installUpdate();
+      setUpdate(next);
+    } catch { setUpdateError('The update could not run. Restart 🌱 Twig and try again.'); }
+  }
+  async function chooseAutoUpdate(value) {
+    setUpdateError('');
+    try { setUpdate(await window.twig.setAutoUpdateCheck(value)); }
+    catch { setUpdateError('Could not save the update setting.'); }
   }
 
   async function resetDemo() {
@@ -423,6 +437,16 @@ export default function App() {
     return () => window.removeEventListener('keydown', keydown);
   }, [dialog, active, repositoryActive, sandboxId, workspace, closedTabs, focusSearch]);
 
+  // Restarting ends whatever Git runs: wait for the running action first.
+  const updateBusy = syncing ? `Wait for ${syncing} to finish` : undoMoving ? 'Wait for Undo to finish' : dialogBusy || resetting ? 'Wait for the action to finish' : undefined;
+  const updateAction = toolbarUpdate(update);
+  const UpdateIcon = updateAction?.icon === 'restart' ? RotateCw : updateAction?.icon === 'progress' ? LoaderCircle : Download;
+  const updateButton = updateAction && <Button className={`update-button ${updateAction.action === 'settings' || !updateAction.action ? '' : 'primary'} ${updateAction.icon === 'progress' ? 'working' : ''}`}
+    icon={UpdateIcon} title={updateAction.title}
+    reason={!updateAction.action ? updateAction.title : updateAction.action === 'install' ? updateBusy : undefined}
+    onClick={() => { if (updateAction.action === 'settings') setDialog('Settings'); else void runUpdate(updateAction.action); }}>{updateAction.label}</Button>;
+  const updateRunning = ['downloading', 'preparing'].includes(update?.status);
+
   return <div className="app-shell">
     <header className="tab-bar"><div className="brand"><img className="brand-logo" src="./twig-logo.png" alt="" width="36" height="36" /><strong>🌱 Twig</strong></div>
       <nav className="tabs" aria-label="Repository tabs">
@@ -430,7 +454,7 @@ export default function App() {
         {emptyOpen && <div className={`tab ${active === 'new' ? 'active' : ''}`}><button aria-current={active === 'new' ? 'page' : undefined} onClick={() => setActive('new')}><FolderOpen />New repository</button><Button icon={X} aria-label="Close new tab" onClick={() => { setEmptyOpen(false); if (sandboxId) setActive(`repository:${sandboxId}`); }} /></div>}
         <Button icon={Plus} aria-label="New repository tab" title={`${mod}+T`} onClick={openEmpty} />
       </nav>
-      <div className="account-actions"><Button icon={Settings} aria-label="Settings" title={`Settings · ${mod}+,`} onClick={() => setDialog('Settings')} /><Button icon={UserRound} aria-label="Git profile" title="Git profile" onClick={() => setDialog('Git profile')} /></div>
+      <div className="account-actions">{updateButton}<Button icon={Settings} aria-label="Settings" title={`Settings · ${mod}+,`} onClick={() => setDialog('Settings')} /><Button icon={UserRound} aria-label="Git profile" title="Git profile" onClick={() => setDialog('Git profile')} /></div>
     </header>
     <section className="toolbar" aria-label="Git actions">
       <div className="repo-select"><label htmlFor="repository-select">REPOSITORY</label><select id="repository-select" value={active} onChange={(e) => { const { value } = e.target; if (value === 'new') openEmpty(); else void selectRepository(value.slice(11)); }}>{workspace?.repositories.map(item => <option key={item.id} value={`repository:${item.id}`}>{item.name}</option>)}<option value="new">Open repository…</option></select></div>
@@ -501,14 +525,22 @@ export default function App() {
             {fetchSettings.intervals.map(minutes => <option key={minutes} value={minutes}>{intervalLabel(minutes)}</option>)}
           </select></label>}
         {fetchError && <p className="update-note" role="alert">{fetchError}</p>}
-        <div className="setting-row"><span><strong>Updates</strong><small>Reads the latest release on GitHub once, when you press the button. Nothing is checked in the background, downloaded or installed.</small></span><Button icon={RefreshCw} reason={checkingUpdate ? 'Checking…' : undefined} onClick={checkUpdate}>Check for updates</Button></div>
-        {update && <p className="update-note" role="status">{
-          update.status === 'update' ? `Version ${update.latest} is available. You have ${update.current}.`
-            : update.status === 'current' ? `🌱 Twig ${update.current} is the latest release.`
-              : update.status === 'unknown' ? 'Could not tell which release is the latest.'
-                : update.message || 'The update check did not finish.'
-        } <a className="text-link" href={update.url} rel="noreferrer">Releases on GitHub</a></p>}
-        <div className="settings-note">🌱 Twig {info?.version || '…'}<br />Local fonts. No telemetry. No automatic updates.</div></>}
+        <div className="setting-row"><span><strong>Updates</strong><small>🌱 Twig {info?.version || '…'}. A new version downloads from GitHub, is checked against the release checksum and replaces this one when you restart.</small></span>
+          <Button icon={RefreshCw} reason={update?.status === 'checking' ? 'Checking…' : updateRunning || update?.status === 'installing' ? 'An update is already in progress' : undefined} onClick={() => void runUpdate('check')}>Check for updates</Button></div>
+        {update && <label className="setting-row" htmlFor="update-auto"><span><strong>Check automatically</strong><small>{autoCheckExplanation(update.auto)}</small></span>
+          <select id="update-auto" value={update.auto ? 'on' : 'off'} onChange={(e) => void chooseAutoUpdate(e.target.value === 'on')}><option value="off">Only when I ask</option><option value="on">At launch and daily</option></select></label>}
+        {update && updateStatusLine(update) && <div className="update-panel" role="status">
+          <p className="update-note">{updateStatusLine(update)}{update.url && <> <a className="text-link" href={update.url} rel="noreferrer">Release on GitHub</a></>}</p>
+          {update.status === 'downloading' && <progress className="update-progress" max="100" value={percent(update.progress)} aria-label={`Downloading ${update.latest}`} />}
+          <div className="update-actions">
+            {update.status === 'available' && update.installable && !update.installReason && <Button className="primary" icon={Download} onClick={() => void runUpdate('download')}>{update.error ? 'Try again' : `Download and install ${update.latest}`}</Button>}
+            {update.status === 'downloading' && <Button onClick={() => void runUpdate('cancel')}>Cancel download</Button>}
+            {update.status === 'ready' && <Button className="primary" icon={RotateCw} reason={updateBusy} onClick={() => void runUpdate('install')}>{installVerb(update)}</Button>}
+          </div>
+          {update.notes && ['available', 'downloading', 'preparing', 'ready'].includes(update.status) && <details className="update-notes"><summary>What’s new in {update.latest}</summary><pre>{update.notes}</pre></details>}
+        </div>}
+        {updateError && <p className="update-note" role="alert">{updateError}</p>}
+        <div className="settings-note">🌱 Twig {info?.version || '…'}<br />Local fonts. No telemetry. Updates install only when you press the button.</div></>}
       {dialog === 'Settings' && <div className="manager-actions"><Button icon={FolderOpen} onClick={() => setDialog('Repositories')}>Manage repositories</Button><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : 'Open a repository first'} onClick={() => setDialog('Remotes')}>Manage remotes</Button></div>}
       {dialog === 'Settings' && <Button onClick={() => setDialog('SSH')}>SSH keys and config</Button>}
       {dialog === 'Settings' && (sandboxId

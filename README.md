@@ -82,8 +82,14 @@ start — see [Screenshots](#screenshots) below.
 - **Git profile, SSH keys, remotes, repository list and clone** in Settings —
   edit the five profile keys locally or globally, list and generate SSH keys,
   manage remotes, clone into a fresh folder with live output and cancellation.
-- **Check for updates** in Settings — one request to GitHub Releases, only when
-  pressed; it reports a newer version and links to it, nothing is downloaded.
+- **In-app updates** — Settings → Updates checks GitHub Releases when you press
+  **Check for updates** (or at launch and daily, if you turn that on). A newer
+  version shows as **Update to X.Y.Z** in the top bar: one press downloads the
+  installer for your system, checks it against the SHA-256 GitHub published for
+  the release, and **Restart to update** swaps it in and reopens 🌱 Twig. On
+  macOS the new app replaces the old one in place, so there is no second
+  "downloaded from the internet" prompt; Windows runs the installer silently;
+  an AppImage replaces its own file; a .deb opens in your package installer.
 - **Command console** with the exact argv, cwd, timing, exit code and streamed
   output of every Git run. It opens on **My** — what you did — while
   **Full History** also shows the reads Twig makes to draw the graph. Search,
@@ -266,10 +272,12 @@ from the journal.
 External HTTP(S) links (and bare `mailto:`) open in the system browser; window
 navigation, embedded webviews, permission requests and renderer network requests
 are blocked. No telemetry, remote fonts or credential storage. The only request
-the app makes for itself is the manual update check in Settings: one call to the
-GitHub Releases API when you press the button, compared against the running
-version — nothing is checked in the background, downloaded or installed. Colors
-come only from `design/TOKENS.md`.
+the app makes for itself is the update check in Settings: one call to the
+GitHub Releases API when you press the button — or at launch and daily, only if
+you choose that — compared against the running version. An installer is
+downloaded only when you press **Update**, only from this repository's release,
+and is refused unless its size and SHA-256 match the release. Colors come only
+from `design/TOKENS.md`.
 
 ## License
 

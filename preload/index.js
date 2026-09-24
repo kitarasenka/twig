@@ -2,7 +2,18 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('twig', Object.freeze({
   getAppInfo: () => ipcRenderer.invoke('app:info'),
-  checkForUpdate: () => ipcRenderer.invoke('app:check-update'),
+  checkForUpdate: () => ipcRenderer.invoke('update:check'),
+  getUpdateState: () => ipcRenderer.invoke('update:state'),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  cancelUpdate: () => ipcRenderer.invoke('update:cancel'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  setAutoUpdateCheck: value => ipcRenderer.invoke('update:auto', value),
+  onUpdateState: listener => {
+    if (typeof listener !== 'function') throw new TypeError('Invalid update listener');
+    const callback = (_event, state) => listener(state);
+    ipcRenderer.on('update:state', callback);
+    return () => ipcRenderer.removeListener('update:state', callback);
+  },
   getSshKeys: () => ipcRenderer.invoke('ssh:keys'),
   secureSshKey: name => ipcRenderer.invoke('ssh:secure-key', name),
   getSshConfig: () => ipcRenderer.invoke('ssh:config'),

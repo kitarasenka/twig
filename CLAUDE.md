@@ -17,6 +17,55 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Обновление из приложения (2026-09-25, вне вех): раньше «Check for updates»
+только давал ссылку — новую версию надо было скачать, установить и на macOS
+ещё разрешить в Privacy & Security. Теперь: Settings → Updates → **Check for
+updates** (и опционально «Check automatically: At launch and daily», по
+умолчанию «Only when I ask», `updates.json` в userData, `main/update-store.js`)
+→ в шапке у шестерёнки кнопка **Update to X.Y.Z** → «Downloading N%» (в
+Settings — полоса, байты, **Cancel download**, «What's new» из тела релиза) →
+**Restart to update**. Squirrel/electron-updater не подходит: на macOS он
+требует ту же Developer ID-подпись у нового бандла, а у нас ad-hoc. Поэтому
+берётся тот же установщик, что на сайте, а целостность — по `digest`
+(`sha256:…`), который GitHub считает при загрузке ассета (`pickAsset` в
+`main/update-check.js`: имя строго `artifactName` этой установки, URL строго
+`…/releases/download/twig-v<версия>/<имя>`, без digest — не качается).
+`main/update-target.js` (чистый) определяет установку: **mac** (бандл из
+`execPath`; AppTranslocation — отказ с «перенеси в Applications»), **win**
+(NSIS x64), **appimage** (`$APPIMAGE`), **deb** (`/opt/…`), иначе/из исходников
+— unsupported с причиной. `main/updater.js` (без electron): `downloadAsset` —
+редиректы вручную (≤5, только github.com/`*.githubusercontent.com`), поток в
+файл с sha256 на лету, лишний/недостающий байт или чужой хэш — файл удаляется,
+простой 60 с и Cancel рвут чтение даже если тело игнорирует abort. Подготовка:
+mac — `hdiutil attach -readonly` → `ditto` в `.twig-update.app` рядом с
+текущим → bundle id `app.nodex.twig`, версия = релиз, `codesign --verify
+--deep --strict`, снятие `com.apple.quarantine` (файлы пишет наш процесс,
+флага и так нет — поэтому Gatekeeper больше не спрашивает); win — `MZ`;
+AppImage — ELF + `AI\x02`, копия `.twig-update.AppImage` рядом; deb —
+`!<arch>`, в Downloads. Установка: mac — rename текущего в
+`.twig-previous.app`, staged на его место (откат при ошибке; EPERM → подсказка
+про App Management), затем `/bin/sh` ждёт выхода pid и делает `open <app>`;
+AppImage — rename поверх файла, перезапуск тем же helper'ом без APPDIR/
+FONTCONFIG_* старого mount'а; win — `installer --updated /S --force-run`; deb —
+`shell.openPath`. Следующий запуск удаляет `.twig-previous.app`/staged и
+`userData/updates`. Каналы `update:state|check|download|cancel|install|auto`
+(`main/update-ipc.js`, `app:check-update` удалён), событие `update:state`;
+мост `checkForUpdate`, `getUpdateState`, `downloadUpdate`, `cancelUpdate`,
+`installUpdate`, `setAutoUpdateCheck`, `onUpdateState`. Слова —
+`renderer/src/app/update-view.js`. Restart выключен, пока идёт sync/Undo.
+**Работает начиная с версии, в которую это войдёт**: с 0.13.0 и раньше
+обновиться придётся вручную последний раз.
+Проверки: `scripts/checks/updater.mjs` (в `npm test`, без сети): выбор ассета и
+враждебные поля релиза, все цели установки, хосты/размер/checksum/отмена
+скачивания, helper перезапуска реально ждёт процесс, потоки AppImage/Windows/
+deb, а на macOS — **настоящий DMG** (`hdiutil create`), mount, чужой bundle id и
+чужая версия отклоняются, подмена бандла и уборка. `smoke.mjs` — мост, Off по
+умолчанию, кнопки в шапке нет, отказ IPC. **Живьём на macOS arm64:** упакованный
+`--mac dir` с `extraMetadata.version=0.12.0` через UI скачал настоящий
+`Twig-0.13.0-macos-arm64.dmg`, Cancel вернул «доступно», повторно из шапки —
+до Restart, перезапуск открыл 0.13.0 из того же пути, подпись валидна, xattr
+пуст. Windows и Linux живьём не проверялись. Версия не менялась.
+
 Соавторы, .gitignore из меню, пометки bisect, теги, обслуживание (2026-09-24,
 вне вех). Пять возможностей одним заходом.
 
@@ -2215,15 +2264,22 @@ UI/UX-скилл прочитан и выполнен перед M0; приня�
 Не отключать sandbox/contextIsolation. Запрещены webviews и внешняя навигация.
 Никаких сетевых запросов из приложения кроме Git, автоматизаций пользователя
 (это его команды: `npm test` и т. п. могут ходить в сеть — это ожидаемо и
-показано; сам код автоматизаций в сеть не ходит) и **ручной проверки
-обновлений** (см. ниже): один запрос к GitHub Releases строго по нажатию
-кнопки. **Сам по себе** 🌱 Twig ходит в сеть только фоновым fetch, и только
-после явного выбора интервала в Settings → «Background fetch» (по умолчанию
-Off; см. запись о нём выше) — никакой другой фоновой сети добавлять нельзя.
+показано; сам код автоматизаций в сеть не ходит) и **обновления из
+приложения** (см. запись «Обновление из приложения»): запрос к GitHub Releases
+по нажатию кнопки, а автоматически — только если в Settings → «Check
+automatically» выбрано «At launch and daily» (по умолчанию Off); установщик
+качается **только по нажатию** Update и только с `github.com/kitarasenka/twig/
+releases/download/` (+ хранилище `*.githubusercontent.com`), принимается только
+при совпадении размера и SHA-256 из релиза. **Сам по себе** 🌱 Twig ходит в сеть
+только фоновым fetch и этой проверкой, и только после явного выбора в Settings —
+никакой другой фоновой сети добавлять нельзя.
 В dev только localhost Vite.
 Никаких внешних шрифтов/изображений. Цвета только из TOKENS.md.
-Без подписей и телеметрии; автообновления (скачивание/установка) в v1 нет —
-проверка только сообщает о новой версии и даёт ссылку. Не трогать другие модули.
+Без подписей и телеметрии. Второе санкционированное исключение из «только git»
+— `main/updater.js`: hdiutil/ditto/plutil/codesign/xattr через `runStep` (без
+шелла, в журнале) и отсоединённый перезапуск — `/bin/sh -c <константный
+RELAUNCH_SCRIPT>` с pid и командой позиционными аргументами (данные в текст
+скрипта не подставляются). Не трогать другие модули.
 
 ## Проверки M0–M4
 

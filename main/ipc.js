@@ -16,7 +16,7 @@ import { registerFetchIpc } from './fetch-ipc.js';
 import { registerRepoToolsIpc } from './repo-tools-ipc.js';
 import { createTokenRegistry } from './token-registry.js';
 import { createRepositoryWatcher } from './repo-watch.js';
-import { checkForUpdate } from './update-check.js';
+import { registerUpdateIpc } from './update-ipc.js';
 
 function validSender(event, getWindow, entryUrl, args, count) {
   const window = getWindow();
@@ -25,7 +25,8 @@ function validSender(event, getWindow, entryUrl, args, count) {
     && isTrustedPage(event.senderFrame.url, entryUrl) && args.length === count;
 }
 
-export function registerIpc(getWindow, entryUrl, { journal, repositories, git, undo, marks, automations, automationRuns, automationPath, editor, fetchSettings }) {
+export function registerIpc(getWindow, entryUrl, { journal, repositories, git, undo, marks, automations, automationRuns, automationPath, editor, fetchSettings, updateSettings }) {
+  registerUpdateIpc(getWindow, entryUrl, { journal, store: updateSettings });
   registerUndoIpc(getWindow, entryUrl, { repositories, undo });
   registerMarksIpc(getWindow, entryUrl, { repositories, marks });
   registerAutomationsIpc(getWindow, entryUrl, { repositories, journal, automations, runs: automationRuns, loginPath: automationPath });
@@ -62,17 +63,6 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
   ipcMain.handle('app:info', (event, ...args) => {
     if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid app information request');
     return { name: '🌱 Twig', version: app.getVersion(), platform: process.platform };
-  });
-  // The one network request this app makes on its own behalf, and only when the
-  // person presses the button: read the latest release tag and compare it with
-  // the running version. Nothing is downloaded, installed or sent anywhere.
-  let updateCheck = null;
-  ipcMain.handle('app:check-update', (event, ...args) => {
-    if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid update request');
-    // A second press while the first request is still open reuses it rather
-    // than opening another connection.
-    updateCheck ??= checkForUpdate({ currentVersion: app.getVersion() }).finally(() => { updateCheck = null; });
-    return updateCheck;
   });
   ipcMain.handle('workspace:startup', (event, ...args) => {
     if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid workspace request');
