@@ -1,6 +1,6 @@
 import { runGit } from './exec.js';
 import { parseFileHistory, parseHistoryV1 } from './history-parser.js';
-import { validateFile, validateOid } from './commit.js';
+import { validateFile, validateOid, validateRevision } from './commit.js';
 
 const FORMAT = '%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b';
 const MIN_LIMIT = 1;
@@ -57,6 +57,32 @@ export async function loadHistoryPage({ cwd, log, limit = 250, skip = 0 }) {
   const argv = buildHistoryArgv({ limit, skip });
   const result = await runGit({ argv, cwd, log, operation: 'Read commit history' });
   if (result.code !== 0) throw new Error('Git could not read commit history.');
+  const commits = parseHistoryV1(result.stdout);
+  return { commits, nextSkip: commits.length < limit ? null : skip + commits.length };
+}
+
+/**
+ * One ref's own history — what `git log <ref>` walks — in this module's parser
+ * format. The graph reads `--all`; a reader that wants one branch's story, or
+ * HEAD's, asks for it by name. The revision is validated and placed after
+ * `--end-of-options`, so a name can never become an option.
+ * @param {{ revision?: string, limit?: number, skip?: number }} options
+ * @returns {string[]}
+ */
+export function buildRefHistoryArgv({ revision = 'HEAD', limit = 250, skip = 0 } = {}) {
+  validateRevision(revision);
+  validateLimit(limit);
+  validateSkip(skip);
+  return ['log', '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${limit}`, `--skip=${skip}`, '--end-of-options', revision, '--'];
+}
+
+/**
+ * @param {{ cwd: string, log: import('../command-log.js').CommandLog, revision?: string, limit?: number, skip?: number }} options
+ * @returns {Promise<{ commits: import('./history-parser.js').Commit[], nextSkip: number | null }>}
+ */
+export async function loadRefHistory({ cwd, log, revision = 'HEAD', limit = 250, skip = 0 }) {
+  const result = await runGit({ argv: buildRefHistoryArgv({ revision, limit, skip }), cwd, log, operation: 'Read branch history' });
+  if (result.code !== 0) throw new Error('Git could not read this history.');
   const commits = parseHistoryV1(result.stdout);
   return { commits, nextSkip: commits.length < limit ? null : skip + commits.length };
 }

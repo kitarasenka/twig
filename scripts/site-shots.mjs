@@ -4,6 +4,7 @@ import { appendFile, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'no
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { clientConfigs, launchCommand } from '../main/mcp/endpoint.js';
 
 // Screenshots for the README and the landing site, taken from the real app on
 // the seeded demo sandbox — the same repository a new user sees on first start,
@@ -90,6 +91,23 @@ try {
   await theme('light');
   await shot('workspace-light');
   await theme('dark');
+
+  // MCP: the toolbar button right after BugHunter, the server on, its panel
+  // open — for mcp.html. Off again afterwards, as the default is.
+  await page.getByRole('button', { name: /^MCP: off/ }).click();
+  await page.getByLabel('MCP server').selectOption('on');
+  await page.getByText(/^Listening\./).waitFor();
+  await page.getByRole('button', { name: /^MCP: on/ }).waitFor();
+  // The real blocks name this checkout and a temp profile; a public picture shows
+  // what an installed macOS app prints instead — the same clientConfigs, other paths.
+  const installed = clientConfigs(launchCommand({ execPath: '/Applications/🌱 Twig.app/Contents/MacOS/🌱 Twig',
+    dir: '/Users/you/Library/Application Support/twig/mcp' }), 'darwin');
+  await page.locator('.mcp-config code').evaluateAll((nodes, texts) => nodes.forEach((node, i) => { node.textContent = texts[i]; }),
+    [installed.claude, installed.codex, installed.json]);
+  await shot('mcp');
+  await page.getByLabel('MCP server').selectOption('off');
+  await page.getByRole('button', { name: /^MCP: off/ }).waitFor();
+  await page.keyboard.press('Escape');
 
   // Uncommitted work: the strip over the graph and the panel beside it.
   // README goes into the index from the panel's plus, then gets one more edit

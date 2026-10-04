@@ -19,7 +19,7 @@
   <a class="skip-link" href="#main">К содержимому</a>
   <header class="header wrap">
     <a class="brand" href="#" aria-label="🌱 Twig — на главную"><img src="assets/twig-small.png" width="40" height="40" alt=""><span>🌱 Twig</span></a>
-    <nav aria-label="Главная навигация"><a href="#features">Особенности</a><a href="#workspace">Интерфейс</a><a href="#screens">Экраны</a><a href="#bughunter">BugHunter</a><a href="#whats-new">Что нового</a><a href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#download">Скачать <span aria-hidden="true">↗</span></a></nav>
+    <nav aria-label="Главная навигация"><a href="#features">Особенности</a><a href="#workspace">Интерфейс</a><a href="#screens">Экраны</a><a href="#bughunter">BugHunter</a><a href="mcp.html">MCP</a><a href="#whats-new">Что нового</a><a href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#download">Скачать <span aria-hidden="true">↗</span></a></nav>
   </header>
   <main id="main">
     <section class="hero wrap" aria-labelledby="hero-title">
@@ -114,6 +114,10 @@
     <section class="bughunter wrap section-space" id="bughunter" aria-labelledby="bug-title">
       <div class="bug-copy"><p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> 🌱 BUGHUNTER / GIT BISECT</p><h2 id="bug-title">Найдите коммит,<br><span>который внёс ошибку.</span></h2><p>Укажите версию с багом и старую версию без него. BugHunter выбирает промежуточный коммит. Вы проверяете его и отмечаете: ошибка есть, ошибки нет или версию нельзя проверить.</p><p>Поиск использует <code>git bisect</code> — деление диапазона пополам. В панели видны тестовая версия и оценка оставшихся шагов. По завершении можно вернуться на исходную ветку.</p><a class="text-link" href="#download">Скачать 🌱 Twig с BugHunter <span aria-hidden="true">↗</span></a></div>
       <div class="hunt-card" data-reveal><div class="hunt-header"><strong>🌱 BugHunter</strong><span>ПРИМЕР ПОИСКА</span></div><div class="hunt-range"><span>✓ Ошибки нет</span><span>× Ошибка есть</span></div><div class="hunt-track" aria-hidden="true"><i></i><i></i><i></i><i class="test-node"></i><i></i><i></i><i></i><i></i><i></i></div><div class="hunt-result"><span class="eyebrow">ДЕЛЕНИЕ ДИАПАЗОНА ПОПОЛАМ</span><strong>128 <span>→</span> ~7</strong><p>версий → ручных проверок</p></div><div class="bisect-steps" aria-label="Пример уменьшения диапазона"><span>128</span><span>64</span><span>32</span><span>16</span><span>8</span><span>4</span><span>2</span><span>1</span></div><p class="hunt-footnote">Иллюстрация для линейной истории с одной причиной бага. Пропуски могут увеличить число шагов или оставить несколько кандидатов.</p></div>
+    </section>
+    <section class="mcp-teaser wrap section-space" id="mcp" aria-labelledby="mcp-title">
+      <div class="bug-copy"><p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> 🌱 TWIG AS MCP / ДЛЯ AI-АГЕНТОВ</p><h2 id="mcp-title">Ваш AI-агент<br><span>видит то же, что и вы.</span></h2><p>Включите MCP-сервер в 🌱 Twig, и Claude Code, Codex или Cursor получат структурированный контекст репозитория: что изменено, дифф нужного файла или одного ханка, историю и коммит, который у вас сейчас выделен.</p><p>Только чтение. Локальный сокет без сетевого порта. Выключен, пока вы его не включите.</p><a class="text-link" href="mcp.html">Почему это круто <span aria-hidden="true">→</span></a></div>
+      {{agentcard}}
     </section>
     <div class="light-section" data-theme="light">
       <section class="everyday wrap section-space" aria-labelledby="everyday-title">

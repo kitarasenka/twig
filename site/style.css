@@ -326,3 +326,83 @@ figcaption { display: flex; justify-content: space-between; gap: 12px; color: va
 .release-line time { text-transform: uppercase; }
 .release-note-link { margin-top: 8px; color: var(--muted); font-size: 13px; }
 .release-note-link a { color: var(--text); }
+
+/* 🌱 Twig as MCP: the teaser on the main page and mcp.html. Same tokens and
+   rhythm as the rest of the site; the agent card mirrors .hunt-card. */
+.mcp-teaser { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; border-top: 1px solid var(--border); }
+.agent-card { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); padding: 24px; min-width: 0; }
+.agent-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+.agent-head strong { font-weight: 500; font-size: 14px; }
+.agent-head > span { font-size: 9px; letter-spacing: 1px; color: var(--muted); }
+.agent-line { margin-top: 18px; font-size: 14px; line-height: 1.55; }
+.agent-line > span { display: block; font-size: 9px; letter-spacing: 1.3px; color: var(--muted); margin-bottom: 4px; }
+.agent-you { padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.agent-reply { padding-left: 14px; border-left: 3px solid var(--accent); }
+.agent-calls { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 6px; }
+.agent-calls li { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 4px 12px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface-raised); }
+.agent-calls li:before { content: '→' / ''; color: var(--accent); grid-row: 1 / span 2; }
+.agent-calls code { color: var(--accent); font-size: 12px; overflow-wrap: anywhere; }
+.agent-calls span { grid-column: 2; color: var(--muted); font-size: 11px; }
+.agent-calls small { grid-column: 3; grid-row: 1; color: var(--muted); font: 10px ui-monospace, monospace; white-space: nowrap; }
+.agent-foot { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+.mcp-hero .hero-description code { font-size: 15px; color: var(--text); }
+.inline-tag { display: inline-block; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text); vertical-align: 1px; }
+.why-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 42px; }
+.why-card { border: 1px solid var(--border); border-radius: 10px; padding: 28px; background: var(--surface); min-width: 0; }
+.why-accent { background: var(--accent-bg); }
+.why-card h3 { margin-top: 20px; font-size: 23px; letter-spacing: -.4px; line-height: 1.2; }
+.why-card p { margin-top: 14px; color: var(--muted); font-size: 15px; }
+.why-card code { font-size: 13px; }
+.ladder { list-style: none; margin: 44px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.ladder li { position: relative; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); padding: 22px; min-width: 0; display: flex; flex-direction: column; }
+.ladder li + li:after { content: '→' / ''; position: absolute; left: -15px; top: 26px; color: var(--muted); font-size: 14px; }
+.ladder-step { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--accent); color: var(--accent); font-size: 13px; font-weight: 600; }
+.ladder-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 16px; }
+.ladder-head code { font-size: 13px; color: var(--accent); overflow-wrap: anywhere; }
+.ladder-head small { font: 11px ui-monospace, monospace; color: var(--muted); white-space: nowrap; }
+.ladder li > p { margin-top: 10px; font-size: 14px; color: var(--muted); }
+.ladder pre { margin: 16px 0 0; padding: 12px; flex: 1; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 11px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ladder-note { margin-top: 28px; }
+.tool-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin-top: 42px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.tool-grid article { background: var(--surface); padding: 22px; min-width: 0; }
+.tool-grid code { color: var(--accent); font-size: 14px; overflow-wrap: anywhere; }
+.tool-grid p { margin-top: 8px; font-size: 14px; color: var(--muted); }
+.tool-grid p code { color: var(--text); font-size: 12px; }
+.scenario-grid h3 { font-size: 19px; }
+.chain { font-size: 12px !important; }
+.chain code { color: var(--accent); }
+.connect-steps { list-style: none; margin: 40px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.connect-steps li { border-top: 1px solid var(--border); padding-top: 20px; }
+.connect-steps h3 { margin-top: 14px; font-size: 21px; }
+.connect-steps p { margin-top: 10px; color: var(--muted); font-size: 15px; }
+.snippets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 36px; }
+.snippet { border: 1px solid var(--border); border-radius: 9px; background: var(--surface); overflow: hidden; min-width: 0; }
+.snippet figcaption { border-top: 0; border-bottom: 1px solid var(--border); justify-content: space-between; }
+.snippet figcaption strong { color: var(--text); font-weight: 500; font-size: 13px; }
+.snippet pre { margin: 0; padding: 16px; font-size: 11px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.limits-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 36px; }
+.limits-grid h3 { font-size: 21px; margin-bottom: 16px; }
+.limits { padding-top: 0; }
+.mcp-cta .hero-actions { margin-top: 30px; }
+@media (max-width: 1100px) {
+  .mcp-teaser { gap: 38px; }
+  .why-grid, .tool-grid { grid-template-columns: 1fr 1fr; }
+  .ladder { grid-template-columns: 1fr 1fr; }
+  .ladder li:nth-child(3):after { display: none; }
+  .snippets { grid-template-columns: 1fr; }
+}
+@media (max-width: 800px) {
+  .mcp-teaser { grid-template-columns: 1fr; gap: 30px; }
+  .agent-card { padding: 18px; }
+  .why-grid, .tool-grid, .ladder, .connect-steps, .limits-grid { grid-template-columns: 1fr; }
+  .why-grid { gap: 14px; margin-top: 30px; }
+  .why-card { padding: 22px; }
+  .ladder li + li:after { display: none; }
+  .connect-steps { gap: 8px; }
+  /* Body copy on phones stays at 16px; captions and code keep their sizes. */
+  .why-card p, .connect-steps p, .ladder li > p, .tool-grid p, .mcp-teaser .bug-copy > p:not(.eyebrow) { font-size: 16px; }
+}
+@media (max-width: 420px) {
+  .agent-calls li { grid-template-columns: auto 1fr; }
+  .agent-calls small { grid-column: 2; grid-row: auto; }
+}

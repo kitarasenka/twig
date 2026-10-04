@@ -90,6 +90,13 @@ start — see [Screenshots](#screenshots) below.
   macOS the new app replaces the old one in place, so there is no second
   "downloaded from the internet" prompt; Windows runs the installer silently;
   an AppImage replaces its own file; a .deb opens in your package installer.
+- **AI agents over MCP** — press **MCP** in the toolbar, turn it on, and Claude Code,
+  Codex, Cursor or any MCP client can read your connected repositories through
+  🌱 Twig: a compact workspace summary, changed files with line counts, one
+  file's diff or one hunk at a time, history, commits, and what is selected in
+  the window. Read-only, local socket only, off by default. See
+  [docs/mcp.md](docs/mcp.md) and the site's
+  [🌱 Twig as MCP](https://kitarasenka.github.io/twig/mcp.html) page.
 - **Command console** with the exact argv, cwd, timing, exit code and streamed
   output of every Git run. It opens on **My** — what you did — while
   **Full History** also shows the reads Twig makes to draw the graph. Search,
@@ -268,6 +275,12 @@ a temp file or the journal. Branch and tag names are checked against
 `git-check-ref-format` and passed after `--`, so a name like `--force` stays a
 name. Credential-bearing and unknown-transport remote URLs are refused and hidden
 from the journal.
+
+The MCP server for AI agents is off until you turn it on in Settings. Then it
+listens on a local socket in a folder only your account can open (a named pipe
+on Windows). It has no network port and no write or command tools, and resolves
+repositories only from your connected list. Agent reads run with
+`GIT_OPTIONAL_LOCKS=0` and appear in the console tagged MCP.
 
 External HTTP(S) links (and bare `mailto:`) open in the system browser; window
 navigation, embedded webviews, permission requests and renderer network requests

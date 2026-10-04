@@ -69,14 +69,20 @@ const cards = Object.entries(platforms).map(([platform, title]) => {
 }).join('\n');
 
 await mkdir(new URL('assets/', output), { recursive: true });
-const template = await readFile(new URL('index.html', source), 'utf8');
-const html = template
-  .replaceAll('{{version}}', escape(pkg.version))
-  .replaceAll('{{released}}', `<time datetime="${escape(pkg.releaseDate)}">${escape(released)}</time>`)
-  .replace('{{downloads}}', cards)
-  .replace('{{whatsnew}}', releaseSection);
-if (/\{\{\w+\}\}/.test(html)) throw new Error('Unresolved site template');
-await writeFile(new URL('index.html', output), html);
+// index.html is the landing; mcp.html is the page about 🌱 Twig as an MCP server.
+// Both share the stylesheet, the script and the version placeholders.
+const agentCard = (await readFile(new URL('partials/agent-card.html', source), 'utf8')).trim();
+for (const page of ['index.html', 'mcp.html']) {
+  const template = await readFile(new URL(page, source), 'utf8');
+  const html = template
+    .replaceAll('{{version}}', escape(pkg.version))
+    .replaceAll('{{released}}', `<time datetime="${escape(pkg.releaseDate)}">${escape(released)}</time>`)
+    .replace('{{downloads}}', cards)
+    .replace('{{whatsnew}}', releaseSection)
+    .replace('{{agentcard}}', agentCard);
+  if (/\{\{\w+\}\}/.test(html)) throw new Error(`Unresolved site template in ${page}`);
+  await writeFile(new URL(page, output), html);
+}
 await writeFile(new URL('downloads.json', output), JSON.stringify({ version: pkg.version, releaseDate: pkg.releaseDate, downloads }, null, 2) + '\n');
 await copyFile(new URL('style.css', source), new URL('style.css', output));
 await copyFile(new URL('site.js', source), new URL('site.js', output));

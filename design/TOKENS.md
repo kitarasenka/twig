@@ -384,3 +384,51 @@ Reviewed the ten fresh `shots:site` frames. No new tokens; everything below reus
 - Disclosure chevrons are drawn with borders in the Lucide stroke (1.7) instead of the platform's filled triangle, for every `<summary>`.
 - Toolbar counts sit on the icon's corner (`.tool .badge`), so Push/Pull labels share the baseline; BugHunter is icon + one word like its neighbours.
 - Rejected: moving the column headers to left alignment (centred headers were a deliberate earlier choice); widening the automation form past 820 px (a form reads better narrow — the extra boxes were the problem, not the width).
+
+## AI agents (MCP) panel (2026-10-04)
+
+Settings → AI agents (MCP) reuses existing patterns and tokens only; no new tokens.
+- The on/off switch is a `select` in a `.setting-row`, like Background fetch, because
+  the Off/On choice reads as a setting, not an action.
+- The read-only guarantee is a `--accent-bg` note with a shield icon and a bold word:
+  the safety promise is not carried by colour alone.
+- The client configs are `--font-mono` blocks on `--surface` with a visible Copy button
+  that turns into "Copied" with a check icon. Text stays selectable, and blocks wrap so
+  long paths never scroll the dialog sideways.
+- Console entries an agent caused get a bordered **MCP** word tag in `--muted`. It is a
+  word rather than a colour, and quiet next to failed entries.
+- The toolbar's **MCP** button sits right after BugHunter. When the server is on it shows a
+  7 px `--accent` dot on the icon's corner (ringed in `--bg`, where counts sit); the
+  button's name and tooltip say "on" or "off" in words.
+- Site page `mcp.html` reuses the landing's sections, cards and light/dark alternation. The
+  agent card mirrors `.hunt-card`; tool names are `--accent` monospace; code and JSON blocks
+  wrap instead of scrolling sideways.
+
+## UI/UX skill pass: MCP (2026-10-04)
+
+`ui-ux-pro-max` was run on the toolbar MCP button, the AI agents (MCP) panel and
+`site/mcp.html`.
+
+**Rejected:** the generated design system (slate/green palette, JetBrains Mono and IBM Plex
+from Google Fonts, the "vibrant & block-based" style). Colours come only from this file and
+fonts are local. A Git client's settings panel and its docs page should stay calm, not loud.
+
+**Accepted and checked:**
+- Contrast was computed from `tokens.css` for every new pair in both themes. The lowest is
+  5.63:1 (`--muted` on `--accent-bg`, light).
+- The on/off state is never colour alone: the dot comes with "on"/"off" in the button's name
+  and tooltip.
+- **Fixed:**
+  - Copy now announces "<client> configuration copied." through a visually hidden
+    `role="status"`; the visible "Copied" label alone said nothing to a screen reader.
+  - The scrollable config blocks are focusable (`tabIndex=0`, labelled, focus ring), so the
+    keyboard can scroll them.
+  - The CSS arrows are decorative (`content: '→' / ''`), so screen readers don't read them.
+  - Step numbers are `aria-hidden`, and the `list-style: none` lists keep `role="list"`, so
+    VoiceOver neither drops the list nor reads each number twice.
+  - Body copy on the new page is 16 px on phones; JSON and caption text is at least 11 px.
+- Verified by `site/check.mjs` at 375/768/1024/1440: no horizontal scroll, and no animation
+  under reduced motion. The 1000 px toolbar fits with the extra button.
+
+**Not changed:** the 10–11 px eyebrow and caption sizes. They match the existing landing
+sections, and the 15 px body text in older landing sections was out of scope for this pass.

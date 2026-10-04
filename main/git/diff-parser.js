@@ -132,3 +132,30 @@ export function parseFilePatchV1(output) {
   if (result.binary && result.hunks.length > 0) fail('binary patch must not carry hunks');
   return result;
 }
+
+/**
+ * Splits a multi-file patch (`git show <commit>`) into one chunk per file, in
+ * the order Git wrote them, each ready for `parseFilePatchV1`. Paths are not
+ * read from the `diff --git` lines for the reason given above: the caller
+ * pairs chunks with a file list it already holds, in the same order.
+ * @param {string} output
+ * @returns {string[]}
+ */
+export function splitPatchFiles(output) {
+  if (typeof output !== 'string') fail('output must be a string');
+  const chunks = [];
+  let current = null;
+  const lines = output.split('\n');
+  // Only the one empty string the final newline leaves: an empty context line
+  // just before it is content.
+  if (lines.at(-1) === '') lines.pop();
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) {
+      if (current) chunks.push(current.join('\n') + '\n');
+      current = [line];
+    } else if (current) current.push(line);
+    else if (line !== '') fail('patch text before the first file header');
+  }
+  if (current) chunks.push(current.join('\n') + '\n');
+  return chunks;
+}

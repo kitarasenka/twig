@@ -43,6 +43,7 @@ import BlameView from '../blame/BlameView.jsx';
 import BlameDetail from '../blame/BlameDetail.jsx';
 import DiffLines from '../diff/DiffLines.jsx';
 import { dropActions, endpointLabel, sameEndpoint } from '../../../../main/git/drop-plan.js';
+import { buildUiContext } from './ui-context-report.js';
 
 const NOOP = () => {};
 const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
@@ -1115,6 +1116,13 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   const headRef = headBranch ? data.refs.find(ref => ref.type === 'local' && ref.name === headBranch) || null : null;
   const headInfo = { branch: headBranch, oid: headOid, detached: Boolean(repository.status?.branch?.detached) };
   const showDetail = detail && !conflict && !screen;
+  // What is on screen, for an AI agent asking through the MCP server. Sent
+  // only from the active tab and only when the selection changes; main keeps
+  // the last report in memory and nowhere else.
+  const uiReport = active ? JSON.stringify(buildUiContext({ repositoryId: repository.id, selected, selection, range,
+    diff: diff && { file: diff.file, oid: diff.oid, section: diff.section }, fileHistory: fileHistory && { path: fileHistory.path },
+    blame: blame && { path: blame.path, oid: blame.oid }, conflict, screen, uncommitted })) : null;
+  useEffect(() => { if (uiReport) window.twig?.reportUiContext?.(JSON.parse(uiReport)); }, [uiReport]);
   return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${fileHistory || blame ? fileHistoryWidth : width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
     {active && toolbarSlot && createPortal(
       <Button className="tool bughunter-tool" icon={Bug} reason={hunterReason}

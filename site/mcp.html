@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <meta name="description" content="🌱 Twig как MCP-сервер: Claude Code, Codex и Cursor получают структурированный контекст Git-репозитория — сводку, дифф одного файла или ханка, историю и выделенное в окне. Только чтение, локально, выключен по умолчанию.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="🌱 Twig as MCP — Git-контекст для AI-агентов">
+  <meta property="og:description" content="Сводка → файл → ханк. Что выделено в 🌱 Twig, то видит и агент. Только чтение, локальный сокет, без аккаунта.">
+  <title>🌱 Twig as MCP — Git-контекст для AI-агентов</title>
+  <link rel="icon" type="image/png" href="assets/twig-small.png">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">К содержимому</a>
+  <header class="header wrap">
+    <a class="brand" href="index.html" aria-label="🌱 Twig — на главную"><img src="assets/twig-small.png" width="40" height="40" alt=""><span>🌱 Twig</span></a>
+    <nav aria-label="Навигация по странице"><a href="index.html">Главная</a><a href="#why">Почему</a><a href="#tools">Инструменты</a><a href="#connect">Подключение</a><a href="#security">Безопасность</a><a href="https://github.com/kitarasenka/twig/blob/main/docs/mcp.md">Документация <span aria-hidden="true">↗</span></a><a class="nav-download" href="index.html#download">Скачать <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main id="main">
+    <section class="hero mcp-hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> <span>🌱 TWIG AS MCP · v{{version}}</span></p>
+        <h1 id="hero-title">AI-агент видит<br>репозиторий<br><span>так же, как вы.</span></h1>
+        <p class="hero-description">🌱 Twig отвечает AI-агентам через Model Context Protocol. Claude Code, Codex, Cursor и любой MCP-клиент получают не простыню вывода <code>git</code>, а короткий структурированный ответ: что изменено, дифф нужного файла, один ханк, история и то, что вы выделили в окне.</p>
+        <div class="hero-actions"><a class="button primary" href="#connect">Как подключить <span aria-hidden="true">↓</span></a><a class="text-link" href="#why">Почему это круто <span aria-hidden="true">↗</span></a></div>
+        <p class="availability">Claude Code <span>·</span> Codex <span>·</span> Cursor <span>·</span> любой MCP-клиент</p>
+      </div>
+      {{agentcard}}
+    </section>
+    <div class="facts wrap"><span><span class="status-dot" aria-hidden="true"></span> Только чтение</span><span>Локальный сокет, без сетевого порта</span><span>Выключен, пока вы не включите</span><a href="#security">Модель безопасности <span aria-hidden="true">↗</span></a></div>
+
+    <section class="preview wrap" id="panel" aria-labelledby="panel-title">
+      <div class="section-heading compact"><div><p class="eyebrow">В САМОМ ПРИЛОЖЕНИИ</p><h2 id="panel-title">Кнопка MCP рядом с BugHunter.</h2></div><p>Включение, что получит агент и готовые<br>команды подключения — в одном окне.</p></div>
+      <figure class="app-frame" data-reveal><a href="assets/shots/mcp.webp" target="_blank" rel="noopener" aria-label="Открыть снимок окна MCP в полном размере (новая вкладка)"><img src="assets/shots/mcp.webp" width="2880" height="1760" alt="Окно AI agents (MCP) поверх демо-песочницы: MCP server — On, статус Listening, заметка Read-only, четыре карточки What your agent gets, три шага подключения и команда для Claude Code с кнопкой Copy." loading="lazy"></a><figcaption><span>🌱 Twig {{version}} · окно MCP · тёмная тема</span><span>Пути в командах — как у установленного приложения на macOS</span></figcaption></figure>
+    </section>
+
+    <section class="why wrap section-space" id="why" aria-labelledby="why-title">
+      <div class="section-heading"><div><p class="eyebrow">ПОЧЕМУ ЭТО КРУТО</p><h2 id="why-title">Не обёртка над git,<br><span>а смысловой API к репозиторию.</span></h2></div><p>Агент может запустить <code>git diff</code> и сам. Но тогда он читает всё подряд, гадает, что важно, и не знает, на что вы смотрите.</p></div>
+      <div class="why-grid">
+        <article class="why-card" data-reveal><span class="feature-number">01 / СТРУКТУРА ВМЕСТО ТЕКСТА</span><h3>Ответ, который не надо разбирать</h3><p>Статусы словами, счётчики строк по файлу, ханки с диапазонами и id, ветка с upstream и расхождением, идущий merge или rebase. Агент сразу работает с данными, а не парсит человеческий вывод.</p></article>
+        <article class="why-card" data-reveal><span class="feature-number">02 / ОТ СВОДКИ К СТРОКЕ</span><h3>Ровно столько, сколько спросили</h3><p>Сначала сводка в несколько сотен байт, потом список файлов, потом дифф одного файла, потом один ханк. Огромный дифф приходит оглавлением: ханки с id, текст — по запросу. Контекст агента не тонет в чужих файлах.</p></article>
+        <article class="why-card why-accent" data-reveal><span class="feature-number">03 / ЧТО ВЫДЕЛЕНО У ВАС</span><h3>«Объясни этот коммит» — без хэша</h3><p>Агент видит, какой коммит, диапазон сравнения или файл открыт в 🌱 Twig. Выделили строку в графе — спросили агента. Копировать хэш и путь больше не нужно.</p></article>
+        <article class="why-card" data-reveal><span class="feature-number">04 / ТОЛЬКО ЧТЕНИЕ</span><h3>Агент предлагает, решаете вы</h3><p>Нет инструментов commit, stage, checkout, reset, push и нет запуска команд. План коммитов агент предлагает, а выполняете его вы — в 🌱 Twig, где staging построчный и почти каждое действие можно отменить.</p></article>
+        <article class="why-card" data-reveal><span class="feature-number">05 / ВСЁ НА ВИДУ</span><h3>Каждая команда агента — в журнале</h3><p>Любая команда Git, которую вызвал агент, попадает в консоль 🌱 Twig с плашкой <b class="inline-tag">MCP</b>: argv, каталог, вывод, код. Ваши действия во вкладке «My» не смешиваются с чтениями агента.</p></article>
+        <article class="why-card" data-reveal><span class="feature-number">06 / ЛЮБОЙ КЛИЕНТ</span><h3>Стандартный MCP, без облака</h3><p>Обычный Model Context Protocol поверх stdio: никаких SDK провайдеров, аккаунтов и серверов. Мост запускается на исполняемом файле самого 🌱 Twig — отдельный Node.js не нужен.</p></article>
+      </div>
+    </section>
+
+    <div class="light-section" data-theme="light">
+      <section class="ladder-section wrap section-space" id="ladder" aria-labelledby="ladder-title">
+        <div class="section-heading"><div><p class="eyebrow">СВОДКА → ФАЙЛ → ХАНК</p><h2 id="ladder-title">Четыре шага<br><span>вместо одного огромного вывода.</span></h2></div><p>Настоящие ответы 🌱 Twig на демо-песочнице, сокращённые для читаемости. Справа от названия — размер полного ответа.</p></div>
+        <ol class="ladder" role="list">
+          <li data-reveal><span class="ladder-step" aria-hidden="true">1</span><div class="ladder-head"><code>get_workspace_context</code><small>434 Б</small></div><p>Ветка, upstream, расхождение, идущая операция и счётчики файлов. Без диффов.</p><pre><code>{"branch": {
+  "name": "main",
+  "upstream": "origin/main",
+  "ahead": 1, "behind": 0 },
+ "operation": null,
+ "workingTree": {
+  "clean": false,
+  "staged": 0, "unstaged": 1,
+  "untracked": 1 }}</code></pre></li>
+          <li data-reveal><span class="ladder-step" aria-hidden="true">2</span><div class="ladder-head"><code>list_changes</code><small>311 Б</small></div><p>Каждый файл со статусом, стороной индекса и числом строк. Постранично.</p><pre><code>{"total": 2, "files": [
+ {"path": "README.md",
+  "status": "modified",
+  "staged": false,
+  "insertions": 1,
+  "deletions": 0},
+ {"path": "notes.todo",
+  "status": "untracked"}]}</code></pre></li>
+          <li data-reveal><span class="ladder-step" aria-hidden="true">3</span><div class="ladder-head"><code>get_diff</code><small>614 Б</small></div><p>Дифф одного файла, разбитый на ханки с id и диапазонами строк.</p><pre><code>{"path": "README.md",
+ "side": "unstaged",
+ "hunks": [{
+  "id": "w3-77f252e1d76e",
+  "oldStart": 6,
+  "newStart": 6,
+  "added": 1,
+  "patch": "@@ -6,3 +6,4 @@…"}],
+ "truncated": false}</code></pre></li>
+          <li data-reveal><span class="ladder-step" aria-hidden="true">4</span><div class="ladder-head"><code>get_diff_hunk</code><small>1 ханк</small></div><p>Один ханк. Если файл с тех пор изменился, ответ — <code>INVALID_HUNK</code>, а не соседний ханк.</p><pre><code>{"hunk": {
+  "id": "w3-77f252e1d76e",
+  "patch": "…
+ Keep the details close…
++One unstaged edit.\n",
+  "truncated": false}}</code></pre></li>
+        </ol>
+        <div class="local-note ladder-note" data-reveal><img src="assets/twig-small.png" width="48" height="48" alt="" loading="lazy"><div><h3>Большой дифф не съедает контекст</h3><p>Файл на 300 ханков приходит оглавлением: пока хватает бюджета — с текстом, дальше — с id и <code>patch: null</code>. Агент открывает только нужные ханки. JSON никогда не обрезается на середине, а у обрезанного ответа всегда есть <code>truncated</code> и подсказка, что запросить дальше.</p></div></div>
+      </section>
+    </div>
+
+    <section class="tools-section wrap section-space" id="tools" aria-labelledby="tools-title">
+      <div class="section-heading"><div><p class="eyebrow">9 ИНСТРУМЕНТОВ · ВСЕ ТОЛЬКО ЧИТАЮТ</p><h2 id="tools-title">Небольшие инструменты<br><span>вместо get_everything.</span></h2></div><p>Каждый принимает необязательный <code>repository</code> — имя, корень или любой путь внутри. Агент может передать свою рабочую папку.</p></div>
+      <div class="tool-grid">
+        <article data-reveal><code>get_workspace_context</code><p>Сводка: ветка, upstream, операция, счётчики файлов, выделенное в окне.</p></article>
+        <article data-reveal><code>list_repositories</code><p>Подключённые репозитории и тот, что открыт в 🌱 Twig.</p></article>
+        <article data-reveal><code>list_changes</code><p>Изменённые файлы без диффов: статус, staged, строки +/−. Постранично.</p></article>
+        <article data-reveal><code>get_diff</code><p>Дифф одного файла по ханкам; staged или нет; новый файл — как добавление.</p></article>
+        <article data-reveal><code>get_diff_hunk</code><p>Один ханк по id, с проверкой, что файл не изменился.</p></article>
+        <article data-reveal><code>get_history</code><p>Компактный список коммитов HEAD, ветки, тега или всех веток сразу.</p></article>
+        <article data-reveal><code>get_commit</code><p>Сообщение, автор, родители и файлы со счётчиками строк. Без патча.</p></article>
+        <article data-reveal><code>get_commit_diff</code><p>Патч коммита: целиком для маленького, по файлу или по ханку для большого.</p></article>
+        <article data-reveal><code>get_ui_context</code><p>Что открыто в окне: вид, коммит, диапазон, файл. Чего 🌱 Twig не хранит — <code>null</code>.</p></article>
+      </div>
+    </section>
+
+    <div class="light-section" data-theme="light">
+      <section class="scenarios wrap section-space" id="scenarios" aria-labelledby="scenarios-title">
+        <div class="section-heading"><div><p class="eyebrow">СЦЕНАРИИ</p><h2 id="scenarios-title">Что спросить<br><span>у агента.</span></h2></div><p>Под каждой просьбой — инструменты, которые агенту хватит вызвать.</p></div>
+        <div class="benefits scenario-grid">
+          <article data-reveal><span class="feature-number">01 / КОММИТЫ</span><h3>«Разбей мои изменения на коммиты»</h3><p>Агент смотрит сводку и список файлов, читает дифф только нужных файлов и предлагает группы с сообщениями. Застейджить можно построчно в 🌱 Twig.</p><p class="chain"><code>workspace</code> → <code>list_changes</code> → <code>get_diff</code></p></article>
+          <article data-reveal><span class="feature-number">02 / РЕВЬЮ</span><h3>«Проверь, что я застейджил»</h3><p>Только индекс, файл за файлом — то, что действительно уйдёт в коммит, а не всё рабочее дерево.</p><p class="chain"><code>list_changes</code> → <code>get_diff staged</code></p></article>
+          <article data-reveal><span class="feature-number">03 / ОБЪЯСНЕНИЕ</span><h3>«Объясни коммит, который я выделил»</h3><p>Агент узнаёт выделенный коммит из окна, читает его файлы и дифф нужного файла.</p><p class="chain"><code>get_ui_context</code> → <code>get_commit</code> → <code>get_commit_diff</code></p></article>
+          <article data-reveal><span class="feature-number">04 / ИСТОРИЯ</span><h3>«Что происходило в main за 20 коммитов?»</h3><p>Список коммитов без диффов, затем подробности только по интересным.</p><p class="chain"><code>get_history</code> → <code>get_commit</code></p></article>
+        </div>
+      </section>
+    </div>
+
+    <section class="connect wrap section-space" id="connect" aria-labelledby="connect-title">
+      <div class="section-heading"><div><p class="eyebrow">ПОДКЛЮЧЕНИЕ · МИНУТА</p><h2 id="connect-title">Три шага,<br><span>одна команда.</span></h2></div><p>Точная команда для вашей установки — в самом 🌱 Twig: кнопка <b class="inline-tag">MCP</b> рядом с BugHunter, затем Copy.</p></div>
+      <ol class="connect-steps" role="list">
+        <li data-reveal><span class="ladder-step" aria-hidden="true">1</span><h3>Включите сервер</h3><p>Кнопка <strong>MCP</strong> в панели инструментов → MCP server: <strong>On</strong>. Выбор переживает перезапуск.</p></li>
+        <li data-reveal><span class="ladder-step" aria-hidden="true">2</span><h3>Добавьте его агенту</h3><p>Скопируйте строку для Claude Code, таблицу для Codex или JSON для Cursor — пути уже подставлены.</p></li>
+        <li data-reveal><span class="ladder-step" aria-hidden="true">3</span><h3>Спросите</h3><p>Перезапустите агента и спросите о репозитории. Если 🌱 Twig закрыт, агент получит понятный ответ, а не тишину.</p></li>
+      </ol>
+      <div class="snippets">
+        <figure class="snippet" data-reveal><figcaption><strong>Claude Code</strong><span>один раз в терминале</span></figcaption><pre><code>claude mcp add --scope user twig \
+  --env ELECTRON_RUN_AS_NODE=1 -- \
+  '/Applications/🌱 Twig.app/Contents/MacOS/🌱 Twig' \
+  '/Users/you/Library/Application Support/twig/mcp/twig-mcp.mjs'</code></pre></figure>
+        <figure class="snippet" data-reveal><figcaption><strong>Codex</strong><span>~/.codex/config.toml</span></figcaption><pre><code>[mcp_servers.twig]
+command = "/Applications/🌱 Twig.app/…/🌱 Twig"
+args = ["…/twig/mcp/twig-mcp.mjs"]
+env = { ELECTRON_RUN_AS_NODE = "1" }</code></pre></figure>
+        <figure class="snippet" data-reveal><figcaption><strong>Cursor и другие</strong><span>mcpServers</span></figcaption><pre><code>{ "mcpServers": { "twig": {
+  "command": "/Applications/🌱 Twig.app/…/🌱 Twig",
+  "args": ["…/twig/mcp/twig-mcp.mjs"],
+  "env": { "ELECTRON_RUN_AS_NODE": "1" } } } }</code></pre></figure>
+      </div>
+      <p class="download-note">Пути — пример для macOS. В Windows и Linux 🌱 Twig подставит свои; они показаны в окне MCP.</p>
+    </section>
+
+    <div class="light-section" data-theme="light">
+      <section class="security wrap section-space" id="security" aria-labelledby="security-title">
+        <div class="section-heading"><div><p class="eyebrow">МОДЕЛЬ БЕЗОПАСНОСТИ</p><h2 id="security-title">Контекст для агента,<br><span>а не ключи от репозитория.</span></h2></div></div>
+        <div class="benefits">
+          <article data-reveal><span class="feature-number">01 / ВЫКЛЮЧЕН</span><h3>Пока вы не включите</h3><p>До выбора в 🌱 Twig нет ни сокета, ни слушателя. Выключили — сокет исчезает.</p></article>
+          <article data-reveal><span class="feature-number">02 / ЛОКАЛЬНО</span><h3>Без сетевого порта</h3><p>Unix-сокет в папке, которую открывает только ваша учётная запись (0700, сокет 0600); в Windows — named pipe. TCP нет.</p></article>
+          <article data-reveal><span class="feature-number">03 / ТОЛЬКО ЧТЕНИЕ</span><h3>Без команд и записи</h3><p>Нет run_command, shell и инструментов записи. Чтения рабочего дерева не трогают индекс: <code>GIT_OPTIONAL_LOCKS=0</code>.</p></article>
+          <article data-reveal><span class="feature-number">04 / ГРАНИЦЫ</span><h3>Только ваши репозитории</h3><p>Агент не может указать произвольную папку: только подключённые в 🌱 Twig, пути проверяются на выход из репозитория.</p></article>
+        </div>
+        <div class="local-note" data-reveal><img src="assets/twig-small.png" width="48" height="48" alt="" loading="lazy"><div><h3>Проверено, что ничего не меняется</h3><p>Проверка 🌱 Twig вызывает каждый инструмент на настоящих репозиториях — с конфликтом merge, staged и unstaged правками, большими диффами — и сверяет папку <code>.git</code> и рабочее дерево побайтно до и после. Выделение в окне хранится только в памяти и никуда не записывается.</p></div></div>
+      </section>
+      <section class="limits wrap section-space" id="limits" aria-labelledby="limits-title">
+        <div class="section-heading"><div><p class="eyebrow">ЧЕСТНО</p><h2 id="limits-title">Чего пока нет<br><span>и что будет дальше.</span></h2></div></div>
+        <div class="limits-grid">
+          <div data-reveal><h3>Сейчас</h3><ul class="release-notes"><li>Только чтение: агент не стейджит и не коммитит.</li><li>Только локальный stdio-мост; HTTP-транспорта нет.</li><li>Выделение внутри экрана staging агенту не передаётся; выбора ветки и ханка в 🌱 Twig нет — эти поля всегда <code>null</code>.</li><li>Живьём проверено на macOS; Windows и Linux используют тот же код, но ещё не прогонялись.</li></ul></div>
+          <div data-reveal><h3>Дальше</h3><ul class="release-notes"><li>Инструменты записи — <code>stage_hunk</code>, <code>create_branch</code>, <code>create_commit</code> — под отдельным разрешением.</li><li>Подтверждение каждой мутации в окне 🌱 Twig с точной командой.</li><li>Отмена действий агента тем же Undo, что и ваших.</li></ul></div>
+        </div>
+      </section>
+      <section class="downloads mcp-cta wrap section-space" aria-labelledby="cta-title">
+        <div class="download-heading"><div><p class="eyebrow">MACOS / WINDOWS / LINUX</p><h2 id="cta-title">Скачайте 🌱 Twig<br>и включите MCP</h2><p class="download-intro">MCP-сервер встроен в приложение: отдельная установка не нужна.</p></div><p class="release-label"><span class="status-dot" aria-hidden="true"></span> Версия {{version}}<small>Предварительная версия</small></p></div>
+        <div class="hero-actions"><a class="button primary" href="index.html#download">Скачать 🌱 Twig <span aria-hidden="true">↓</span></a><a class="text-link" href="https://github.com/kitarasenka/twig/blob/main/docs/mcp.md">Полная документация MCP <span aria-hidden="true">↗</span></a></div>
+      </section>
+      <footer class="footer wrap"><a class="brand" href="index.html" aria-label="🌱 Twig — на главную"><img src="assets/twig-small.png" width="36" height="36" alt=""><span>🌱 Twig</span></a><p>Десктопный Git-клиент · macOS, Windows, Linux</p><a class="footer-link" href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a href="#main">Наверх <span aria-hidden="true">↑</span></a></footer>
+    </div>
+  </main>
+</body>
+</html>

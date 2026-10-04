@@ -43,6 +43,9 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
    the neighbours' baseline. */
 .tool .badge { position: absolute; top: 2px; left: calc(50% + 5px); margin: 0; }
 .bughunter-tool:disabled { pointer-events: none; }
+/* MCP on: a dot on the icon's corner, where counts sit. The button's name and
+   tooltip say "on" in words; the dot is only a glance. */
+.tool .tool-dot { position: absolute; top: 6px; left: calc(50% + 7px); width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
 .workspace-container, .workspace-tab { flex: 1; min-height: 0; display: flex; }
 [hidden] { display: none !important; }
 .workspace { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: var(--sidebar-width) var(--splitter-width) minmax(0, 1fr) var(--splitter-width) var(--detail-width); }
@@ -190,6 +193,8 @@ details[open] > summary::before { transform: rotate(45deg); margin-bottom: 4px; 
 .console-entry-summary > span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .console-entry-summary > small { color: var(--muted); margin-left: auto; white-space: nowrap; }
 .console-entry-summary .expanded-arrow { transform: rotate(90deg); }
+/* Commands an AI agent caused through the MCP server: a word, not only a colour. */
+.console-entry-summary > .console-tag { flex: none; padding: 0 var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--muted); font-size: 9px; font-weight: 600; letter-spacing: 0.04em; }
 .console-output { padding: var(--space-3) var(--space-4) var(--space-4); background: var(--bg); }
 .console-output pre { max-height: 180px; overflow: auto; padding: var(--space-3); background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: var(--text-xs); }
 .console-output .stderr { color: var(--danger); margin-top: var(--space-2); }
@@ -273,3 +278,5 @@ dialog h2 { font-size: var(--text-lg); }
 .setting-controls { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .setting-row .editor-path { overflow-wrap: anywhere; }
 .setting-row .fetch-status { color: var(--text); }
+/* Text for screen readers only — e.g. a status announcement next to a visual change. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }

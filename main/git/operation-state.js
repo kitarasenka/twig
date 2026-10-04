@@ -76,10 +76,11 @@ async function readRebase(gitDir) {
 }
 
 /**
- * @param {{ cwd: string, log: import('../command-log.js').CommandLog, gitDir?: ?string }} options
+ * `env` lets a background reader pass `GIT_OPTIONAL_LOCKS=0` to the status run.
+ * @param {{ cwd: string, log: import('../command-log.js').CommandLog, gitDir?: ?string, env?: ?Record<string, string> }} options
  * @returns {Promise<OperationState>}
  */
-export async function loadOperationState({ cwd, log, gitDir = null }) {
+export async function loadOperationState({ cwd, log, gitDir = null, env = null }) {
   const dir = gitDir || await resolveGitDir({ cwd, log });
   const rebase = await readRebase(dir);
   let head = rebase;
@@ -92,7 +93,7 @@ export async function loadOperationState({ cwd, log, gitDir = null }) {
   }
   if (!head) return { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
 
-  const result = await runGit({ argv: ['status', '--porcelain=v2', '-z'], cwd, log, operation: 'Background: read conflicted files' });
+  const result = await runGit({ argv: ['status', '--porcelain=v2', '-z'], cwd, log, env, operation: 'Background: read conflicted files' });
   if (result.code !== 0) throw new Error('Git could not read the working tree.');
   const conflicts = parseStatusV2(result.stdout).entries.filter(entry => entry.kind === 'unmerged').map(entry => entry.path);
   return { ...head, conflicts, resolved: conflicts.length === 0 };

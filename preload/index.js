@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
     ipcRenderer.on('repo:external-change', callback);
     return () => ipcRenderer.removeListener('repo:external-change', callback);
   },
+  getMcpSettings: () => ipcRenderer.invoke('mcp:get'),
+  setMcpEnabled: enabled => ipcRenderer.invoke('mcp:set', enabled),
+  reportUiContext: context => ipcRenderer.send('mcp:ui-context', context),
   getBackgroundFetch: () => ipcRenderer.invoke('fetch:get'),
   setBackgroundFetch: interval => ipcRenderer.invoke('fetch:set', interval),
   getBackgroundFetchStatus: id => ipcRenderer.invoke('fetch:status', id),

@@ -13,7 +13,9 @@
 
 // Every automatic read is named by its verb. "Check out …" is a real action,
 // so "Check …" cannot be a prefix — those two reads are named in full below.
-export const AUTOMATIC_PREFIXES = ['Background:', 'Read ', 'Resolve ', 'Verify '];
+// "MCP:" is what an AI agent read through the MCP server — not the person's
+// own action, so it is in Full History only.
+export const AUTOMATIC_PREFIXES = ['Background:', 'MCP:', 'Read ', 'Resolve ', 'Verify '];
 export const AUTOMATIC_LABELS = [
   'Check file at start',
   'Check reverse-blame range',

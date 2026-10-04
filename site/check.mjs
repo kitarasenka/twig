@@ -113,11 +113,47 @@ try {
   await demo.waitForFunction(() => !!globalThis.document.querySelector('.feature.is-revealed'));
   await demo.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await demo.evaluate(() => globalThis.document.getAnimations().length), 0, 'Changing motion preference stops animations');
+  // mcp.html: the page about 🌱 Twig as an MCP server, linked from the main
+  // page's navigation and its teaser section. Without JS over HTTP, and with
+  // JS from the built file (site.js must not assume the main page's tabs).
+  await page.goto(base);
+  assert.equal(await page.locator('#mcp .agent-card').count(), 1, 'the main page carries the MCP teaser');
+  await page.locator('#mcp a[href="mcp.html"]').click();
+  assert.equal(new URL(page.url()).pathname, '/mcp.html');
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 960 });
+    await page.goto(`${base}/mcp.html`);
+    await page.evaluate(() => globalThis.document.fonts.ready);
+    assert.equal(await page.locator('h1').count(), 1);
+    const overflow = await page.evaluate(() => [...globalThis.document.querySelectorAll('body *')].filter((element) => element.getBoundingClientRect().right > globalThis.innerWidth + 1).map((element) => element.className));
+    assert.equal(await page.evaluate(() => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth), false, `mcp.html overflow at ${width}px: ${overflow.join(', ')}`);
+    assert.match(await page.locator('.hero-copy > .eyebrow').innerText(), new RegExp(`v${manifest.version.replace(/\./g, '\\.')}`));
+    assert.equal(await page.locator('.tool-grid article').count(), 9, 'all nine tools are listed');
+    for (const img of await page.locator('img').all()) {
+      await img.scrollIntoViewIfNeeded();
+      assert.equal(await img.evaluate((element) => element.complete && element.naturalWidth > 0), true);
+    }
+    await page.screenshot({ path: new URL(`site-mcp-nojs-${width}.png`, artifacts).pathname, fullPage: true });
+  }
+  const brokenMcpAnchors = await page.evaluate(() => [...globalThis.document.querySelectorAll('a[href^="#"]')].map(a => a.getAttribute('href').slice(1)).filter(id => id && !globalThis.document.getElementById(id)));
+  assert.deepEqual(brokenMcpAnchors, []);
+  await page.locator('.mcp-cta a.primary').click();
+  assert.equal(new URL(page.url()).pathname, '/index.html');
+  assert.equal(new URL(page.url()).hash, '#download', 'the call to action lands on the downloads');
+  for (const width of [375, 1440]) {
+    await demo.setViewportSize({ width, height: 960 });
+    await demo.goto(new URL('dist/mcp.html', import.meta.url).href);
+    await demo.evaluate(() => globalThis.document.fonts.ready);
+    await demo.locator('#tools').scrollIntoViewIfNeeded();
+    assert.equal(await demo.evaluate(() => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth), false, `mcp.html interactive overflow at ${width}px`);
+    await demo.evaluate(() => globalThis.scrollTo(0, 0));
+    await demo.screenshot({ path: new URL(`site-mcp-${width}.png`, artifacts).pathname, fullPage: true });
+  }
   const scriptResponse = await page.request.get(base + '/site.js');
   if (!/javascript/.test(scriptResponse.headers()['content-type'] || '')) console.warn('Preview server needs a restart to serve site.js. Interactive checks use the built file directly.');
   assert.deepEqual(errors, []);
   assert.deepEqual(external, []);
-  console.log(`Site checks passed: 375/768/1024/1440px without JS over HTTP and with JS from built HTML, no overflow, local assets, anchors, keyboard tabs, version and release notes, stable demo height, motion preferences, FAQ, ${manifest.downloads.length} download links. Installer responses are test fixtures.`);
+  console.log(`Site checks passed: 375/768/1024/1440px without JS over HTTP and with JS from built HTML, no overflow, local assets, anchors, keyboard tabs, version and release notes, stable demo height, motion preferences, FAQ, ${manifest.downloads.length} download links; mcp.html at the same widths, its anchors and links. Installer responses are test fixtures.`);
 } finally {
   await browser.close();
 }

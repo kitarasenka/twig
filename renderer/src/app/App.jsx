@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, Bug, ChevronDown, Download, FolderOpen, GitBranch, Layers, LoaderCircle, Plus, Redo2, RefreshCw, RotateCw, Settings, Undo2, Upload, UserRound, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Bot, Bug, ChevronDown, Download, FolderOpen, GitBranch, Layers, LoaderCircle, Plus, Redo2, RefreshCw, RotateCw, Settings, Undo2, Upload, UserRound, X } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
 import { Console } from './Console.jsx';
@@ -12,6 +12,8 @@ import Repositories from '../features/settings/Repositories.jsx';
 import CloneRepository from '../features/settings/CloneRepository.jsx';
 import Remotes from '../features/settings/Remotes.jsx';
 import SshSettings from '../features/settings/SshSettings.jsx';
+import McpSettings from '../features/settings/McpSettings.jsx';
+import { mcpSummary, mcpToolTitle } from '../features/settings/mcp-view.js';
 import useDiffPrefs from '../features/diff/useDiffPrefs.js';
 import ExecutionPanel from '../features/automations/ExecutionPanel.jsx';
 import { AGE_STOPS, ageTextClass } from '../features/graph/age-color.js';
@@ -61,6 +63,8 @@ export default function App() {
   // Background fetch: the consent lives in main, which runs the fetch; the
   // renderer only shows it and how the open repository's schedule stands.
   const [fetchSettings, setFetchSettings] = useState(null);
+  // Settings → AI agents (MCP), for the toolbar button and the Settings summary.
+  const [mcpSettings, setMcpSettings] = useState(null);
   const [fetchStatus, setFetchStatus] = useState(null);
   const [fetchError, setFetchError] = useState('');
   const [diffPrefs, setDiffPrefs] = useDiffPrefs();
@@ -149,6 +153,14 @@ export default function App() {
       .catch(() => { if (request === fetchRequest.current) setFetchStatus(null); });
   }, [repositoryActive, repository?.id, repository?.available]);
   useEffect(() => { readFetchStatus(); }, [readFetchStatus, fetchSettings?.interval]);
+  // Read at start and again whenever a dialog opens or closes: the toolbar's
+  // MCP button shows whether the server is on, and Settings summarises it.
+  useEffect(() => {
+    if (!window.twig?.getMcpSettings) return undefined;
+    let alive = true;
+    window.twig.getMcpSettings().then(value => { if (alive) setMcpSettings(value); }).catch(() => {});
+    return () => { alive = false; };
+  }, [dialog]);
   // A finished background fetch may have moved remote-tracking refs: the
   // badges are re-read (the watcher reloads the graph on its own).
   useEffect(() => window.twig?.onBackgroundFetch?.(update => {
@@ -480,6 +492,8 @@ export default function App() {
           {!workspace?.repositories.some(item => item.available && active === `repository:${item.id}`) &&
             <Button className="tool bughunter-tool" icon={Bug} reason={unavailable}>BugHunter</Button>}
         </span>
+        <Button className={`tool mcp-tool ${mcpSettings?.enabled ? 'mcp-on' : ''}`} icon={Bot} title={mcpToolTitle(mcpSettings)} aria-label={mcpToolTitle(mcpSettings)}
+          onClick={() => setDialog('AI agents (MCP)')}>MCP{mcpSettings?.enabled && <span className="tool-dot" aria-hidden="true" />}</Button>
       </div>
     </section>
     {startupError && <div className="startup-error" role="status">{startupError}</div>}
@@ -502,7 +516,7 @@ export default function App() {
     </div>}
     <Console expanded={consoleOpen} onToggle={() => setConsoleOpen(!consoleOpen)} mod={mod} entries={entries} focus={consoleFocus}
       repositoryId={workspace?.repositories.find(item => item.available && active === `repository:${item.id}`)?.id || null} />
-    {dialog && <Dialog title={dialog} wide={['Git profile', 'Repositories', 'Clone repository', 'Remotes', 'SSH'].includes(dialog)} closeReason={dialogBusy || resetting ? 'Wait for the action to finish or cancel it first' : undefined} onClose={() => setDialog(null)}>
+    {dialog && <Dialog title={dialog} wide={['Git profile', 'Repositories', 'Clone repository', 'Remotes', 'SSH', 'AI agents (MCP)'].includes(dialog)} closeReason={dialogBusy || resetting ? 'Wait for the action to finish or cancel it first' : undefined} onClose={() => setDialog(null)}>
       {dialog === 'Settings' && <><p className="muted">Make this workspace feel like yours.</p>
         <label className="setting-row" htmlFor="theme"><span><strong>Appearance</strong><small>System follows your device setting.</small></span><select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
         <label className="setting-row" htmlFor="commit-colors"><span><strong>Commit colors</strong><small>Age shades the graph and the dates from brown roots to green new work.</small></span><select id="commit-colors" value={commitColors} onChange={(e) => setCommitColors(e.target.value)}><option value="age">Commit age</option><option value="lanes">Branch lanes</option></select></label>
@@ -543,6 +557,7 @@ export default function App() {
         <div className="settings-note">🌱 Twig {info?.version || '…'}<br />Local fonts. No telemetry. Updates install only when you press the button.</div></>}
       {dialog === 'Settings' && <div className="manager-actions"><Button icon={FolderOpen} onClick={() => setDialog('Repositories')}>Manage repositories</Button><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : 'Open a repository first'} onClick={() => setDialog('Remotes')}>Manage remotes</Button></div>}
       {dialog === 'Settings' && <Button onClick={() => setDialog('SSH')}>SSH keys and config</Button>}
+      {dialog === 'Settings' && <div className="setting-row"><span><strong>AI agents (MCP)</strong><small>{mcpSummary(mcpSettings)}</small></span><Button icon={Bot} onClick={() => setDialog('AI agents (MCP)')}>Set up AI agents</Button></div>}
       {dialog === 'Settings' && (sandboxId
         ? <div className="setting-row"><span><strong>Demo workspace</strong><small>Restore the <strong>workspace-demo</strong> sandbox to its sample history.</small></span><Button icon={RefreshCw} onClick={() => setDialog('Reset demo workspace')}>Reset demo workspace</Button></div>
         : <div className="setting-row"><span><strong>Demo workspace</strong><small>The <strong>workspace-demo</strong> tab is closed. Its sandbox is still on disk — showing it again opens the same repository.</small></span><Button icon={GitBranch} onClick={() => setDemoVisible(true)}>Show demo workspace</Button></div>)}
@@ -555,6 +570,7 @@ export default function App() {
         </ul>
         <div className="dialog-actions"><Button onClick={() => setDialog('Settings')} reason={resetting ? 'Resetting…' : undefined}>Cancel</Button><Button className="danger" icon={RefreshCw} onClick={resetDemo} reason={resetting ? 'Resetting the demo workspace…' : undefined}>Reset demo workspace</Button></div>
       </div>}
+      {dialog === 'AI agents (MCP)' && <McpSettings onBusyChange={setDialogBusy} onChange={setMcpSettings} />}
       {dialog === 'SSH' && <SshSettings entries={entries} onBusyChange={setDialogBusy} onConsole={showManagerOutput} />}
       {dialog === 'Git profile' && <GitProfile repository={repositoryActive ? repository : null} onConsole={() => { setDialog(null); showConsole(); }} />}
       {dialog === 'Repositories' && <Repositories workspace={workspace} onWorkspace={acceptWorkspace} onBusyChange={setDialogBusy} onConsole={showManagerOutput} onOpen={async () => { await openRepository(); setDialog(null); }} onClone={() => setDialog('Clone repository')} />}

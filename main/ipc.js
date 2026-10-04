@@ -17,6 +17,7 @@ import { registerRepoToolsIpc } from './repo-tools-ipc.js';
 import { createTokenRegistry } from './token-registry.js';
 import { createRepositoryWatcher } from './repo-watch.js';
 import { registerUpdateIpc } from './update-ipc.js';
+import { registerMcpIpc } from './mcp-ipc.js';
 
 function validSender(event, getWindow, entryUrl, args, count) {
   const window = getWindow();
@@ -25,7 +26,7 @@ function validSender(event, getWindow, entryUrl, args, count) {
     && isTrustedPage(event.senderFrame.url, entryUrl) && args.length === count;
 }
 
-export function registerIpc(getWindow, entryUrl, { journal, repositories, git, undo, marks, automations, automationRuns, automationPath, editor, fetchSettings, updateSettings }) {
+export function registerIpc(getWindow, entryUrl, { journal, repositories, git, undo, marks, automations, automationRuns, automationPath, editor, fetchSettings, updateSettings, mcpSettings }) {
   registerUpdateIpc(getWindow, entryUrl, { journal, store: updateSettings });
   registerUndoIpc(getWindow, entryUrl, { repositories, undo });
   registerMarksIpc(getWindow, entryUrl, { repositories, marks });
@@ -42,6 +43,7 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
   registerFilesIpc(getWindow, entryUrl, { repositories, journal, editor, loginPath: automationPath });
   registerRepoToolsIpc(getWindow, entryUrl, { repositories, journal, undo, patchFiles, folders: createTokenRegistry() });
   const fetcher = registerFetchIpc(getWindow, entryUrl, { repositories, journal, undo, store: fetchSettings });
+  const mcp = registerMcpIpc(getWindow, entryUrl, { repositories, journal, store: mcpSettings });
   const watcher = createRepositoryWatcher(getWindow);
   // With the window gone (macOS keeps the app running) nothing is on screen
   // to be kept current, so the background fetch stops until a window asks again.
@@ -51,13 +53,15 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
       throw new Error('Invalid watch request');
     }
     // The background fetch, when it is on, follows the same active repository.
-    if (args[0] === null) { void watcher.watch(null); fetcher.follow(null); return true; }
+    // So does the MCP server's idea of "the repository open in 🌱 Twig".
+    if (args[0] === null) { void watcher.watch(null); fetcher.follow(null); mcp.follow(null); return true; }
     const repo = repositories.snapshot().repositories.find(item => item.id === args[0] && item.available);
     if (!repo) throw new Error('Repository is unavailable');
     void watcher.watch(repo.path);
     fetcher.follow(repo.path);
+    mcp.follow(repo.id);
     const window = getWindow();
-    if (window && !hooked.has(window)) { hooked.add(window); window.once('closed', () => fetcher.follow(null)); }
+    if (window && !hooked.has(window)) { hooked.add(window); window.once('closed', () => { fetcher.follow(null); mcp.follow(null); }); }
     return true;
   });
   ipcMain.handle('app:info', (event, ...args) => {

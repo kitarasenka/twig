@@ -17,6 +17,89 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Кнопка MCP и страница «🌱 Twig as MCP» (2026-10-04, вне вех): в тулбаре сразу
+после BugHunter — кнопка **MCP** (иконка Bot), открывает то же окно «AI agents
+(MCP)»; когда сервер включён — точка на углу иконки, а имя/подсказка говорят
+«MCP: on — …» словами (`mcpToolTitle` в `mcp-view.js`). Состояние App читает на
+старте и при каждом открытии/закрытии диалога, переключатель внутри окна
+обновляет кнопку сразу (`onChange`). Окно дополнено блоками «What your agent
+gets» (4 возможности), «Connect an agent» (3 шага) и «Try asking» (4 просьбы).
+На 1000 px тулбар помещается (`smoke.mjs` compact).
+Сайт: новая страница `site/mcp.html` (почему это круто — 6 карточек, лестница
+сводка→файл→ханк с настоящими ответами на демо-песочнице, 9 инструментов,
+сценарии, подключение, безопасность, честные ограничения, CTA на загрузки);
+на главной — пункт «MCP» в навигации и секция `#mcp` после BugHunter. Общая
+карточка «Агент в терминале» — `site/partials/agent-card.html` (`{{agentcard}}`
+в обеих страницах). Размеры 434/311/614 Б измерены на демо-песочнице, на
+крошечном репозитории сырой git не больше — страница не обещает «в N раз меньше
+токенов», а говорит «ровно то, что спросили». `site.js` больше не падает без
+вкладок героя. `site/check.mjs` проверяет mcp.html на 375/768/1024/1440 (без
+переполнения, якоря, 9 инструментов, CTA ведёт на `#download`, без внешних
+запросов); `mcp-smoke.mjs` входит через кнопку тулбара и проверяет её
+положение после BugHunter и точку. Снимки сайта пересняты (`shots:site`): на них
+тулбар с кнопкой MCP, плюс новый кадр `mcp.webp` (окно MCP) — секция `#panel`
+на mcp.html; в этом кадре блоки конфигов подменяются выводом `clientConfigs`
+для установленного macOS-приложения (`/Users/you/…`), чтобы на публичный сайт
+не попали пути разработческой копии и временного профиля — подпись кадра так и
+говорит. UI/UX-скилл прогнан по трём новым экранам, решения — в
+`design/TOKENS.md` («UI/UX skill pass: MCP»). Версия не менялась.
+
+MCP-сервер для AI-агентов (2026-10-04, вне вех): Claude Code, Codex, Cursor и
+любой MCP-клиент читают подключённые репозитории через 🌱 Twig — не обёртка над
+git CLI, а компактный JSON поверх существующего Git-слоя, по принципу
+summary → file → hunk. Описание для людей — `docs/mcp.md`. **Только чтение**:
+9 инструментов (`get_workspace_context`, `list_repositories`, `list_changes`,
+`get_diff`, `get_diff_hunk`, `get_history`, `get_commit`, `get_commit_diff`,
+`get_ui_context`), все `get_`/`list_`, `readOnlyHint`; нет run_command/shell и
+ни одной мутации. Settings → **AI agents (MCP)** (кнопка «Set up AI agents»):
+Off по умолчанию (`mcp.json` в userData, `main/mcp-store.js`), статус, готовые
+конфиги Claude Code (`claude mcp add --scope user …`), Codex (TOML) и
+`mcpServers` JSON с Copy.
+
+Транспорт: main слушает Unix-сокет `userData/mcp/twig.sock` (папка 0700, сокет
+0600; путь длиннее 100 байт → 0700-папка `twig-mcp-<hash>` во временном каталоге
+с проверкой владельца и прав; Windows — named pipe), **только пока включено**.
+Клиент запускает stdio-мост `twig-mcp.mjs`: main копирует его и
+`protocol.mjs` в `userData/mcp/` при каждом включении и пишет `endpoint.json`
+(сокет, версия); команда — собственный бинарь 🌱 Twig с
+`ELECTRON_RUN_AS_NODE=1` (AppImage — через `$APPIMAGE`), Node не нужен. Мост
+переподключается на каждом сообщении, при подключении посреди сессии
+повторяет `initialize` клиента, а без 🌱 Twig сам отвечает initialize/tools/list
+и `TWIG_UNAVAILABLE` на вызовы. Слои: `main/mcp/protocol.mjs` (каталог, без
+импортов), `session.js` (JSON-RPC/MCP, не знает о транспорте),
+`socket-transport.js`, `tools/{workspace,changes,history,ui}.js`, `context.js`
+(репозиторий только из подключённого списка — имя, корень или любой путь
+внутри; журнал с префиксом `MCP:`; `GIT_OPTIONAL_LOCKS=0`), `serialize.js`
+(id ханков `w|s|u|c<контекст>-<sha12>` — проверяются перечитыванием, бюджеты
+60 КБ на дифф / 80 КБ на ханк, JSON никогда не режется), `ui-context.js`,
+`service.js` (без electron), `main/mcp-ipc.js` (`mcp:get|set`, односторонний
+`mcp:ui-context`). Активный репозиторий — тот же `repo:watch`, что у watcher'а;
+выделение шлёт `HistoryWorkspace` через чистый
+`features/graph/ui-context-report.js` (только то, что реально хранится:
+branch/hunk всегда null). Git-слой дополнен, не продублирован: `numstat.js`,
+`loadRefHistory`, `resolveRevision`/`validateRevision`, `loadCommitPatch`,
+`splitPatchFiles`, `loadUntrackedDiff` (`diff --no-index /dev/null`, ≤1 МБ),
+`context`/`env`/`allUntracked` у `loadWorktree(Diff)`, `env` у
+`loadOperationState`. Консоль: чтения агента — только в Full History
+(`MCP:` в `AUTOMATIC_PREFIXES`) с плашкой **MCP**.
+
+Проверки: `scripts/checks/mcp.mjs` (в `npm test`) — каталог, парсеры, все 11
+сценариев брифа на настоящем Git (чистый, изменённые, staged+unstaged,
+untracked, конфликт merge, большой дифф и гигантский ханк, нет файла/коммита,
+лимит истории, дифф одного файла, нет репозитория), **побайтная неизменность
+`.git` и рабочего дерева** после всех инструментов, устаревший id ханка,
+сокет + мост (выключение/включение, холодный старт без 🌱 Twig).
+`scripts/mcp-smoke.mjs` (в `test:smoke`): включение в Settings, копирование,
+мост на исполняемом файле Electron, контекст демо-песочницы, выделение
+коммита/файла в окне видно агенту, отказы IPC, плашка MCP в консоли, перезапуск,
+выключение; снимки `artifacts/mcp-settings-{dark,light}.png`. Живьём —
+macOS arm64 из исходников; у упакованной `--mac dir` сборки проверено только,
+что её бинарь с `ELECTRON_RUN_AS_NODE=1` запускает мост (fuse RunAsNode не
+выключен), включение из Settings в упакованном приложении не прогонялось.
+Windows и Linux не проверялись. `tools-smoke.mjs` падает и на чистом HEAD
+(строка 153, `Side one` — две строки в графе после Undo cherry-pick), к этой
+правке не относится. Версия не менялась.
+
 Обновление из приложения (2026-09-25, вне вех): раньше «Check for updates»
 только давал ссылку — новую версию надо было скачать, установить и на macOS
 ещё разрешить в Privacy & Security. Теперь: Settings → Updates → **Check for
@@ -2272,7 +2355,9 @@ automatically» выбрано «At launch and daily» (по умолчанию 
 releases/download/` (+ хранилище `*.githubusercontent.com`), принимается только
 при совпадении размера и SHA-256 из релиза. **Сам по себе** 🌱 Twig ходит в сеть
 только фоновым fetch и этой проверкой, и только после явного выбора в Settings —
-никакой другой фоновой сети добавлять нельзя.
+никакой другой фоновой сети добавлять нельзя. MCP-сервер — не сеть: локальный
+сокет в приватной папке, только по включению в Settings, только чтение; TCP-порт
+и инструменты записи/команд без отдельного решения пользователя не добавлять.
 В dev только localhost Vite.
 Никаких внешних шрифтов/изображений. Цвета только из TOKENS.md.
 Без подписей и телеметрии. Второе санкционированное исключение из «только git»
