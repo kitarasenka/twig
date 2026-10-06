@@ -29,7 +29,8 @@ import { mcpStatusLine, mcpSummary, mcpToolTitle } from '../../renderer/src/feat
 
 // --- the catalog: read-only, and nothing that runs commands ----------------------------
 assert.deepEqual(TOOLS.map(tool => tool.name), TOOL_NAMES, 'every catalog entry has an implementation, in the same order');
-for (const tool of TOOLS) {
+// Every tool reads, except the two that propose a commit for the person to confirm (scripts/checks/mcp-commit.mjs).
+for (const tool of TOOLS.filter(item => !['propose_commit', 'await_commit'].includes(item.name))) {
   assert.equal(tool.annotations.readOnlyHint, true, tool.name);
   assert.equal(tool.annotations.destructiveHint, false, tool.name);
   assert.equal(tool.inputSchema.additionalProperties, false, tool.name);

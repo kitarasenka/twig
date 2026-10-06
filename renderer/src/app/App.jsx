@@ -16,6 +16,8 @@ import McpSettings from '../features/settings/McpSettings.jsx';
 import { mcpSummary, mcpToolTitle } from '../features/settings/mcp-view.js';
 import useDiffPrefs from '../features/diff/useDiffPrefs.js';
 import ExecutionPanel from '../features/automations/ExecutionPanel.jsx';
+import CommitProposalDialog from '../features/proposal/CommitProposalDialog.jsx';
+import { outcomeNote } from '../features/proposal/proposal-view.js';
 import { AGE_STOPS, ageTextClass } from '../features/graph/age-color.js';
 
 const unavailable = 'Connect a repository to use this action';
@@ -65,6 +67,10 @@ export default function App() {
   const [fetchSettings, setFetchSettings] = useState(null);
   // Settings → AI agents (MCP), for the toolbar button and the Settings summary.
   const [mcpSettings, setMcpSettings] = useState(null);
+  // A commit an agent proposed through MCP: main owns it and runs it; this is
+  // the dialog's view, its progress and a failure to show before closing.
+  const [proposal, setProposal] = useState(null);
+  const [proposalRun, setProposalRun] = useState({ running: false, step: null, failure: '' });
   const [fetchStatus, setFetchStatus] = useState(null);
   const [fetchError, setFetchError] = useState('');
   const [diffPrefs, setDiffPrefs] = useDiffPrefs();
@@ -320,6 +326,43 @@ export default function App() {
     try { setWorkspace(await window.twig.selectRepository(repositoryId)); } catch { /* the previous status stays on screen */ }
     setWorktreeVersion(value => value + 1);
   }, [repositoryId]);
+  useEffect(() => {
+    let alive = true;
+    const show = view => {
+      if (!alive) return;
+      // null is main closing it (answered elsewhere, superseded). While this window is
+      // committing it, or showing why that failed, the dialog stays: decideProposal closes it.
+      const held = proposalRunRef.current.running || Boolean(proposalRunRef.current.failure);
+      if (view === null && held) return;
+      setProposalRun({ running: false, step: null, failure: '' });
+      setProposal(view);
+    };
+    window.twig.getCommitProposal().then(show).catch(() => {});
+    const offProposal = window.twig.onCommitProposal(show);
+    const offStep = window.twig.onCommitProposalStep(step => { if (alive) setProposalRun(current => (current.running ? { ...current, step } : current)); });
+    return () => { alive = false; offProposal(); offStep(); };
+  }, []);
+  const proposalRunRef = useRef(proposalRun);
+  proposalRunRef.current = proposalRun;
+  async function decideProposal(decision) {
+    if (!proposal) return;
+    if (decision.action !== 'cancel') setProposalRun({ running: true, step: null, failure: '' });
+    try {
+      const answer = await window.twig.decideCommitProposal(proposal.id, decision);
+      if (answer.stale) { setProposal(answer.stale); setProposalRun({ running: false, step: null, failure: '' }); return; }
+      if (decision.action === 'cancel') { setProposal(null); setProposalRun({ running: false, step: null, failure: '' }); return; }
+      if (answer.ok) {
+        setProposal(null);
+        setProposalRun({ running: false, step: null, failure: '' });
+        setSyncNote(outcomeNote(answer.outcome));
+      } else {
+        setProposalRun({ running: false, step: null, failure: answer.outcome });
+      }
+    } catch (error) {
+      setProposalRun({ running: false, step: null, failure: error.message || 'The proposal could not be answered.' });
+    }
+    if (decision.action !== 'cancel') void refreshRepository();
+  }
   useEffect(() => {
     if (!repositoryActive || !repositoryId) return;
     let alive = true; let generation = 0;
@@ -580,6 +623,8 @@ export default function App() {
         setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
       }} />}
     </Dialog>}
+    {proposal && <CommitProposalDialog key={proposal.id} view={proposal} running={proposalRun.running} step={proposalRun.step} failure={proposalRun.failure}
+      onDecide={decision => void decideProposal(decision)} onClose={() => { setProposal(null); setProposalRun({ running: false, step: null, failure: '' }); }} />}
     {pushGate && <ExecutionPanel event="pre-push" label="Before Push" phase="pre" steps={pushGate.steps} result={pushGate.result}
       blocked={pushGate.blocked} onClose={() => closePushGate(false)} onRetry={() => closePushGate(false)}
       onRunAgain={() => runPushGate()} onBypass={() => closePushGate(false, true)} />}

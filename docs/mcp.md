@@ -17,8 +17,10 @@ agent as few tokens as possible:
   because the per-file `diff --git` / `index` / `---` / `+++` headers are left out.
 - **Progressive disclosure when you want it.** A summary first, then one file, then one hunk.
 
-The first version is **read-only**. No tool commits, stages, checks out, resets, merges,
-rebases, pushes, deletes a branch, or runs a command.
+Reading is all an agent can do on its own. The one write, [`propose_commit`](#proposing-a-commit),
+is off unless you allow it, and even then it only *asks*: 🌱 Twig shows the commit in its
+window and nothing happens until you press Commit there. No tool stages, checks out, resets,
+merges, rebases, deletes a branch, or runs a command.
 
 ## Turn it on
 
@@ -216,6 +218,58 @@ A well-behaved agent:
 The agent only *proposes* the plan. The MCP server can't stage or commit anything; you carry
 out the plan in 🌱 Twig, where staging works by line and every step can be undone.
 
+## Proposing a commit
+
+Settings → AI agents (MCP) → **Allow agents to propose commits** (Off by default, and Off
+even while the server is on; stored next to the server switch in `mcp.json`). While it is
+off, `propose_commit` answers `WRITE_DISABLED`.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `propose_commit` | `message` (subject, blank line, body), `push` (false), `repository?` | Text: the outcome, or `waiting` with a `proposalId` if the person has not answered within ~45 s. |
+| `await_commit` | `proposalId` | Waits up to ~45 s more and answers the same way. |
+
+What happens:
+
+1. 🌱 Twig reads what a commit of **everything** would take (like `git add -A`: modified, new
+   and deleted files), refuses if a merge/rebase is in progress, there are conflicts, HEAD is
+   detached or nothing changed, and brings its window forward with a dialog: repository,
+   branch, where Commit & Push would push (the upstream, or `origin/<branch>` as a new
+   upstream), every file with its line counts, the message (editable), and the exact
+   commands. The button the agent asked for (`push`) is the default one.
+2. **Cancel** (or Esc) changes nothing: `cancelled by user`.
+3. **Commit** first checks that nothing moved since the proposal: HEAD, the branch, every
+   changed path and each file's size, mode and modification time. If anything did, the
+   dialog shows the new list and asks again — a tree nobody looked at is never committed.
+4. Then, inside one Undo record: `git add --all`, your **pre-commit** and **commit-msg**
+   automations (secret scan, message rules, your commands), the app's own commit
+   (`git commit --file=- --cleanup=strip`, so Git hooks run too), then post-commit. If an
+   automation blocks or `git commit` fails, the index is put back exactly as it was (it is
+   saved with `git write-tree` first and restored with `git read-tree`) and the agent gets the
+   reason. **Undo** in the toolbar takes the commit back like any other.
+5. **Commit & Push** then runs the pre-push automations and the app's own push
+   (`git push`, or `git push --set-upstream origin <branch>`).
+
+Answers, one line each:
+
+```
+committed 3a75900abcd1 on main: feat(app): add two (message edited in 🌱 Twig)
+pushed to origin/main
+```
+
+or `cancelled by user`, `not committed: a pre-commit automation blocked it` followed by the
+failing step and the end of its output, `not committed: Commit failed. …` followed by what the
+Git hook printed, `push failed: <what Git said>`, `superseded: a newer proposal replaced it`,
+`expired: nobody confirmed it in 🌱 Twig` (after 30 minutes). One proposal is on screen at a
+time. 🌱 Twig adds no trailer to the message.
+
+Errors before anything is shown: `WRITE_DISABLED`, `NOTHING_TO_COMMIT`, `REPOSITORY_BUSY`
+(operation in progress, conflicts, detached HEAD), `CONFIRMATION_UNAVAILABLE` (the window is
+closed), `PROPOSAL_NOT_FOUND` (await_commit with an unknown or expired id).
+
+Why two tools: MCP clients give up on a call after a while (Codex after 60 s by default), and a
+person may think for minutes. `propose_commit` answers by itself within ~45 s either way.
+
 ## Security model
 
 - **Off by default.** No socket exists until you turn the server on in Settings.
@@ -224,8 +278,10 @@ out the plan in 🌱 Twig, where staging works by line and every step can be und
   and no network listener. If the userData path is too long for a socket, 🌱 Twig uses a `0700`
   folder under your temp directory. It refuses to listen there if the folder belongs to anyone
   else or other users can open it.
-- **Read-only.** Every tool only reads. There is no `run_command`, `run_git`, `shell` or
-  `execute`, and no write tool. The catalog marks every tool `readOnlyHint: true`.
+- **Reads by itself, writes only through you.** Every tool but `propose_commit` and
+  `await_commit` only reads and is marked `readOnlyHint: true`. Those two are marked
+  `readOnlyHint: false`, are off until you allow them in Settings, and change nothing until
+  you confirm in 🌱 Twig's window. There is no `run_command`, `run_git`, `shell` or `execute`.
 - **Connected repositories only.** `repository` is resolved against the list you connected in
   🌱 Twig. An agent can't point the server at an arbitrary folder, and file paths are checked
   to stay inside the repository.
@@ -280,6 +336,7 @@ AI client ──stdio──▶ twig-mcp.mjs (bridge) ──local socket──▶
 
 ```sh
 node scripts/checks/mcp.mjs     # part of npm test: tools on real repositories, read-only, transport, bridge
+node scripts/checks/mcp-commit.mjs   # part of npm test: propose_commit on real Git — cancel, stale tree, automations, hooks, Undo, push
 npm run build && node scripts/mcp-smoke.mjs   # part of npm run test:smoke: Settings, a real bridge on the app executable
 ```
 
@@ -292,7 +349,8 @@ ELECTRON_RUN_AS_NODE=1 npx @modelcontextprotocol/inspector "<command from Settin
 
 ## Limitations
 
-- Read-only. No write tools yet.
+- The only write is a commit of everything (plus push) that you confirm. There is no partial
+  commit (`paths`), no staging of hunks, no branch, checkout or merge tool.
 - The only transport is local stdio through the socket bridge. HTTP is not offered.
 - Hunks are identified per file and side. There is no hunk *selection* in 🌱 Twig to report,
   and no branch selection.
@@ -306,8 +364,8 @@ ELECTRON_RUN_AS_NODE=1 npx @modelcontextprotocol/inspector "<command from Settin
 
 ## Next phase (not implemented)
 
-Write tools such as `propose_commit_plan`, `stage_hunk`, `unstage_hunk`, `create_branch`,
-`create_commit`, `checkout` and `merge` would need:
+`propose_commit` is the first write tool. Others, such as `stage_hunk`, `unstage_hunk`,
+`create_branch`, `checkout` and `merge`, would need the same:
 
 - a separate capability that the person grants in Settings, off even when reading is on;
 - a confirmation in 🌱 Twig's window for each mutation, showing the exact command, like the

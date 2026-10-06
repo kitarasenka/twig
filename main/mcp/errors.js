@@ -14,6 +14,12 @@ export const ERROR_CODES = Object.freeze([
   'INVALID_ARGUMENT',
   'OUTPUT_TOO_LARGE',
   'GIT_OPERATION_FAILED',
+  // propose_commit / await_commit only.
+  'WRITE_DISABLED',
+  'NOTHING_TO_COMMIT',
+  'REPOSITORY_BUSY',
+  'CONFIRMATION_UNAVAILABLE',
+  'PROPOSAL_NOT_FOUND',
   // Only the stdio bridge answers with this one, when 🌱 Twig is not listening.
   'TWIG_UNAVAILABLE'
 ]);

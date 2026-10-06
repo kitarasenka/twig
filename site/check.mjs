@@ -128,7 +128,7 @@ try {
     const overflow = await page.evaluate(() => [...globalThis.document.querySelectorAll('body *')].filter((element) => element.getBoundingClientRect().right > globalThis.innerWidth + 1).map((element) => element.className));
     assert.equal(await page.evaluate(() => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth), false, `mcp.html overflow at ${width}px: ${overflow.join(', ')}`);
     assert.match(await page.locator('.hero-copy > .eyebrow').innerText(), new RegExp(`v${manifest.version.replace(/\./g, '\\.')}`));
-    assert.equal(await page.locator('.tool-grid article').count(), 9, 'all nine tools are listed');
+    assert.equal(await page.locator('.tool-grid article').count(), 11, 'all eleven tools are listed');
     for (const img of await page.locator('img').all()) {
       await img.scrollIntoViewIfNeeded();
       assert.equal(await img.evaluate((element) => element.complete && element.naturalWidth > 0), true);

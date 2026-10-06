@@ -1,3 +1,4 @@
+import { gitReason } from './commit-ops.js';
 import { runGit } from './exec.js';
 import { loadRefs } from './refs.js';
 import { validateRefName } from './refs-ops.js';
@@ -49,7 +50,7 @@ export async function runSync({ cwd, log, mode, branch = null, signal = null }) 
   const argv = buildSyncArgv(mode, branch);
   const result = await runGit({ argv, cwd, log, operation: LABELS[mode], signal });
   if (result.cancelled) return { ok: false, cancelled: true, message: `${LABELS[mode]} was cancelled.` };
-  if (result.code !== 0) return { ok: false, cancelled: false, message: `${LABELS[mode]} failed. Show output in the console.` };
+  if (result.code !== 0) return { ok: false, cancelled: false, message: `${LABELS[mode]} failed. Show output in the console.`, reason: gitReason(result) };
   return { ok: true, cancelled: false, message: null };
 }
 

@@ -144,3 +144,26 @@ dialog.wide { width: min(920px, calc(100vw - var(--space-8))); }
 .patch-dialog .confirm-consequence svg { color: var(--accent); }
 /* Absolute folder paths are long; the command wraps instead of being cut off. */
 .patch-dialog .confirm-command, .worktree-dialog .confirm-command { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* A commit an agent proposed through MCP: where it goes, every file, the editable message, the commands. */
+.proposal-dialog { display: flex; flex-direction: column; gap: var(--space-2); }
+.proposal-dialog > p { margin: 0; }
+.proposal-where { display: flex; gap: var(--space-2); align-items: flex-start; line-height: 1.5; }
+.proposal-where svg { flex: none; color: var(--accent); margin-top: 2px; }
+.proposal-where small { display: block; color: var(--muted); font-size: var(--text-xs); }
+.proposal-stale { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--danger-bg); color: var(--text); }
+.proposal-heading { margin: var(--space-2) 0 0; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+.proposal-heading .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.proposal-files { margin: 0; padding: var(--space-1) var(--space-2); list-style: none; max-height: 180px; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.proposal-files li { white-space: pre; font-size: var(--text-sm); line-height: 1.6; }
+.proposal-files code { font-family: var(--font-mono); }
+.proposal-dialog > label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.proposal-dialog > label .muted { text-transform: none; letter-spacing: 0; }
+.proposal-dialog textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: var(--space-2); font-family: var(--font-mono); font-size: var(--text-sm); resize: vertical; }
+.proposal-dialog .proposal-bump { margin: var(--space-1) 0; text-transform: none; letter-spacing: 0; color: var(--text); font-size: var(--text-sm); }
+.proposal-commands span { display: block; }
+.proposal-progress { color: var(--muted); font-size: var(--text-sm); }
+.proposal-failure { margin: 0; padding: var(--space-2) var(--space-3); background: var(--danger-bg); color: var(--text); border-radius: var(--radius-sm);
+  font-family: var(--font-mono); font-size: var(--text-sm); white-space: pre-wrap; max-height: 160px; overflow: auto; }

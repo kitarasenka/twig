@@ -33,9 +33,9 @@ async function privateFolder(dir) {
  * userData/mcp and listens on the local socket. Off — the default — means no
  * socket and no listener at all.
  * @param {{ userData: string, execPath: string, appImage?: ?string, version: string,
- *   repositories: object, journal: object, platform?: string }} options
+ *   repositories: object, journal: object, platform?: string, proposals?: ?object, waitMs?: ?number }} options
  */
-export function createMcpService({ userData, execPath, appImage = null, version, repositories, journal, platform = process.platform }) {
+export function createMcpService({ userData, execPath, appImage = null, version, repositories, journal, platform = process.platform, proposals = null, waitMs = null }) {
   const endpoint = resolveEndpoint({ userData, platform });
   const launch = launchCommand({ execPath, appImage, dir: endpoint.dir });
   let activeId = null;
@@ -46,7 +46,7 @@ export function createMcpService({ userData, execPath, appImage = null, version,
   let lastCallAt = null;
   let changing = Promise.resolve();
 
-  const context = createToolContext({ repositories, journal, getActiveId: () => activeId, getUiContext: () => uiContext });
+  const context = createToolContext({ repositories, journal, getActiveId: () => activeId, getUiContext: () => uiContext, proposals, waitMs });
   const tools = bindTools(context);
   const transport = createSocketTransport({
     socket: endpoint.socket,

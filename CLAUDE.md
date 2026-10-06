@@ -17,6 +17,53 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+MCP: агент предлагает коммит, человек подтверждает (2026-10-06, вне вех; по
+решению пользователя, ТЗ от сессии garden-0d). Инструменты `propose_commit`
+(`message`, `push` = false, `repository?`) и `await_commit` (`proposalId`);
+`readOnlyHint: false`, `destructiveHint: false`, `openWorldHint: true`.
+Разрешение — Settings → AI agents (MCP) → **Allow agents to propose commits**
+(`allowCommits` в `mcp.json`, Off даже при включённом сервере; выключение
+отвечает всем открытым предложениям), без него `WRITE_DISABLED`. Исполнитель —
+`main/mcp/commit-proposal.js` (без electron): `readProposalState` — что
+возьмёт коммит «всего» (как `git add -A`) и отпечаток: HEAD, ветка, путь+статус
+и `lstat` (size/mode/mtimeNs) каждого изменённого файла; отказ при идущей
+операции, конфликтах, detached HEAD (`REPOSITORY_BUSY`) и пустом дереве
+(`NOTHING_TO_COMMIT`). `present(view)` выводит окно вперёд (`app.focus
+({steal})` на macOS) и шлёт `mcp:proposal`; закрытое окно —
+`CONFIRMATION_UNAVAILABLE`. Одно предложение на экране, новое вытесняет старое
+(«superseded»), через 30 мин — «expired». Решение приходит `mcp:proposal-decide`
+(`commit`/`commit-push`/`cancel`, сообщение из диалога, `bump`): сначала
+сверка отпечатка — изменилось → `{ stale }`, диалог показывает новый список и
+просит снова, устаревшее не коммитится. Потом в одном
+`undo.perform('worktree:commit')`: `write-tree` (сохранить индекс) →
+`stageEverything` (`git add --all`, новый в `stage.js`) → автоматизации
+pre-commit и commit-msg (`triggerPipeline`, как у панели) → `createCommit` →
+post-commit; при блоке или падении `git commit` — `read-tree` назад и причина
+агенту (`error.detail` = хвост stderr хука, `gitReason` в `commit-ops.js`,
+URL без credentials). Undo откатывает коммит агента. Push: pre-push и
+`runSync` (`push` или `push-upstream` на origin) через `undo.perform`;
+`runSync` теперь отдаёт `reason`. Ответ агенту — текст: `committed <hash12> on
+<branch>: <subject>` (+ «message edited in 🌱 Twig»), `pushed to <upstream>`,
+`push failed: …`, `cancelled by user`, `not committed: …`. Ожидание — 45 с на
+вызов (у Codex таймаут вызова по умолчанию 60 с), дальше `waiting` с
+`proposalId` для `await_commit`. Трейлеры не добавляются. Renderer:
+`features/proposal/CommitProposalDialog.jsx` (репозиторий, ветка, куда пуш,
+файлы со счётчиками, редактируемое сообщение с фокусом, точные команды,
+по умолчанию — кнопка, которую просил агент) и чистый `proposal-view.js`;
+монтируется в `App.jsx`, пока идёт выполнение, `null` от main не закрывает
+диалог (иначе причина отказа пропадала бы). Мост: `setMcpCommitsAllowed`,
+`getCommitProposal`, `decideCommitProposal`, `onCommitProposal`,
+`onCommitProposalStep`. Сайт и `docs/mcp.md` («Proposing a commit»)
+обновлены, на сайте 11 инструментов. Проверки: `scripts/checks/mcp-commit.mjs`
+(в `npm test`, настоящий Git, `UndoService`, `AutomationsStore`, локальный
+bare) — права и хранилище, слова диалога, Cancel без изменений, устаревшее
+дерево → повторный показ, правленое сообщение, всё взято, Undo, блок
+автоматизации и падение Git-хука с возвратом индекса, Commit & Push и новый
+upstream, отказы, вытеснение и отзыв; `mcp-smoke.mjs` — `WRITE_DISABLED`,
+переключатель, диалог, Cancel, Commit с правкой, Undo, отказы IPC, снимки
+`artifacts/mcp-proposal-{dark,light}.png` (просмотрены). UI/UX-скилл по
+диалогу не прогонялся. Версия не менялась.
+
 MCP тратит меньше токенов (2026-10-06, вне вех): агент со скиллом commit-push
 замерил, что JSON-ответы в 2–2,5 раза тяжелее вывода `git`, а прочитать всё
 можно только вызовом на файл. Четыре правки. (1) **Всё одним вызовом:**
@@ -2402,8 +2449,11 @@ releases/download/` (+ хранилище `*.githubusercontent.com`), прини
 при совпадении размера и SHA-256 из релиза. **Сам по себе** 🌱 Twig ходит в сеть
 только фоновым fetch и этой проверкой, и только после явного выбора в Settings —
 никакой другой фоновой сети добавлять нельзя. MCP-сервер — не сеть: локальный
-сокет в приватной папке, только по включению в Settings, только чтение; TCP-порт
-и инструменты записи/команд без отдельного решения пользователя не добавлять.
+сокет в приватной папке, только по включению в Settings. Запись — только
+`propose_commit`/`await_commit` (решение пользователя 2026-10-06): отдельный
+переключатель, Off по умолчанию, ничего не меняется без кнопки человека в окне.
+TCP-порт и другие инструменты записи/команд без отдельного решения пользователя
+не добавлять.
 В dev только localhost Vite.
 Никаких внешних шрифтов/изображений. Цвета только из TOKENS.md.
 Без подписей и телеметрии. Второе санкционированное исключение из «только git»

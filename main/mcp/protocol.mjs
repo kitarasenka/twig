@@ -21,7 +21,7 @@ export const INSTRUCTIONS = [
   'To go smaller: get_diff (one file) → get_diff_hunk (one hunk); for history: get_history → get_commit → get_commit_diff.',
   'Diffs and file lists come back as plain text in git’s own shape (`M +2 -1 path`, then the hunks).',
   'With no `repository`, tools read the repository of your working directory if it is connected, else the one open in 🌱 Twig, and the answer starts with which.',
-  'Nothing here changes a repository: there is no commit, stage, checkout or command execution.'
+  'Nothing here changes a repository by itself. The one write, propose_commit, shows your commit message and the changed files in 🌱 Twig’s window; the person edits, commits (and pushes) or cancels there, and the tool answers with what happened. There is no stage, checkout, reset or command execution.'
 ].join(' ');
 
 const repository = {
@@ -33,9 +33,12 @@ const contextLines = { type: 'integer', minimum: 0, maximum: 20, default: 3, des
 
 const READ_ONLY = Object.freeze({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
 
-function tool(name, title, description, properties = {}, required = []) {
+// A commit is added, never destroyed, and only after the person confirms it; pushing reaches a remote.
+const PROPOSES = Object.freeze({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true });
+
+function tool(name, title, description, properties = {}, required = [], annotations = READ_ONLY) {
   return Object.freeze({
-    name, title, description, annotations: READ_ONLY,
+    name, title, description, annotations,
     inputSchema: { type: 'object', properties, required, additionalProperties: false }
   });
 }
@@ -95,7 +98,17 @@ export const TOOLS = Object.freeze([
       hunkId: { type: 'string', description: 'A hunk id an earlier get_commit_diff of the same file printed.' }
     }, ['hash']),
   tool('get_ui_context', 'What is selected in 🌱 Twig',
-    'What the person is looking at in 🌱 Twig right now: the open repository, the view (history, changes, staging, compare, blame, conflict, …), the selected commit(s) and the selected file. Fields 🌱 Twig does not track are null; there is no hunk selection.')
+    'What the person is looking at in 🌱 Twig right now: the open repository, the view (history, changes, staging, compare, blame, conflict, …), the selected commit(s) and the selected file. Fields 🌱 Twig does not track are null; there is no hunk selection.'),
+  tool('propose_commit', 'Propose a commit',
+    'Asks the person to commit ALL current changes (like `git add -A`) with your message. 🌱 Twig shows the repository, branch, files and your message (editable) and waits; nothing happens until the person presses Commit or Commit & Push there. The commit runs the person’s automations (pre-commit, commit-msg) and can be undone in 🌱 Twig. Answers in plain text: `committed <hash> on <branch>: <subject>`, `pushed to <remote/branch>`, `cancelled by user`, or `not committed: <reason>`. If the person takes longer than ~45 s, the answer is `waiting` with a proposalId for await_commit. Off unless the person allowed it (WRITE_DISABLED). Do not add Co-Authored-By trailers unless asked.',
+    {
+      repository,
+      message: { type: 'string', description: 'The full commit message: subject line, blank line, body.' },
+      push: { type: 'boolean', default: false, description: 'Suggest Commit & Push: after committing, push to the upstream (or set origin/<branch> as upstream). The person can still choose Commit only.' }
+    }, ['message'], PROPOSES),
+  tool('await_commit', 'Wait for a proposed commit',
+    'Waits up to ~45 s more for the person’s answer to a propose_commit that came back `waiting`, and answers the same way propose_commit does.',
+    { proposalId: { type: 'string', description: 'The proposalId from a `waiting` answer.' } }, ['proposalId'], PROPOSES)
 ]);
 
 /**

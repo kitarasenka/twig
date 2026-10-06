@@ -43,7 +43,7 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
   registerFilesIpc(getWindow, entryUrl, { repositories, journal, editor, loginPath: automationPath });
   registerRepoToolsIpc(getWindow, entryUrl, { repositories, journal, undo, patchFiles, folders: createTokenRegistry() });
   const fetcher = registerFetchIpc(getWindow, entryUrl, { repositories, journal, undo, store: fetchSettings });
-  const mcp = registerMcpIpc(getWindow, entryUrl, { repositories, journal, store: mcpSettings });
+  const mcp = registerMcpIpc(getWindow, entryUrl, { repositories, journal, store: mcpSettings, undo, automations, automationRuns, automationPath });
   const watcher = createRepositoryWatcher(getWindow);
   // With the window gone (macOS keeps the app running) nothing is on screen
   // to be kept current, so the background fetch stops until a window asks again.

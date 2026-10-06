@@ -1,11 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const normalize = value => ({ enabled: value?.enabled === true });
+const normalize = value => ({ enabled: value?.enabled === true, allowCommits: value?.allowCommits === true });
 
 /**
- * Whether the MCP server listens, `mcp.json` in userData. A missing or damaged
- * file means Off: only the Settings choice turns it on. Same atomic write as
+ * Whether the MCP server listens, and whether agents may propose commits —
+ * `mcp.json` in userData. A missing or damaged file means both Off: only the
+ * Settings choices turn them on, each on its own. Same atomic write as
  * `FetchStore` — memory changes only after the rename lands.
  */
 export class McpStore {

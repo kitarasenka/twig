@@ -39,6 +39,21 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   getMcpSettings: () => ipcRenderer.invoke('mcp:get'),
   setMcpEnabled: enabled => ipcRenderer.invoke('mcp:set', enabled),
   reportUiContext: context => ipcRenderer.send('mcp:ui-context', context),
+  setMcpCommitsAllowed: allowed => ipcRenderer.invoke('mcp:allow-commits', allowed),
+  getCommitProposal: () => ipcRenderer.invoke('mcp:proposal-current'),
+  decideCommitProposal: (id, decision) => ipcRenderer.invoke('mcp:proposal-decide', id, decision),
+  onCommitProposal: listener => {
+    if (typeof listener !== 'function') throw new TypeError('Invalid proposal listener');
+    const callback = (_event, proposal) => listener(proposal);
+    ipcRenderer.on('mcp:proposal', callback);
+    return () => ipcRenderer.removeListener('mcp:proposal', callback);
+  },
+  onCommitProposalStep: listener => {
+    if (typeof listener !== 'function') throw new TypeError('Invalid proposal step listener');
+    const callback = (_event, step) => listener(step);
+    ipcRenderer.on('mcp:proposal-step', callback);
+    return () => ipcRenderer.removeListener('mcp:proposal-step', callback);
+  },
   getBackgroundFetch: () => ipcRenderer.invoke('fetch:get'),
   setBackgroundFetch: interval => ipcRenderer.invoke('fetch:set', interval),
   getBackgroundFetchStatus: id => ipcRenderer.invoke('fetch:status', id),

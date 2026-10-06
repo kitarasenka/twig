@@ -49,7 +49,7 @@ try {
     'cloneRepository', 'getRemotes', 'removeRepository', 'resetDemoWorkspace', 'setDemoWorkspaceVisible', 'getUndoState', 'moveUndo', 'onUndoUpdate',
     'watchRepository', 'onRepositoryChange', 'getReflog', 'moveBranchTo',
     'getBackgroundFetch', 'setBackgroundFetch', 'getBackgroundFetchStatus', 'onBackgroundFetch',
-    'getMcpSettings', 'setMcpEnabled', 'reportUiContext',
+    'getMcpSettings', 'setMcpEnabled', 'reportUiContext', 'setMcpCommitsAllowed', 'getCommitProposal', 'decideCommitProposal', 'onCommitProposal', 'onCommitProposalStep',
     'getSshKeys', 'getSshConfig', 'generateSshKey', 'saveSshConfig', 'testSshConnection', 'cancelSshConnection', 'secureSshKey',
     'getAutomationConfig', 'saveAutomationConfig', 'trustAutomations', 'runAutomation', 'cancelAutomation', 'getAutomationRuns', 'getAutomationRun', 'onAutomationStep',
     'runConsoleCommand', 'getEditor', 'setEditor', 'openInEditor', 'revealFile',

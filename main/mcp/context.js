@@ -35,9 +35,9 @@ function inside(root, target) {
  * A path is matched without running Git; nested repositories resolve to the
  * deepest root that contains it.
  * @param {{ repositories: { snapshot: () => { repositories: object[] } }, journal: object,
- *   getActiveId: () => ?string, getUiContext: () => ?object }} options
+ *   getActiveId: () => ?string, getUiContext: () => ?object, proposals?: ?object, waitMs?: ?number }} options
  */
-export function createToolContext({ repositories, journal, getActiveId, getUiContext }) {
+export function createToolContext({ repositories, journal, getActiveId, getUiContext, proposals = null, waitMs = null }) {
   const log = agentLog(journal);
   const gitDirs = new Map();
 
@@ -100,6 +100,9 @@ export function createToolContext({ repositories, journal, getActiveId, getUiCon
     worktree: cwd => ({ cwd, log, env: READ_ENV, allUntracked: true }),
     repository,
     repositories: connected,
+    /** Commit proposals (see commit-proposal.js), or null where none can be shown. */
+    proposals,
+    waitMs,
     /**
      * The same context for one client session: its working directory, as the
      * bridge reported it, becomes the repository tools read by default.

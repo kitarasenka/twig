@@ -119,7 +119,7 @@ try {
   assert.equal(init.result.serverInfo.name, 'twig');
   assert.equal(init.result.serverInfo.version, await page.evaluate(() => window.twig.getAppInfo().then(info => info.version)));
   const tools = (await bridge.request('tools/list')).result.tools.map(tool => tool.name);
-  assert.deepEqual(tools, ['get_workspace_context', 'list_repositories', 'list_changes', 'get_diff', 'get_diff_hunk', 'get_history', 'get_commit', 'get_commit_diff', 'get_ui_context']);
+  assert.deepEqual(tools, ['get_workspace_context', 'list_repositories', 'list_changes', 'get_diff', 'get_diff_hunk', 'get_history', 'get_commit', 'get_commit_diff', 'get_ui_context', 'propose_commit', 'await_commit']);
 
   // The workspace the window has open, with the demo's README edit and untracked note.
   const context = await bridge.tool('get_workspace_context');
@@ -190,6 +190,52 @@ try {
   assert.deepEqual([...after.unstaged.map(file => file.path), ...after.untracked.map(file => file.path)].sort(), ['README.md', 'notes.todo']);
   assert.equal(after.staged.length, 0);
 
+  // Writes are a second switch, off even while reading is on: a proposal is refused until the person allows it.
+  const proposal = { repository: demo.path, message: 'docs: note the README edit\n\nProposed by the smoke test.' };
+  assert.equal((await bridge.tool('propose_commit', proposal)).error.code, 'WRITE_DISABLED');
+  await assert.rejects(page.evaluate(() => window.twig.setMcpCommitsAllowed('yes')), /Invalid MCP request/);
+  await assert.rejects(page.evaluate(() => window.twig.decideCommitProposal('x', { action: 'explode', message: '' })), /Invalid MCP request/);
+  await page.getByRole('button', { name: /^MCP: on/ }).click();
+  await page.getByLabel('Allow agents to propose commits').selectOption('on');
+  await page.getByText(/nothing is committed until you press Commit/).waitFor();
+  await page.getByText('You confirm every commit.').waitFor();
+  await page.keyboard.press('Escape');
+  assert.equal((await page.evaluate(() => window.twig.getMcpSettings())).allowCommits, true);
+
+  // The proposal brings up a dialog; Cancel changes nothing and tells the agent so.
+  const proposalDialog = page.getByRole('dialog', { name: 'Commit proposed by an agent' });
+  let answer = bridge.request('tools/call', { name: 'propose_commit', arguments: proposal });
+  await proposalDialog.waitFor();
+  await proposalDialog.getByText('M +1 -0 README.md', { exact: true }).waitFor();
+  await proposalDialog.getByText('A notes.todo', { exact: true }).waitFor();
+  assert.equal(await proposalDialog.getByLabel(/^Message/).inputValue(), proposal.message);
+  await proposalDialog.getByText('$ git add --all').waitFor();
+  await proposalDialog.getByText(/Push goes to origin\/main\./).waitFor();
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    await page.screenshot({ path: `artifacts/mcp-proposal-${theme}.png`, animations: 'disabled' });
+  }
+  await proposalDialog.getByRole('button', { name: 'Cancel' }).click();
+  assert.equal((await answer).result.content[0].text, 'cancelled by user\n');
+  await proposalDialog.waitFor({ state: 'hidden' });
+  const untouched = await page.evaluate(id => window.twig.readWorktree(id), demo.id);
+  assert.deepEqual([untouched.staged.length, untouched.unstaged.length, untouched.untracked.length], [0, 1, 1], 'cancel left the files alone');
+
+  // Commit with an edited message: the agent gets the hash and the subject that was used, and Undo takes it back.
+  const headBefore = (await bridge.tool('get_workspace_context')).branch.head;
+  answer = bridge.request('tools/call', { name: 'propose_commit', arguments: proposal });
+  await proposalDialog.waitFor();
+  await proposalDialog.getByLabel(/^Message/).fill('docs: README edit from an agent');
+  await proposalDialog.getByRole('button', { name: 'Commit', exact: true }).click();
+  const committed = (await answer).result.content[0].text;
+  assert.match(committed, /^committed [0-9a-f]{12} on main: docs: README edit from an agent \(message edited in 🌱 Twig\)\n$/);
+  await proposalDialog.waitFor({ state: 'hidden' });
+  const clean = await page.evaluate(id => window.twig.readWorktree(id), demo.id);
+  assert.deepEqual([clean.staged.length, clean.unstaged.length, clean.untracked.length], [0, 0, 0], 'all changes went into the commit');
+  assert.equal((await page.evaluate(id => window.twig.getUndoState(id), demo.id)).undo, true);
+  await page.evaluate(id => window.twig.moveUndo(id, 'undo'), demo.id);
+  assert.equal((await bridge.tool('get_workspace_context')).branch.head, headBefore, 'Undo took the agent’s commit back');
+
   // The choice survives a restart, and the same bridge reattaches by itself.
   await app.close();
   const offline = await bridge.tool('get_workspace_context');
@@ -209,7 +255,7 @@ try {
   assert.equal((await bridge.tool('list_changes')).error.code, 'TWIG_UNAVAILABLE');
   await page.keyboard.press('Escape');
   assert.deepEqual(errors, []);
-  console.log('mcp-smoke: settings, bridge on the app executable, workspace and UI context, journal, restart, off');
+  console.log('mcp-smoke: settings, bridge on the app executable, workspace and UI context, journal, commit proposal (refused, cancelled, committed, undone), restart, off');
 } finally {
   await bridge?.close().catch(() => {});
   await app?.close().catch(() => {});

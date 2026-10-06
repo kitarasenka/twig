@@ -42,6 +42,20 @@ export function buildIntentToAddArgv(path) {
   return ['add', '--intent-to-add', '--', validatePath(path)];
 }
 
+/**
+ * Everything at once — modified, deleted and new files of the whole working
+ * tree, what `git add -A` does. Only an agent's commit proposal uses it, after
+ * the person confirmed the file list it was shown.
+ */
+export function buildStageEverythingArgv() {
+  return ['add', '--all'];
+}
+
+/** @param {{ cwd: string, log: object }} options */
+export function stageEverything({ cwd, log }) {
+  return mutate({ cwd, log, argv: buildStageEverythingArgv(), operation: 'Stage all changes' });
+}
+
 /** Everything Git already tracks: modifications and deletions, never a new file. */
 export function buildStageTrackedArgv() {
   return ['add', '--update'];

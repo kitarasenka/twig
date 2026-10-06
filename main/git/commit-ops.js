@@ -53,9 +53,21 @@ export function buildStashArgv({ includeUntracked = false, message = '' } = {}) 
 
 export const buildStashPopArgv = () => ['stash', 'pop'];
 
+/** The last lines Git or its hook printed on failure, without credentials in URLs, at most 1000 characters. */
+export function gitReason(result) {
+  const text = `${result.stderr || ''}\n${result.stdout || ''}`.replace(/(\w+:\/\/)[^/@\s]+@/g, '$1');
+  const lines = text.split('\n').map(line => line.trimEnd()).filter(line => line.trim());
+  return lines.slice(-12).join('\n').slice(-1000);
+}
+
 async function mutate({ cwd, log, argv, operation, stdin = null }) {
   const result = await runGit({ argv, cwd, log, operation, stdin });
-  if (result.code !== 0) throw new Error(`${operation} failed. See the command console.`);
+  if (result.code !== 0) {
+    const error = new Error(`${operation} failed. See the command console.`);
+    // What Git (or a hook it ran) said, for callers that pass a reason on — an agent's commit.
+    error.detail = gitReason(result);
+    throw error;
+  }
   return result;
 }
 

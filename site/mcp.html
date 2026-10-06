@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
   <meta property="og:type" content="website">
   <meta property="og:title" content="🌱 Twig as MCP — Git-контекст для AI-агентов">
-  <meta property="og:description" content="Сводка → файл → ханк. Что выделено в 🌱 Twig, то видит и агент. Только чтение, локальный сокет, без аккаунта.">
+  <meta property="og:description" content="Сводка → файл → ханк. Что выделено в 🌱 Twig, то видит и агент. Читает сам, коммитит только после вашего «да», локальный сокет, без аккаунта.">
   <title>🌱 Twig as MCP — Git-контекст для AI-агентов</title>
   <link rel="icon" type="image/png" href="assets/twig-small.png">
   <link rel="stylesheet" href="tokens.css">
@@ -32,7 +32,7 @@
       </div>
       {{agentcard}}
     </section>
-    <div class="facts wrap"><span><span class="status-dot" aria-hidden="true"></span> Только чтение</span><span>Локальный сокет, без сетевого порта</span><span>Выключен, пока вы не включите</span><a href="#security">Модель безопасности <span aria-hidden="true">↗</span></a></div>
+    <div class="facts wrap"><span><span class="status-dot" aria-hidden="true"></span> Читает сам, коммит — только по вашей кнопке</span><span>Локальный сокет, без сетевого порта</span><span>Выключен, пока вы не включите</span><a href="#security">Модель безопасности <span aria-hidden="true">↗</span></a></div>
 
     <section class="preview wrap" id="panel" aria-labelledby="panel-title">
       <div class="section-heading compact"><div><p class="eyebrow">В САМОМ ПРИЛОЖЕНИИ</p><h2 id="panel-title">Кнопка MCP рядом с BugHunter.</h2></div><p>Включение, что получит агент и готовые<br>команды подключения — в одном окне.</p></div>
@@ -91,7 +91,7 @@ untracked:
     </div>
 
     <section class="tools-section wrap section-space" id="tools" aria-labelledby="tools-title">
-      <div class="section-heading"><div><p class="eyebrow">9 ИНСТРУМЕНТОВ · ВСЕ ТОЛЬКО ЧИТАЮТ</p><h2 id="tools-title">Небольшие инструменты<br><span>вместо get_everything.</span></h2></div><p>Каждый принимает необязательный <code>repository</code> — имя, корень или любой путь внутри. Без него читается репозиторий рабочей папки агента, если он подключён, иначе открытый в 🌱 Twig — и тогда ответ первым делом называет его.</p></div>
+      <div class="section-heading"><div><p class="eyebrow">11 ИНСТРУМЕНТОВ · 9 ЧИТАЮТ, 2 ПРЕДЛАГАЮТ КОММИТ</p><h2 id="tools-title">Небольшие инструменты<br><span>вместо get_everything.</span></h2></div><p>Каждый принимает необязательный <code>repository</code> — имя, корень или любой путь внутри. Без него читается репозиторий рабочей папки агента, если он подключён, иначе открытый в 🌱 Twig — и тогда ответ первым делом называет его.</p></div>
       <div class="tool-grid">
         <article data-reveal><code>get_workspace_context</code><p>Сводка: ветка, upstream, операция, счётчики файлов, выделенное в окне.</p></article>
         <article data-reveal><code>list_repositories</code><p>Подключённые репозитории и тот, что открыт в 🌱 Twig.</p></article>
@@ -102,6 +102,8 @@ untracked:
         <article data-reveal><code>get_commit</code><p>Сообщение, автор, родители и файлы со счётчиками строк. Без патча.</p></article>
         <article data-reveal><code>get_commit_diff</code><p>Патч коммита: целиком для маленького, по файлу или по ханку для большого.</p></article>
         <article data-reveal><code>get_ui_context</code><p>Что открыто в окне: вид, коммит, диапазон, файл. Чего 🌱 Twig не хранит — <code>null</code>.</p></article>
+        <article data-reveal><code>propose_commit</code><p>Предлагает коммит всех изменений с сообщением агента. Окно показывает файлы и сообщение; Commit, Commit &amp; Push или Cancel — ваш выбор. Выключен, пока вы не разрешите.</p></article>
+        <article data-reveal><code>await_commit</code><p>Ждёт вашего ответа дальше, если вы думаете дольше ~45 секунд, и отвечает тем же: хэш коммита, пуш или отмена.</p></article>
       </div>
     </section>
 
@@ -155,8 +157,8 @@ env = { ELECTRON_RUN_AS_NODE = "1" }</code></pre></figure>
       <section class="limits wrap section-space" id="limits" aria-labelledby="limits-title">
         <div class="section-heading"><div><p class="eyebrow">ЧЕСТНО</p><h2 id="limits-title">Чего пока нет<br><span>и что будет дальше.</span></h2></div></div>
         <div class="limits-grid">
-          <div data-reveal><h3>Сейчас</h3><ul class="release-notes"><li>Только чтение: агент не стейджит и не коммитит.</li><li>Только локальный stdio-мост; HTTP-транспорта нет.</li><li>Выделение внутри экрана staging агенту не передаётся; выбора ветки и ханка в 🌱 Twig нет — эти поля всегда <code>null</code>.</li><li>Живьём проверено на macOS; Windows и Linux используют тот же код, но ещё не прогонялись.</li></ul></div>
-          <div data-reveal><h3>Дальше</h3><ul class="release-notes"><li>Инструменты записи — <code>stage_hunk</code>, <code>create_branch</code>, <code>create_commit</code> — под отдельным разрешением.</li><li>Подтверждение каждой мутации в окне 🌱 Twig с точной командой.</li><li>Отмена действий агента тем же Undo, что и ваших.</li></ul></div>
+          <div data-reveal><h3>Сейчас</h3><ul class="release-notes"><li>Сам агент только читает. Коммит всех изменений он может лишь предложить: 🌱 Twig показывает файлы и сообщение, а коммит и пуш случаются по вашей кнопке. Включается отдельно в Settings; частичного коммита и staging по ханкам нет.</li><li>Только локальный stdio-мост; HTTP-транспорта нет.</li><li>Выделение внутри экрана staging агенту не передаётся; выбора ветки и ханка в 🌱 Twig нет — эти поля всегда <code>null</code>.</li><li>Живьём проверено на macOS; Windows и Linux используют тот же код, но ещё не прогонялись.</li></ul></div>
+          <div data-reveal><h3>Дальше</h3><ul class="release-notes"><li>Другие инструменты записи — <code>stage_hunk</code>, <code>create_branch</code> — с тем же подтверждением в окне и тем же Undo, что у <code>propose_commit</code>.</li></ul></div>
         </div>
       </section>
       <section class="downloads mcp-cta wrap section-space" aria-labelledby="cta-title">

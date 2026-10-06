@@ -2,11 +2,13 @@ import { getWorkspaceContext, listRepositories } from './workspace.js';
 import { getDiff, getDiffHunk, listChanges } from './changes.js';
 import { getCommit, getCommitDiff, getHistory } from './history.js';
 import { getUiContext } from './ui.js';
+import { awaitCommit, proposeCommit } from './commit.js';
 
 /**
  * The implementations behind protocol.mjs's catalog, by tool name. Each one is
  * `(ctx, args) => payload`; arguments arrive already checked against the
- * tool's schema with defaults filled in. Every one of them only reads.
+ * tool's schema with defaults filled in. All of them only read, except
+ * propose_commit, which asks the person in 🌱 Twig's window to commit.
  */
 const IMPLEMENTATIONS = Object.freeze({
   get_workspace_context: getWorkspaceContext,
@@ -17,7 +19,9 @@ const IMPLEMENTATIONS = Object.freeze({
   get_history: getHistory,
   get_commit: getCommit,
   get_commit_diff: getCommitDiff,
-  get_ui_context: getUiContext
+  get_ui_context: getUiContext,
+  propose_commit: proposeCommit,
+  await_commit: awaitCommit
 });
 
 export const TOOL_NAMES = Object.freeze(Object.keys(IMPLEMENTATIONS));

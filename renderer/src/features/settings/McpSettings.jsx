@@ -49,6 +49,12 @@ export default function McpSettings({ onBusyChange, onChange = () => {} }) {
     catch (failure) { setError(failure.message || 'Could not change the MCP server.'); }
     finally { setBusy(false); }
   }
+  async function allowCommits(allowed) {
+    setBusy(true); setError('');
+    try { const next = await window.twig.setMcpCommitsAllowed(allowed); setSettings(next); onChange(next); }
+    catch (failure) { setError(failure.message || 'Could not change this setting.'); }
+    finally { setBusy(false); }
+  }
   async function copy(key) {
     await window.twig.copyText(settings.config[key]);
     setCopied(key);
@@ -62,10 +68,19 @@ export default function McpSettings({ onBusyChange, onChange = () => {} }) {
       <select id="mcp-enabled" value={settings.enabled ? 'on' : 'off'} disabled={busy} onChange={(e) => void choose(e.target.value === 'on')}>
         <option value="off">Off</option><option value="on">On</option>
       </select></label>
+    <label className="setting-row" htmlFor="mcp-commits"><span><strong>Allow agents to propose commits</strong>
+      <small>{settings.allowCommits
+        ? 'An agent can ask to commit all changes with its message. 🌱 Twig shows the files and the message here; nothing is committed until you press Commit.'
+        : 'Off — agents can only read. A commit proposal is refused.'}</small></span>
+      <select id="mcp-commits" value={settings.allowCommits ? 'on' : 'off'} disabled={busy} onChange={(e) => void allowCommits(e.target.value === 'on')}>
+        <option value="off">Off</option><option value="on">On</option>
+      </select></label>
     {mcpStatusLine(status) && <p className={`update-note ${status.error ? 'profile-error' : ''}`} role={status.error ? 'alert' : 'status'}>{mcpStatusLine(status)}</p>}
     {error && <p className="profile-error" role="alert">{error}</p>}
     <p className="visually-hidden" role="status">{copied ? `${CLIENTS.find(client => client.key === copied).title} configuration copied.` : ''}</p>
-    <p className="mcp-guarantee"><ShieldCheck aria-hidden="true" /><span><strong>Read-only.</strong> There is no tool to commit, stage, check out or run commands. Every Git command an agent causes is in the console’s Full History, tagged MCP.</span></p>
+    <p className="mcp-guarantee"><ShieldCheck aria-hidden="true" /><span>{settings.allowCommits
+      ? <><strong>You confirm every commit.</strong> An agent can only propose one; it cannot stage, check out or run commands. Every Git command an agent causes is in the console’s Full History.</>
+      : <><strong>Read-only.</strong> There is no tool to commit, stage, check out or run commands. Every Git command an agent causes is in the console’s Full History, tagged MCP.</>}</span></p>
     <h3 className="mcp-heading"><Bot aria-hidden="true" />What your agent gets</h3>
     <ul className="mcp-gives">{GIVES.map(item => <li key={item.title}><item.icon aria-hidden="true" /><span><strong>{item.title}</strong><small>{item.text}</small></span></li>)}</ul>
     <h3 className="mcp-heading"><Plug aria-hidden="true" />Connect an agent</h3>
