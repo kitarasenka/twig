@@ -17,7 +17,7 @@ const BUMPS = [null, 'none', 'patch', 'minor', 'major'];
  *
  * @returns {{ follow: (id: ?string) => void }} for `repo:watch`, which knows the active repository
  */
-export function registerMcpIpc(getWindow, entryUrl, { repositories, journal, store, undo, automations, automationRuns, automationPath }) {
+export function registerMcpIpc(getWindow, entryUrl, { repositories, journal, store, undo, automations, automationRuns, automationPath, bumper = null }) {
   const send = (channel, payload) => {
     const window = getWindow();
     if (!window || window.isDestroyed()) return false;
@@ -25,7 +25,7 @@ export function registerMcpIpc(getWindow, entryUrl, { repositories, journal, sto
     return true;
   };
   const proposals = createCommitProposals({
-    log: journal, undo, automations, runs: automationRuns, loginPath: automationPath,
+    log: journal, undo, automations, runs: automationRuns, loginPath: automationPath, bump: bumper,
     isAllowed: () => store.get().allowCommits,
     // A proposal brings the window forward: the person has to see it to answer it.
     present: view => {

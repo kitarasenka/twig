@@ -162,7 +162,8 @@ dialog.wide { width: min(920px, calc(100vw - var(--space-8))); }
 .proposal-dialog > label .muted { text-transform: none; letter-spacing: 0; }
 .proposal-dialog textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: var(--space-2); font-family: var(--font-mono); font-size: var(--text-sm); resize: vertical; }
-.proposal-dialog .proposal-bump { margin: var(--space-1) 0; text-transform: none; letter-spacing: 0; color: var(--text); font-size: var(--text-sm); }
+.proposal-dialog .proposal-bump { display: flex; flex-direction: column; gap: var(--space-1); }
+.proposal-bump .muted { text-transform: none; letter-spacing: 0; }
 .proposal-commands span { display: block; }
 .proposal-progress { color: var(--muted); font-size: var(--text-sm); }
 .proposal-failure { margin: 0; padding: var(--space-2) var(--space-3); background: var(--danger-bg); color: var(--text); border-radius: var(--radius-sm);

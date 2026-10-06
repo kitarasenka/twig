@@ -16,6 +16,14 @@ function pipeline(event, name, actions, extra = {}) {
 
 export const TEMPLATES = [
   {
+    id: 'bump-version',
+    title: 'Bump version',
+    summary: 'Raise the package.json version with every commit — patch by default, chosen when you commit.',
+    build: () => pipeline('pre-commit', 'Bump version', [
+      { type: 'bumpVersion', name: 'Bump package.json', target: 'file', path: 'package.json', default: 'patch' }
+    ])
+  },
+  {
     id: 'js-ts',
     title: 'JavaScript / TypeScript',
     summary: 'Lint, format check, type-check and test before every commit.',

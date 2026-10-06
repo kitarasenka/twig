@@ -6,6 +6,7 @@ import { ignoreMenuItems } from '../diff/file-menu.js';
 import FileStatus from '../diff/FileStatus.jsx';
 import StageDiff from './StageDiff.jsx';
 import CoAuthors from './CoAuthors.jsx';
+import { BUMP_CHOICES, bumpLabel } from '../automations/version-bump.js';
 import { ConfirmDialog } from '../ops/dialogs.jsx';
 import { discardDialog } from './discard-dialog.js';
 
@@ -45,6 +46,20 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
   const [message, setMessage] = useState('');
   const [notice, setNotice] = useState('');
   const [amend, setAmend] = useState(false);
+  // The "Bump version" automation: what the staged files would bump, and the choice for this commit.
+  const [bumpPlan, setBumpPlan] = useState(null);
+  const [bumpChoice, setBumpChoice] = useState(null);
+  const stagedKey = tree.staged.map(entry => entry.path).join('\0');
+  useEffect(() => {
+    let alive = true;
+    if (!stagedKey) { setBumpPlan(null); return () => { alive = false; }; }
+    window.twig.getBumpPlan(repository.id).then(plan => {
+      if (!alive) return;
+      setBumpPlan(plan);
+      setBumpChoice(current => (plan ? current ?? plan.choice : null));
+    }).catch(() => { if (alive) setBumpPlan(null); });
+    return () => { alive = false; };
+  }, [repository.id, stagedKey]);
   const [coAuthors, setCoAuthors] = useState([]);
   // The picker costs a row of height, so it opens on request; chosen people keep it open.
   const [coAuthorsOpen, setCoAuthorsOpen] = useState(false);
@@ -207,11 +222,12 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
     }
     const head = amendMode ? amendBase.current?.oid ?? tree.branch?.oid ?? null : null;
     await guard(async () => {
-      const warnings = await window.twig.createCommit(repository.id, message, amendMode, head, coAuthors);
+      const warnings = await window.twig.createCommit(repository.id, message, amendMode, head, coAuthors, !amendMode && bumpPlan ? bumpChoice : null);
       setMessage('');
       setCoAuthors([]);
       setCoAuthorsOpen(false);
       setAmend(false);
+      setBumpChoice(null);
       amendBase.current = null;
       setOpen(null);
       setDiff(null);
@@ -311,6 +327,10 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
           title="Credit people from this history with Co-authored-by: trailers" onClick={() => setCoAuthorsOpen(true)}>
           <Users aria-hidden="true" />Add co-authors</button>}
       </div>
+      {bumpPlan && !amend && <label className="commit-bump" htmlFor="commit-bump"><span>Version</span>
+        <select id="commit-bump" value={bumpChoice ?? 'none'} disabled={busy} onChange={event => setBumpChoice(event.target.value)}>
+          {BUMP_CHOICES.map(choice => <option key={choice} value={choice}>{bumpLabel(bumpPlan, choice)}</option>)}
+        </select></label>}
       <div className="commit-actions">
         <span className={subject.length > 72 ? 'warn' : 'muted'}>{subject.length}/72 in the subject</span>
         <Button className="primary" type="submit" reason={commitReason}>

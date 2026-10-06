@@ -250,6 +250,18 @@ What happens:
 5. **Commit & Push** then runs the pre-push automations and the app's own push
    (`git push`, or `git push --set-upstream origin <branch>`).
 
+**Version bump.** If the repository has a pre-commit pipeline with a **Bump version** action
+(Automations → template "Bump version", or `"type": "bumpVersion"` in `.twig/hooks.json`), the
+dialog also shows "current → new" and a choice of patch, minor, major or no bump, starting at
+the action's default. The bump happens with the commit, after every automation passed and
+right before `git commit`, so a refused commit never leaves a bumped file. It changes only the
+`version` string of the package.json the action names (`"target": "file"`, `"path"`) — or of
+every `modules/<dir>/package.json` with a change (`"target": "modules"`) — and, when present,
+the root `"version"` and `packages[""].version` of the package-lock.json next to it. The
+edit is textual, so formatting and line endings stay; npm never runs. The bumped files go into
+the same commit, and the answer gets a line per file: `version package.json: 1.3.0 → 1.3.1`.
+The commit panel offers the same choice.
+
 Answers, one line each:
 
 ```

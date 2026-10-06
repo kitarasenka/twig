@@ -34,6 +34,11 @@ export async function runAction({ action, context, cwd, log, env, signal, timeou
       return processResult(await runStep({ argv: [resolved, ...extra], cwd, log, env, signal, timeoutMs, operation: `Automation: ${action.name || action.path}` }));
     }
 
+    // The bump itself happens with the commit, after every check passed (see
+    // main/automation/bump.js), so a later refusal never leaves a bumped file.
+    case 'bumpVersion':
+      return { status: 'passed', detail: 'The version is bumped with the commit; the choice is made in the commit panel or the agent’s proposal.' };
+
     case 'validateMessage': {
       const { ok, detail } = checkMessage(action.rule, context.commitMessage ?? '');
       return { status: ok ? 'passed' : 'failed', detail: ok ? null : detail };

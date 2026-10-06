@@ -6,9 +6,10 @@
  */
 import { HOOK_EVENTS } from './event-labels.js';
 import { parseCommand } from './command-parse.js';
+import { BUMP_CHOICES, validBumpPath } from './version-bump.js';
 
 const KNOWN_EVENTS = new Set(HOOK_EVENTS.map(event => event.hook));
-export const ACTION_TYPES = ['command', 'script', 'validateMessage', 'checkBranch', 'checkChangedFiles', 'secretScan', 'custom'];
+export const ACTION_TYPES = ['command', 'script', 'validateMessage', 'checkBranch', 'checkChangedFiles', 'secretScan', 'bumpVersion', 'custom'];
 export const CONDITION_TYPES = ['changedFiles', 'branch', 'remote', 'messageContains'];
 export const CONFIG_VERSION = 1;
 export const DEFAULT_SETTINGS = { enabled: true, extraPath: [], timeoutMs: 120000 };
@@ -45,6 +46,11 @@ function normalizeAction(raw) {
   if (type === 'validateMessage') action.rule = raw?.rule && typeof raw.rule === 'object' ? { ...raw.rule } : { mode: 'conventional' };
   if (type === 'checkBranch') action.block = asArray(raw?.block).map(String);
   if (type === 'checkChangedFiles') { action.require = asArray(raw?.require).map(String); action.forbid = asArray(raw?.forbid).map(String); }
+  if (type === 'bumpVersion') {
+    action.target = raw?.target === 'modules' ? 'modules' : 'file';
+    action.path = asString(raw?.path, 'package.json') || 'package.json';
+    action.default = BUMP_CHOICES.includes(raw?.default) ? raw.default : 'patch';
+  }
   return action;
 }
 
@@ -93,6 +99,10 @@ export function validatePipeline(pipeline) {
         errors.push(`${where}: the script path must be inside the repository.`);
       }
       if (action.args) try { parseCommand(`x ${action.args}`); } catch (error) { errors.push(`${where}: ${error.message}`); }
+    }
+    if (action.type === 'bumpVersion') {
+      if (p.event !== 'pre-commit') errors.push(`${where}: a version bump belongs to Before Commit (pre-commit).`);
+      if (action.target === 'file' && !validBumpPath(action.path)) errors.push(`${where}: name a package.json inside the repository.`);
     }
     if (action.type === 'checkBranch' && action.block.length === 0) errors.push(`${where}: list at least one protected branch.`);
     if (action.type === 'validateMessage' && !['conventional', 'regex', 'ticketPrefix'].includes(action.rule.mode)) {

@@ -107,3 +107,5 @@ button.discard:not(:disabled):hover, button.discard:not(:disabled):focus-visible
 .commit-options { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
 .co-author-open { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-xs); }
 .co-author-open svg { width: 13px; height: 13px; }
+.commit-bump { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--muted); }
+.commit-bump select { min-width: 0; max-width: 100%; flex: 1; }

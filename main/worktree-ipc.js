@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
+import { commitWithBump } from './automation/bump.js';
 import { loadWorktree, loadWorktreeDiff } from './git/worktree.js';
 import { applySelection, intentToAdd, stageAll, stageFile, unstageAll, unstageFile } from './git/stage.js';
 import { discardAll, discardFile, discardSelection } from './git/discard.js';
@@ -20,7 +21,7 @@ import { runDrop, validateDropRequest } from './git/drop.js';
  * produced, and a selection made against a stale diff is refused instead of
  * silently staging the wrong lines.
  */
-export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal, undo }) {
+export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal, undo, bumper = null }) {
   const running = new Map();
 
   function handler(channel, count, read) {
@@ -31,7 +32,7 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
         || typeof args[0] !== 'string') throw new Error('Invalid working tree request');
       const repo = repositories.snapshot().repositories.find(item => item.id === args[0]);
       if (!repo || !repo.available) throw new Error('Repository is unavailable');
-      const run = () => read({ cwd: repo.path, log: journal }, ...args.slice(1));
+      const run = () => read({ cwd: repo.path, log: journal, repoId: repo.id }, ...args.slice(1));
       // Every discard is one kind for Undo: its inverse comes from the backup it recorded.
       const kind = channel === 'stash:action' && ['apply', 'pop'].includes(args[1]) ? `stash:${args[1]}`
         : channel.startsWith('worktree:discard') ? 'worktree:discard' : channel;
@@ -114,11 +115,14 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     return addIgnoreRule({ ...options, path: asPath(path), kind });
   });
 
-  handler('worktree:commit', 5, (options, message, amend, expectedHead, coAuthors) => {
+  handler('worktree:commit', 6, async (options, message, amend, expectedHead, coAuthors, bump) => {
     if (typeof message !== 'string' || message.length > 1_000_000 || typeof amend !== 'boolean') throw new Error('Invalid commit request');
     if (amend ? typeof expectedHead !== 'string' : expectedHead !== null) throw new Error('Invalid commit request');
+    if (![null, 'none', 'patch', 'minor', 'major'].includes(bump) || (amend && bump !== null && bump !== 'none')) throw new Error('Invalid commit request');
     // Validated before the Undo record opens: a bad co-author rejects the request instead of reaching Git.
-    return createCommit({ ...options, message, amend, expectedHead, coAuthors: validateCoAuthors(coAuthors) });
+    const request = { cwd: options.cwd, log: options.log, message, amend, expectedHead, coAuthors: validateCoAuthors(coAuthors) };
+    if (!bumper || bump === null || bump === 'none') return createCommit(request);
+    return commitWithBump({ request, repo: { id: options.repoId, path: options.cwd }, choice: bump, bumper, commit: createCommit });
   });
   handler('worktree:co-authors', 1, options => loadCoAuthors(options));
 

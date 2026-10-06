@@ -103,7 +103,7 @@ try {
 
   // The channel validates before the Undo record opens, and the form shows the same trailer line.
   const ipc = await readFile(new URL('../../main/worktree-ipc.js', import.meta.url), 'utf8');
-  assert.match(ipc, /handler\('worktree:commit', 5,/);
+  assert.match(ipc, /handler\('worktree:commit', 6,/);
   assert.match(ipc, /coAuthors: validateCoAuthors\(coAuthors\)/);
   const form = await readFile(new URL('../../renderer/src/features/worktree/CoAuthors.jsx', import.meta.url), 'utf8');
   assert.match(form, /coAuthorTrailer\(person\)/, 'the preview is built by the module main uses');

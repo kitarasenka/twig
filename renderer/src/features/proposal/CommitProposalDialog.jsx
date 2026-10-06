@@ -3,8 +3,7 @@ import { Bot } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
 import { primaryAction, proposalCommands, pushLine, totalsLine } from './proposal-view.js';
-
-const BUMP_LABELS = { none: 'Don’t bump', patch: 'Patch', minor: 'Minor', major: 'Major' };
+import { BUMP_CHOICES, bumpLabel } from '../automations/version-bump.js';
 
 /**
  * A commit an agent proposed through MCP. Nothing has happened yet: the
@@ -36,10 +35,9 @@ export default function CommitProposalDialog({ view, running, step, failure, onD
       </ul>
       <label htmlFor="proposal-message">Message <span className="muted">— written by the agent, yours to edit</span></label>
       <textarea id="proposal-message" rows={6} value={message} spellCheck autoFocus onChange={event => setMessage(event.target.value)} disabled={running} />
-      {view.bump && <label className="setting-row proposal-bump" htmlFor="proposal-bump"><span><strong>Version</strong>
-        <small>{view.bump.targets.map(target => `${target.path}: ${target.current} → ${bump && bump !== 'none' ? target.next[bump] : target.current}`).join(' · ')}</small></span>
+      {view.bump && <label className="proposal-bump" htmlFor="proposal-bump"><span>Version <span className="muted">— from your “Bump version” automation</span></span>
         <select id="proposal-bump" value={bump ?? 'none'} disabled={running} onChange={event => setBump(event.target.value)}>
-          {['none', 'patch', 'minor', 'major'].map(choice => <option key={choice} value={choice}>{choice === 'none' ? BUMP_LABELS.none : `${BUMP_LABELS[choice]} → ${view.bump.targets[0].next[choice]}`}</option>)}
+          {BUMP_CHOICES.map(choice => <option key={choice} value={choice}>{bumpLabel(view.bump, choice)}</option>)}
         </select></label>}
       <p className="muted">These commands will run, after your pre-commit automations:</p>
       <code className="confirm-command proposal-commands">{commands.map(line => <span key={line}>$ {line}</span>)}</code>

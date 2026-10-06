@@ -17,6 +17,39 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Действие автоматизации «Bump version» (2026-10-06, вне вех; ТЗ garden-0d,
+решение пользователя: версию поднимает 🌱 Twig, а не скилл). Тип
+`bumpVersion` в `schema.js` (`target: file|modules`, `path` = package.json,
+`default: patch|minor|major|none`; только pre-commit, путь внутри
+репозитория), поля в `PipelineEditor`, шаблон «Bump version». Действие в
+конвейере ничего не пишет (шаг «passed» с пояснением): сама правка — **при
+коммите**, после всех автоматизаций и прямо перед `git commit`, чтобы
+отказ проверки не оставлял поднятую версию. Чистый
+`renderer/src/features/automations/version-bump.js` (`nextVersion(s)` только
+для X.Y.Z, `findStringValue` — свой сканер JSON, возвращающий позицию
+строки по пути ключей на своей глубине, `replaceStringValue` — замена
+только символов версии, `LOCK_PATHS` = `version` и `packages[""].version`,
+`bumpTargets`, `validBumpPath`, `bumpLabel`). `main/automation/bump.js`:
+`createBumper({ log, automations })` — `plan` (включённые pre-commit
+пайплайны через `selectPipelines`, условия пайплайна и действия по ветке и
+файлам коммита; цели и lock рядом, если в нём та же версия), `apply`
+(перечитывает, отказ если версия уже другая, пишет, `git add -- :(literal)…`,
+при ошибке откатывает сам), `revert`; `commitWithBump` — путь панели:
+`write-tree` → план по staged → apply → `createCommit`, при падении файлы и
+индекс назад. `worktree:commit` теперь 6 аргументов (`bump`: null|none|
+patch|minor|major, при amend только null/none); канал `automation:bump-plan`;
+мост `getBumpPlan`, `createCommit(..., bump)`. В панели коммита — выбор
+«Version» с «current → new», в диалоге предложения агента — тот же выбор,
+ответ агенту — `version package.json: 1.3.0 → 1.3.1`. Проверки:
+`scripts/checks/version-bump.mjs` (в `npm test`): semver, правка сохраняет
+табы/CRLF/BOM и не трогает вложенные `version` и `node_modules/*` в lock,
+битый JSON → null, схема и шаблон, plan/apply/revert побайтно, отказ при
+сдвинутой версии, режим modules, коммит панели (файлы в том же коммите,
+упавший хук возвращает версию и индекс), предложение агента с patch / «не
+поднимать» / блоком commit-msg без правки версии. `co-authors.mjs` сверяет
+новое число аргументов. Выбор версии в панели коммита глазами не
+просматривался (в демо-песочнице нет package.json). Версия не менялась.
+
 MCP: агент предлагает коммит, человек подтверждает (2026-10-06, вне вех; по
 решению пользователя, ТЗ от сессии garden-0d). Инструменты `propose_commit`
 (`message`, `push` = false, `repository?`) и `await_commit` (`proposalId`);

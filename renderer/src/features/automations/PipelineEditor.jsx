@@ -6,7 +6,7 @@ import { ACTION_TYPES, CONDITION_TYPES, makeId, normalizePipeline, validatePipel
 
 const ACTION_LABELS = {
   command: 'Run command', script: 'Run script', validateMessage: 'Validate commit message',
-  checkBranch: 'Protect branches', checkChangedFiles: 'Check changed files', secretScan: 'Scan for secrets', custom: 'Custom command'
+  checkBranch: 'Protect branches', checkChangedFiles: 'Check changed files', secretScan: 'Scan for secrets', bumpVersion: 'Bump version', custom: 'Custom command'
 };
 const CONDITION_LABELS = {
   changedFiles: 'Changed files match', branch: 'Branch matches', remote: 'Pushing to remote', messageContains: 'Message contains'
@@ -87,6 +87,21 @@ function ActionRow({ action, index, count, phase, onChange, onRemove, onReorder 
         <label style={{ flex: 1 }}><span>Must not change</span><input type="text" value={(action.forbid || []).join(', ')} onChange={e => set({ forbid: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} /></label>
       </div>}
       {action.type === 'secretScan' && <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>Scans the added lines of the staged changes for common credential formats. Nothing leaves your machine.</p>}
+      {action.type === 'bumpVersion' && <>
+        <div className="row">
+          <label style={{ flex: 1 }}><span>Which package.json</span>
+            <select value={action.target || 'file'} onChange={e => set({ target: e.target.value })}>
+              <option value="file">One file</option><option value="modules">Each changed module (modules/*/package.json)</option>
+            </select></label>
+          {(action.target || 'file') === 'file' && <label style={{ flex: 1 }}><span>Path</span>
+            <input type="text" value={action.path ?? 'package.json'} placeholder="package.json" onChange={e => set({ path: e.target.value })} /></label>}
+          <label style={{ flex: 1 }}><span>Default</span>
+            <select value={action.default || 'patch'} onChange={e => set({ default: e.target.value })}>
+              <option value="patch">Patch</option><option value="minor">Minor</option><option value="major">Major</option><option value="none">Don’t bump</option>
+            </select></label>
+        </div>
+        <p className="muted" style={{ fontSize: 'var(--text-xs)' }}>The commit panel and an agent’s commit proposal show “current → new” and let you pick patch, minor, major or no bump. The version in package.json and the root entries of package-lock.json change with the commit, after every check passed; formatting is kept and npm does not run.</p>
+      </>}
       <label className="switch"><input type="checkbox" checked={action.continueOnError === true} onChange={e => set({ continueOnError: e.target.checked })} /><span className="track" />Keep going if this fails</label>
       <details><summary>Only run this action when…</summary>
         <ConditionList conditions={action.conditions || []} phase={phase} onChange={conditions => set({ conditions })} /></details>

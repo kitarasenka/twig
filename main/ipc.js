@@ -1,4 +1,5 @@
 import { app, clipboard, dialog, ipcMain } from 'electron';
+import { createBumper } from './automation/bump.js';
 import { isTrustedPage } from './security.js';
 import { registerHistoryIpc } from './history-ipc.js';
 import { registerBlameIpc } from './blame-ipc.js';
@@ -27,23 +28,25 @@ function validSender(event, getWindow, entryUrl, args, count) {
 }
 
 export function registerIpc(getWindow, entryUrl, { journal, repositories, git, undo, marks, automations, automationRuns, automationPath, editor, fetchSettings, updateSettings, mcpSettings }) {
+  // The "Bump version" action: planned for the commit panel and agent proposals, applied by their commit.
+  const bumper = createBumper({ log: journal, automations });
   registerUpdateIpc(getWindow, entryUrl, { journal, store: updateSettings });
   registerUndoIpc(getWindow, entryUrl, { repositories, undo });
   registerMarksIpc(getWindow, entryUrl, { repositories, marks });
-  registerAutomationsIpc(getWindow, entryUrl, { repositories, journal, automations, runs: automationRuns, loginPath: automationPath });
+  registerAutomationsIpc(getWindow, entryUrl, { repositories, journal, automations, runs: automationRuns, loginPath: automationPath, bumper });
   registerSshIpc(getWindow, entryUrl, { journal });
   registerRepositoryIpc(getWindow, entryUrl, { journal, repositories, undo });
   registerProfileIpc(getWindow, entryUrl, { journal, repositories, stateDir: app.getPath('userData') });
   registerHistoryIpc(getWindow, entryUrl, { journal, repositories });
   registerBlameIpc(getWindow, entryUrl, { journal, repositories });
-  registerWorktreeIpc(getWindow, entryUrl, { journal, repositories, undo });
+  registerWorktreeIpc(getWindow, entryUrl, { journal, repositories, undo, bumper });
   const patchFiles = createTokenRegistry();
   registerHistoryOpsIpc(getWindow, entryUrl, { journal, repositories, undo, stateDir: app.getPath('userData'), patchFiles });
   registerConsoleIpc(getWindow, entryUrl, { repositories, journal });
   registerFilesIpc(getWindow, entryUrl, { repositories, journal, editor, loginPath: automationPath });
   registerRepoToolsIpc(getWindow, entryUrl, { repositories, journal, undo, patchFiles, folders: createTokenRegistry() });
   const fetcher = registerFetchIpc(getWindow, entryUrl, { repositories, journal, undo, store: fetchSettings });
-  const mcp = registerMcpIpc(getWindow, entryUrl, { repositories, journal, store: mcpSettings, undo, automations, automationRuns, automationPath });
+  const mcp = registerMcpIpc(getWindow, entryUrl, { repositories, journal, store: mcpSettings, undo, automations, automationRuns, automationPath, bumper });
   const watcher = createRepositoryWatcher(getWindow);
   // With the window gone (macOS keeps the app running) nothing is on screen
   // to be kept current, so the background fetch stops until a window asks again.

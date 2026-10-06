@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron';
+import { runGit } from './git/exec.js';
 import { randomUUID } from 'node:crypto';
 import { isTrustedPage } from './security.js';
 import { isKnownEvent } from '../renderer/src/features/automations/event-labels.js';
@@ -15,7 +16,7 @@ import { discoverHooks, readRepoConfig } from './automation/discovery.js';
  * `.twig/hooks.json` is treated as untrusted data: it is read and described but
  * never executed until `automation:trust` records an explicit approval.
  */
-export function registerAutomationsIpc(getWindow, entryUrl, { repositories, journal, automations, runs, loginPath = null }) {
+export function registerAutomationsIpc(getWindow, entryUrl, { repositories, journal, automations, runs, loginPath = null, bumper = null }) {
   const running = new Map();
 
   function handler(channel, count, read) {
@@ -29,6 +30,14 @@ export function registerAutomationsIpc(getWindow, entryUrl, { repositories, jour
       return read({ repo, window }, ...args.slice(1));
     });
   }
+
+  // What the commit panel's version choice shows: the bump the staged files would get, or null.
+  handler('automation:bump-plan', 1, async ({ repo }) => {
+    if (!bumper) return null;
+    const staged = await runGit({ cwd: repo.path, log: journal, argv: ['diff', '--cached', '--name-only', '-z'], operation: 'Background: staged files' });
+    if (staged.code !== 0) return null;
+    return bumper.plan({ repo, files: staged.stdout.split('\0').filter(Boolean) });
+  });
 
   handler('automation:config', 1, async ({ repo }) => {
     const [discovery, repoConfig] = await Promise.all([
