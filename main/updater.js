@@ -1,6 +1,7 @@
 // In-app update: check → download → prepare → restart. Every step after the
-// check happens only on a press in the window; the automatic check (opt-in,
-// Settings → Updates) only reads the release and lights the toolbar button.
+// check happens only on a press in the window; the automatic check (at launch
+// and daily in an installed copy unless Settings → Updates says "Only when I
+// ask") only reads the release and lights the toolbar button.
 //
 // There is no paid signing identity, so Squirrel/electron-updater cannot
 // replace a macOS app here (it insists the new bundle carry the same Developer
@@ -33,7 +34,7 @@ import { BUNDLE_ID } from './update-target.js';
 
 const MAX_REDIRECTS = 5;
 const IDLE_TIMEOUT_MS = 60_000;
-const FIRST_AUTO_CHECK_MS = 20_000;
+const FIRST_AUTO_CHECK_MS = 5_000;
 const AUTO_CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
 const MAC_STAGED = '.twig-update.app';
 const MAC_PREVIOUS = '.twig-previous.app';
@@ -389,7 +390,7 @@ export function createUpdater({
     return snapshot();
   }
 
-  /** Clears what an earlier update left behind, then starts the opt-in schedule. */
+  /** Clears what an earlier update left behind, then starts the automatic schedule. */
   async function start() {
     await rm(directory, { recursive: true, force: true }).catch(() => {});
     if (target.kind === 'mac') {

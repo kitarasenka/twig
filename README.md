@@ -6,7 +6,7 @@ history in the center, repository navigation on the left, commit details on the
 right, and a command console below — everything the app runs against Git is
 visible there, exactly as it was invoked.
 
-**Current version: 0.16.0.** Released 2026-10-06 — what appeared in each release
+**Current version: 0.16.1.** Released 2026-10-06 — what appeared in each release
 is listed in [CHANGELOG.md](CHANGELOG.md). This repository was split out of the private
 `nodes-managers` monorepo (`modules/git_desk`) with `git subtree split`; the
 M0…M6 history is preserved. `PROMPT.md` is the full specification and `CLAUDE.md`
@@ -82,8 +82,9 @@ start — see [Screenshots](#screenshots) below.
 - **Git profile, SSH keys, remotes, repository list and clone** in Settings —
   edit the five profile keys locally or globally, list and generate SSH keys,
   manage remotes, clone into a fresh folder with live output and cancellation.
-- **In-app updates** — Settings → Updates checks GitHub Releases when you press
-  **Check for updates** (or at launch and daily, if you turn that on). A newer
+- **In-app updates** — an installed 🌱 Twig checks GitHub Releases a few seconds
+  after launch and once a day (Settings → Updates → «Only when I ask» turns
+  that off and leaves the **Check for updates** button). A newer
   version shows as **Update to X.Y.Z** in the top bar: one press downloads the
   installer for your system, checks it against the SHA-256 GitHub published for
   the release, and **Restart to update** swaps it in and reopens 🌱 Twig. On

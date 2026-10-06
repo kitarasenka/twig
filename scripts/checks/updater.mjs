@@ -12,6 +12,7 @@ import { assetName, interpretRelease, pickAsset } from '../../main/update-check.
 import { resolveInstallTarget } from '../../main/update-target.js';
 import { RELAUNCH_SCRIPT, allowedDownloadUrl, createUpdater, downloadAsset } from '../../main/updater.js';
 import { runStep } from '../../main/automation/exec.js';
+import { UpdateStore, normalizeUpdateSettings } from '../../main/update-store.js';
 import { autoCheckExplanation, formatBytes, percent, toolbarUpdate, updateStatusLine } from '../../renderer/src/app/update-view.js';
 
 const exists = file => access(file).then(() => true, () => false);
@@ -259,7 +260,26 @@ async function flow({ kind, bytes, targetExtra = {}, version = '0.14.0', runTool
   assert.equal(state.installReason, 'From source.');
   assert.equal((await updater.download()).status, 'available', 'download is refused');
 }
-// The opt-in automatic check is saved and scheduled, and stops cleanly.
+// The automatic check: on by default in an installed copy, off from source;
+// a saved choice — either way — beats the default, and so does "Only when I ask".
+{
+  assert.deepEqual(normalizeUpdateSettings(null, true), { auto: true });
+  assert.deepEqual(normalizeUpdateSettings(null, false), { auto: false });
+  assert.deepEqual(normalizeUpdateSettings({ auto: false }, true), { auto: false });
+  assert.deepEqual(normalizeUpdateSettings({ auto: true }, false), { auto: true });
+  assert.deepEqual(normalizeUpdateSettings({ auto: 'yes' }, true), { auto: true }, 'a non-boolean falls back to the default');
+  assert.deepEqual(normalizeUpdateSettings('junk', false), { auto: false });
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'twig-update-store-'));
+  try {
+    assert.equal((await new UpdateStore(dir, { defaultAuto: true }).load()).auto, true, 'installed, no file: checks at launch');
+    assert.equal((await new UpdateStore(dir).load()).auto, false, 'from source, no file: Off');
+    await writeFile(path.join(dir, 'updates.json'), '{broken', 'utf8');
+    assert.equal((await new UpdateStore(dir, { defaultAuto: true }).load()).auto, true, 'a damaged file means the default');
+    await new UpdateStore(dir, { defaultAuto: true }).save({ auto: false });
+    assert.equal((await new UpdateStore(dir, { defaultAuto: true }).load()).auto, false, '"Only when I ask" survives a restart');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+}
+// The automatic check is saved and scheduled, and stops cleanly.
 {
   const { updater } = await flow({ kind: 'win', bytes: Buffer.from('MZ') });
   assert.equal((await updater.setAuto(true)).auto, true);

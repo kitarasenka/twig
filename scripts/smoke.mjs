@@ -139,8 +139,9 @@ try {
   const updateButton = page.getByRole('button', { name: 'Check for updates', exact: true });
   await updateButton.waitFor();
   assert.equal(await updateButton.isDisabled(), false, 'the update check is available from Settings');
-  // The automatic check is opt-in: Off on a fresh profile, and so no update
-  // button in the top bar and no request at all during this run.
+  // The automatic check is on by default only in an installed copy: from
+  // source a fresh profile is Off, so no update button in the top bar and no
+  // request at all during this run.
   assert.equal(await page.getByLabel('Check automatically').inputValue(), 'off');
   const updateState = await page.evaluate(() => window.twig.getUpdateState());
   assert.equal(updateState.status, 'idle');
