@@ -4,6 +4,8 @@
 // hdiutil, "downloaded", mounted, copied, verified and renamed into place.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile, access } from 'node:fs/promises';
 import os from 'node:os';
@@ -359,6 +361,44 @@ if (process.platform === 'darwin') {
   console.log('updater check: skipping the macOS bundle swap (hdiutil and codesign exist only on macOS)');
 }
 
+// ── Deleting a bundle from inside Electron ─────────────────────────────────
+// Electron's node:fs reads app.asar as a folder: a recursive rm of a bundle
+// stopped there with ENOTEMPTY and left .twig-update.app / .twig-previous.app
+// holding only Contents/Resources/app.asar, so every later update failed.
+// Plain Node has no asar layer, so this part runs in Electron's own Node.
+{
+  const electron = createRequire(import.meta.url)('electron');
+  const dist = path.dirname(electron);
+  const archive = [
+    path.join(dist, '../Resources/default_app.asar'),
+    path.join(dist, 'resources/default_app.asar')
+  ].find(file => existsSync(file));
+  assert.ok(archive, 'Electron ships default_app.asar to build a bundle from');
+  const bundle = name => path.join(tmp, 'asar', name, 'Contents/Resources/app.asar');
+  for (const name of ['plain.app', 'trap.app']) {
+    await mkdir(path.dirname(bundle(name)), { recursive: true });
+    await copyFile(archive, bundle(name));
+  }
+  const script = path.join(tmp, 'asar-rm.mjs');
+  await writeFile(script, [
+    `import { rm } from 'node:fs/promises';`,
+    `import { plainFs } from ${JSON.stringify(new URL('../../main/plain-fs.js', import.meta.url).href)};`,
+    `const trap = await rm(process.argv[3], { recursive: true, force: true }).then(() => 'ok', error => error.code);`,
+    `const plain = await plainFs.rm(process.argv[2], { recursive: true, force: true }).then(() => 'ok', error => error.code);`,
+    `console.log(JSON.stringify({ trap, plain }));`
+  ].join('\n'));
+  const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
+  const out = execFileSync(electron, ['--no-deprecation', script, path.join(tmp, 'asar/plain.app'), path.join(tmp, 'asar/trap.app')], { env, encoding: 'utf8' });
+  const result = JSON.parse(out.trim().split('\n').pop());
+  assert.equal(result.trap, 'ENOTEMPTY', 'the check reproduces the trap: Electron’s fs cannot remove a bundle');
+  assert.equal(result.plain, 'ok');
+  assert.equal(await exists(path.join(tmp, 'asar/plain.app')), false, 'plain-fs removes the whole bundle, app.asar included');
+  assert.equal(await exists(bundle('trap.app')), true);
+  const source = await readFile(new URL('../../main/updater.js', import.meta.url), 'utf8');
+  assert.match(source, /= plainFs;/, 'the updater deletes bundles through plain-fs');
+  assert.doesNotMatch(source, /from 'node:fs(\/promises)?'/, 'and never through Electron’s fs');
+}
+
 // ── Words ──────────────────────────────────────────────────────────────────
 assert.equal(formatBytes(512), '1 KB');
 assert.equal(formatBytes(5 * 1024 * 1024), '5.0 MB');
@@ -382,5 +422,5 @@ assert.match(autoCheckExplanation(false), /only when you press/);
 assert.match(autoCheckExplanation(true), /nothing is downloaded until you press/);
 
 await rm(tmp, { recursive: true, force: true });
-console.log('Updater check passed: asset picking, install targets, download hosts/size/checksum/cancel, restart helper, AppImage/Windows/deb flows' +
+console.log('Updater check passed: asset picking, install targets, download hosts/size/checksum/cancel, restart helper, AppImage/Windows/deb flows, bundle removal inside Electron' +
   (process.platform === 'darwin' ? ', real DMG mount and bundle swap' : '') + ', toolbar words.');

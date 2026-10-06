@@ -26,11 +26,15 @@
 // Node check drives the whole flow with a fake network and fake bundles.
 
 import { createHash } from 'node:crypto';
-import { chmod, copyFile, lstat, mkdir, mkdtemp, open, readdir, rename, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { plainFs } from './plain-fs.js';
 import { checkForUpdate } from './update-check.js';
 import { BUNDLE_ID } from './update-target.js';
+
+// Bundles are moved and deleted here: through Electron's fs a recursive rm
+// stops at app.asar (see plain-fs.js).
+const { chmod, copyFile, lstat, mkdir, mkdtemp, open, readdir, rename, rm } = plainFs;
 
 const MAX_REDIRECTS = 5;
 const IDLE_TIMEOUT_MS = 60_000;

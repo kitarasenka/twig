@@ -17,6 +17,25 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Обновление на macOS больше не застревает на `ENOTEMPTY` (2026-10-06, вне вех):
+«The update could not be prepared: ENOTEMPTY … rmdir '/Applications/
+.twig-update.app/Contents/Resources'». В main-процессе Electron `node:fs`
+читает `.asar` как папку, поэтому рекурсивный `rm` бандла заходил в
+`app.asar`, не удалял сам архив и падал. Так и оставались
+`.twig-update.app` (подготовленная, но не установленная 0.16.0) и
+`.twig-previous.app` (уборка на старте глотала ошибку), в каждом только
+`Contents/Resources/app.asar`, и любое следующее обновление падало на
+`rm(staged)` в prepare или на `rm(previous)` в install. Теперь `updater.js`
+работает с файлами через `main/plain-fs.js` — `original-fs` внутри
+Electron, обычный `node:fs` в Node. Проверка в `scripts/checks/updater.mjs`
+запускает исполняемый файл Electron с `ELECTRON_RUN_AS_NODE=1` на бандле с
+настоящим `default_app.asar`: обычный `rm` даёт `ENOTEMPTY` (ловушка
+воспроизводится), `plainFs.rm` удаляет всё; `updater.js` не импортирует
+`node:fs`. **Работает с версии, в которую войдёт**: установленные копии до
+неё оставляют `.twig-previous.app` после каждого обновления, и следующее
+обновление из приложения упадёт, пока этот огрызок не удалить руками. Версия
+не менялась.
+
 Закрытые вкладки переживают перезапуск (2026-10-06, вне вех): `closedTabs`
 в `App.jsx` жил только в памяти — после перезапуска открывались все
 подключённые репозитории. Теперь набор лежит в `localStorage`
