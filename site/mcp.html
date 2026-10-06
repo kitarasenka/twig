@@ -42,8 +42,8 @@
     <section class="why wrap section-space" id="why" aria-labelledby="why-title">
       <div class="section-heading"><div><p class="eyebrow">ПОЧЕМУ ЭТО КРУТО</p><h2 id="why-title">Не обёртка над git,<br><span>а смысловой API к репозиторию.</span></h2></div><p>Агент может запустить <code>git diff</code> и сам. Но тогда он читает всё подряд, гадает, что важно, и не знает, на что вы смотрите.</p></div>
       <div class="why-grid">
-        <article class="why-card" data-reveal><span class="feature-number">01 / СТРУКТУРА ВМЕСТО ТЕКСТА</span><h3>Ответ, который не надо разбирать</h3><p>Статусы словами, счётчики строк по файлу, ханки с диапазонами и id, ветка с upstream и расхождением, идущий merge или rebase. Агент сразу работает с данными, а не парсит человеческий вывод.</p></article>
-        <article class="why-card" data-reveal><span class="feature-number">02 / ОТ СВОДКИ К СТРОКЕ</span><h3>Ровно столько, сколько спросили</h3><p>Сначала сводка в несколько сотен байт, потом список файлов, потом дифф одного файла, потом один ханк. Огромный дифф приходит оглавлением: ханки с id, текст — по запросу. Контекст агента не тонет в чужих файлах.</p></article>
+        <article class="why-card" data-reveal><span class="feature-number">01 / ФОРМА GIT, БЕЗ ШУМА</span><h3>Ответ в форме, которую модель уже знает</h3><p>Файл — одна строка, как в <code>git status --short</code>, с числом строк; дифф — обычные ханки без заголовков <code>diff --git</code> и <code>index</code>. Ничего не экранируется в JSON, поэтому ответ не больше вывода <code>git</code>, а обычно меньше. Ветка, upstream и идущий merge или rebase — в короткой сводке.</p></article>
+        <article class="why-card" data-reveal><span class="feature-number">02 / ОТ СВОДКИ К СТРОКЕ</span><h3>Ровно столько, сколько спросили</h3><p>Все изменения одним вызовом — или по шагам: сводка, список файлов, один файл, один ханк. Lock-файлы и огромные файлы приходят одной строкой с причиной, а ханки сверх бюджета — с id, текст по запросу. Контекст агента не тонет в чужих файлах.</p></article>
         <article class="why-card why-accent" data-reveal><span class="feature-number">03 / ЧТО ВЫДЕЛЕНО У ВАС</span><h3>«Объясни этот коммит» — без хэша</h3><p>Агент видит, какой коммит, диапазон сравнения или файл открыт в 🌱 Twig. Выделили строку в графе — спросили агента. Копировать хэш и путь больше не нужно.</p></article>
         <article class="why-card" data-reveal><span class="feature-number">04 / ТОЛЬКО ЧТЕНИЕ</span><h3>Агент предлагает, решаете вы</h3><p>Нет инструментов commit, stage, checkout, reset, push и нет запуска команд. План коммитов агент предлагает, а выполняете его вы — в 🌱 Twig, где staging построчный и почти каждое действие можно отменить.</p></article>
         <article class="why-card" data-reveal><span class="feature-number">05 / ВСЁ НА ВИДУ</span><h3>Каждая команда агента — в журнале</h3><p>Любая команда Git, которую вызвал агент, попадает в консоль 🌱 Twig с плашкой <b class="inline-tag">MCP</b>: argv, каталог, вывод, код. Ваши действия во вкладке «My» не смешиваются с чтениями агента.</p></article>
@@ -53,9 +53,9 @@
 
     <div class="light-section" data-theme="light">
       <section class="ladder-section wrap section-space" id="ladder" aria-labelledby="ladder-title">
-        <div class="section-heading"><div><p class="eyebrow">СВОДКА → ФАЙЛ → ХАНК</p><h2 id="ladder-title">Четыре шага<br><span>вместо одного огромного вывода.</span></h2></div><p>Настоящие ответы 🌱 Twig на демо-песочнице, сокращённые для читаемости. Справа от названия — размер полного ответа.</p></div>
+        <div class="section-heading"><div><p class="eyebrow">СВОДКА → ВСЁ СРАЗУ → ФАЙЛ</p><h2 id="ladder-title">Все изменения одним вызовом<br><span>или ровно один файл.</span></h2></div><p>Настоящие ответы 🌱 Twig на демо-песочнице, сокращённые для читаемости. Справа от названия — размер полного ответа. Для сравнения: <code>git status --short</code> + <code>git diff --numstat</code> + <code>git diff</code> там же — 354 Б, и нового файла в них нет.</p></div>
         <ol class="ladder" role="list">
-          <li data-reveal><span class="ladder-step" aria-hidden="true">1</span><div class="ladder-head"><code>get_workspace_context</code><small>434 Б</small></div><p>Ветка, upstream, расхождение, идущая операция и счётчики файлов. Без диффов.</p><pre><code>{"branch": {
+          <li data-reveal><span class="ladder-step" aria-hidden="true">1</span><div class="ladder-head"><code>get_workspace_context</code><small>≈430 Б</small></div><p>Ветка, upstream, расхождение, идущая операция и счётчики файлов. Без диффов.</p><pre><code>{"branch": {
   "name": "main",
   "upstream": "origin/main",
   "ahead": 1, "behind": 0 },
@@ -64,43 +64,41 @@
   "clean": false,
   "staged": 0, "unstaged": 1,
   "untracked": 1 }}</code></pre></li>
-          <li data-reveal><span class="ladder-step" aria-hidden="true">2</span><div class="ladder-head"><code>list_changes</code><small>311 Б</small></div><p>Каждый файл со статусом, стороной индекса и числом строк. Постранично.</p><pre><code>{"total": 2, "files": [
- {"path": "README.md",
-  "status": "modified",
-  "staged": false,
-  "insertions": 1,
-  "deletions": 0},
- {"path": "notes.todo",
-  "status": "untracked"}]}</code></pre></li>
-          <li data-reveal><span class="ladder-step" aria-hidden="true">3</span><div class="ladder-head"><code>get_diff</code><small>614 Б</small></div><p>Дифф одного файла, разбитый на ханки с id и диапазонами строк.</p><pre><code>{"path": "README.md",
- "side": "unstaged",
- "hunks": [{
-  "id": "w3-77f252e1d76e",
-  "oldStart": 6,
-  "newStart": 6,
-  "added": 1,
-  "patch": "@@ -6,3 +6,4 @@…"}],
- "truncated": false}</code></pre></li>
-          <li data-reveal><span class="ladder-step" aria-hidden="true">4</span><div class="ladder-head"><code>get_diff_hunk</code><small>1 ханк</small></div><p>Один ханк. Если файл с тех пор изменился, ответ — <code>INVALID_HUNK</code>, а не соседний ханк.</p><pre><code>{"hunk": {
-  "id": "w3-77f252e1d76e",
-  "patch": "…
+          <li data-reveal><span class="ladder-step" aria-hidden="true">2</span><div class="ladder-head"><code>list_changes</code><small>85 Б</small></div><p>Каждый файл одной строкой, как в <code>git status --short</code>, с числом строк. Постранично.</p><pre><code>on main: 1 unstaged, 1 untracked
+unstaged:
+M +1 -0 README.md
+untracked:
+? notes.todo</code></pre></li>
+          <li data-reveal><span class="ladder-step" aria-hidden="true">3</span><div class="ladder-head"><code>list_changes diffs: true</code><small>386 Б</small></div><p>То же самое, но под каждым файлом — его ханки. Новый файл — как добавление. Всё одним вызовом.</p><pre><code>unstaged:
+## M +1 -0 README.md
+@@ -6,3 +6,4 @@ …
  Keep the details close…
-+One unstaged edit.\n",
-  "truncated": false}}</code></pre></li>
++One unstaged edit.
+untracked:
+## ? +2 -0 notes.todo
+@@ -0,0 +1,2 @@
++- try the reverse blame view
++- run the demo automation</code></pre></li>
+          <li data-reveal><span class="ladder-step" aria-hidden="true">4</span><div class="ladder-head"><code>get_diff</code><small>245 Б</small></div><p>Один файл — для того, что не вошло в общий ответ. Ханк сверх бюджета читается по id через <code>get_diff_hunk</code>.</p><pre><code>M +1 -0 README.md (unstaged)
+@@ -6,3 +6,4 @@ …
+ Reset it any time from…
+
+ Keep the details close…
++One unstaged edit.</code></pre></li>
         </ol>
-        <div class="local-note ladder-note" data-reveal><img src="assets/twig-small.png" width="48" height="48" alt="" loading="lazy"><div><h3>Большой дифф не съедает контекст</h3><p>Файл на 300 ханков приходит оглавлением: пока хватает бюджета — с текстом, дальше — с id и <code>patch: null</code>. Агент открывает только нужные ханки. JSON никогда не обрезается на середине, а у обрезанного ответа всегда есть <code>truncated</code> и подсказка, что запросить дальше.</p></div></div>
+        <div class="local-note ladder-note" data-reveal><img src="assets/twig-small.png" width="48" height="48" alt="" loading="lazy"><div><h3>Большой дифф не съедает контекст</h3><p>Lock-файлы, минифицированные сборки и файлы больше 400 изменённых строк приходят одной строкой со счётчиками и причиной — 12 МБ сгенерированного JSON стоят одну строку. Мелкие файлы ложатся в бюджет ответа первыми. Ханки сверх бюджета — заголовком с id и пометкой <code>not shown</code>; ответ никогда не обрывается посреди ханка.</p></div></div>
       </section>
     </div>
 
     <section class="tools-section wrap section-space" id="tools" aria-labelledby="tools-title">
-      <div class="section-heading"><div><p class="eyebrow">9 ИНСТРУМЕНТОВ · ВСЕ ТОЛЬКО ЧИТАЮТ</p><h2 id="tools-title">Небольшие инструменты<br><span>вместо get_everything.</span></h2></div><p>Каждый принимает необязательный <code>repository</code> — имя, корень или любой путь внутри. Агент может передать свою рабочую папку.</p></div>
+      <div class="section-heading"><div><p class="eyebrow">9 ИНСТРУМЕНТОВ · ВСЕ ТОЛЬКО ЧИТАЮТ</p><h2 id="tools-title">Небольшие инструменты<br><span>вместо get_everything.</span></h2></div><p>Каждый принимает необязательный <code>repository</code> — имя, корень или любой путь внутри. Без него читается репозиторий рабочей папки агента, если он подключён, иначе открытый в 🌱 Twig — и тогда ответ первым делом называет его.</p></div>
       <div class="tool-grid">
         <article data-reveal><code>get_workspace_context</code><p>Сводка: ветка, upstream, операция, счётчики файлов, выделенное в окне.</p></article>
         <article data-reveal><code>list_repositories</code><p>Подключённые репозитории и тот, что открыт в 🌱 Twig.</p></article>
-        <article data-reveal><code>list_changes</code><p>Изменённые файлы без диффов: статус, staged, строки +/−. Постранично.</p></article>
-        <article data-reveal><code>get_diff</code><p>Дифф одного файла по ханкам; staged или нет; новый файл — как добавление.</p></article>
+        <article data-reveal><code>list_changes</code><p>Изменённые файлы строками, как в <code>git status</code>, с +/− строк. С <code>diffs: true</code> — сразу с патчами. Постранично.</p></article>
+        <article data-reveal><code>get_diff</code><p>Дифф одного файла; staged или нет; новый файл — как добавление; ханки сверх бюджета — с id.</p></article>
         <article data-reveal><code>get_diff_hunk</code><p>Один ханк по id, с проверкой, что файл не изменился.</p></article>
-        <article data-reveal><code>get_history</code><p>Компактный список коммитов HEAD, ветки, тега или всех веток сразу.</p></article>
+        <article data-reveal><code>get_history</code><p>Коммит на строку — хэш, дата, автор, тема — для HEAD, ветки, тега или всех веток.</p></article>
         <article data-reveal><code>get_commit</code><p>Сообщение, автор, родители и файлы со счётчиками строк. Без патча.</p></article>
         <article data-reveal><code>get_commit_diff</code><p>Патч коммита: целиком для маленького, по файлу или по ханку для большого.</p></article>
         <article data-reveal><code>get_ui_context</code><p>Что открыто в окне: вид, коммит, диапазон, файл. Чего 🌱 Twig не хранит — <code>null</code>.</p></article>

@@ -39,7 +39,7 @@ export async function getWorkspaceContext(ctx, args) {
   const { branch } = worktree;
   const ui = ctx.uiFor(repo.id);
   return {
-    repository: { name: repo.name, path: repo.path, openInTwig: repo.active },
+    repository: { name: repo.name, path: repo.path, openInTwig: repo.active, ...(repo.note ? { note: repo.note } : {}) },
     branch: {
       name: branch.name, detached: branch.detached, unborn: branch.unborn,
       head: branch.oid ? branch.oid.slice(0, 12) : null,

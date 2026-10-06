@@ -4,10 +4,18 @@
 agents such as Claude Code, Codex and Cursor can use it to read structured context from
 the Git repositories you connected in 🌱 Twig, and to see what is selected in its window.
 
-It is **not** a wrapper around the `git` CLI. The tools return small JSON answers built
-from 🌱 Twig's own Git layer, the same readers the graph, staging screen and commit panel use.
-They are designed for *progressive disclosure*: start with a cheap summary, then ask for one
-file, then one hunk.
+It is **not** a wrapper around the `git` CLI. The tools answer from 🌱 Twig's own Git layer,
+the same readers the graph, staging screen and commit panel use. They are designed to cost an
+agent as few tokens as possible:
+
+- **One call for all changes.** `list_changes` with `diffs: true` returns every changed file
+  with its patch. Lock files, minified output and very large files are listed with their
+  line counts and a reason instead of being inlined, so a 12 MB generated file costs one line.
+- **Plain text, in git's own shapes.** File lists look like `M +2 -1 src/app.js`; diffs are
+  ordinary unified hunks. Nothing is escaped into JSON strings, so an answer is no larger
+  than the same information from `git diff --numstat` plus `git diff`, and usually smaller,
+  because the per-file `diff --git` / `index` / `---` / `+++` headers are left out.
+- **Progressive disclosure when you want it.** A summary first, then one file, then one hunk.
 
 The first version is **read-only**. No tool commits, stages, checks out, resets, merges,
 rebases, pushes, deletes a branch, or runs a command.
@@ -71,27 +79,81 @@ is installed.
 ## Tools
 
 Every repository-scoped tool takes an optional `repository`: a connected repository's name,
-its root path, or **any path inside it**, so an agent can pass its working directory. Without
-it, the tool reads the repository open in 🌱 Twig. Answers include `repository` (the root
-path), so an agent can check it got the repository it meant.
+its root path, or **any path inside it**. Usually it can be left out:
+
+1. The bridge reports the folder the MCP client started it in (the agent's project), and
+   tools read that repository if it is connected. Symlinked paths such as `/var` and
+   `/private/var` on macOS are matched both ways.
+2. Otherwise tools read the repository open in 🌱 Twig, and the answer **starts with**
+   `repository: <path>` and, if the agent's folder is known, a `note:` saying that folder is
+   not connected. A guess is always visible; a repository the agent named, or its own,
+   is not echoed back.
+
+### Answer formats
+
+Lists and diffs are plain text; small state answers are JSON.
+
+```
+on main: 1 staged, 2 unstaged, 1 untracked
+staged:
+## M +2 -0 README.md
+@@ -1 +1,3 @@
+ # Alpha
++
++Staged line.
+unstaged:
+## M +1 -1 package-lock.json
+(lock or generated file: get_diff reads it)
+## M +2 -0 src/app.js
+@@ -1 +1,3 @@
+ export const one = 1;
++export const two = 2;
++export const three = 3;
+untracked:
+## ? +2 -0 notes/todo.txt
+@@ -0,0 +1,2 @@
++one
++two
+```
+
+That is `list_changes` with `diffs: true`. Without `diffs`, each file is just its line
+(`M +2 -0 src/app.js`) under the same section headers. A file line is the status letter as
+`git status --short` prints it, then `+inserted -deleted` (`bin` for binary, nothing when not
+yet counted), then the path. A rename is `old -> new`. A path is quoted like a JSON string
+only when it has control characters, quotes, leading/trailing spaces or ` -> `.
 
 | Tool | Arguments | Returns |
 |---|---|---|
 | `get_workspace_context` | `repository?` | Name and path, branch (head, upstream, ahead/behind), operation in progress (merge, rebase, cherry-pick, revert, am) with conflict count, counts of staged/unstaged/untracked/conflicted/modified/added/deleted/renamed files, and the selection in 🌱 Twig. No diffs, usually under 800 bytes. |
 | `list_repositories` | — | Connected repositories, and which one is open in 🌱 Twig. |
-| `list_changes` | `repository?`, `limit` (1–1000, 200), `cursor?` | One entry per changed file and side: `path`, `status`, `staged`, `insertions`, `deletions` (and `originalPath` for renames, `binary`). A file changed in both the index and on disk appears twice. Untracked files are listed one by one. Paginated. |
-| `get_diff` | `path`, `staged` (false), `contextLines` (0–20, 3), `repository?` | One file's diff, split into hunks with `id`, ranges, `heading`, `added`/`removed` and `patch`. An untracked file is shown as the patch that would add it. Conflicted files and submodules are described, not diffed. |
-| `get_diff_hunk` | `path`, `hunkId`, `repository?` | Exactly one hunk from `get_diff`. |
-| `get_history` | `limit` (1–100, 20), `branch?` (null = HEAD), `all` (false), `cursor?`, `repository?` | `hash`, `message` (subject), `author`, `date`, `parents`. No diffs. `all: true` reads every ref, like 🌱 Twig's graph. |
-| `get_commit` | `hash`, `repository?` | Metadata, full message, parents, changed files with insertions/deletions, totals. No patch. `hash` may be short, or a revision such as `HEAD~2`. |
-| `get_commit_diff` | `hash`, `path?`, `hunkId?`, `repository?` | Patch against the first parent. With `path`: one file (hunks with ids); with `path` + `hunkId`: one hunk. Without `path`: the whole commit if it is small (≤ 60 files and ≤ 4000 changed lines), otherwise the file list with `truncated: true`. |
+| `list_changes` | `repository?`, `diffs` (false), `contextLines` (0–20, 3), `limit` (1–1000, 200), `cursor?` | Text. The branch and counts, then the files grouped `staged:` / `unstaged:` / `untracked:`, one line each. A file changed in both the index and on disk appears on both sides. With `diffs: true`, each file's patch follows its line — see [What `diffs: true` leaves out](#what-diffs-true-leaves-out). Paginated: a last line names the next `cursor`. |
+| `get_diff` | `path`, `staged` (false), `contextLines` (0–20, 3), `repository?` | Text. The file's line with its side (`M +2 -0 src/app.js (unstaged)`), then its hunks. An untracked file is shown as the patch that would add it. Conflicted files and submodules are described, not diffed. Hunks past the budget are printed as their header with an id, marked `not shown`. |
+| `get_diff_hunk` | `path`, `hunkId`, `repository?` | Text. Exactly one hunk that `get_diff` marked `not shown`. |
+| `get_history` | `limit` (1–100, 20), `branch?` (null = HEAD), `all` (false), `cursor?`, `repository?` | Text, one commit per line: `38e4efb73234 2026-10-06 Ada Lovelace: subject`, merges with `(merge of a, b)`. No diffs. `all: true` reads every ref, like 🌱 Twig's graph. |
+| `get_commit` | `hash`, `repository?` | Text: full hash and subject, author, committer date if different, parents, the message body, then the changed files as file lines with totals. No patch. `hash` may be short, or a revision such as `HEAD~2`. |
+| `get_commit_diff` | `hash`, `path?`, `hunkId?`, `repository?` | Text, against the first parent. With `path`: one file; with `path` + `hunkId`: one hunk marked `not shown`. Without `path`: the whole commit if it is small (≤ 60 files and ≤ 4000 changed lines), otherwise its file list. |
 | `get_ui_context` | — | What the person is looking at in 🌱 Twig: `repository`, `view` (history, changes, staging, compare, file-history, blame, conflict, branches, stashes, reflog, worktrees, submodules, maintenance, automations), `selectedCommit`, `selectedCommits`, `compare`, `selectedFile` (`path`, `commit`, `side`). `selectedBranch` and `selectedHunk` are always null, because 🌱 Twig doesn't track either. |
 
-There is deliberately no `get_everything`.
+### What `diffs: true` leaves out
+
+Each file is either shown whole or listed with its reason in parentheses:
+
+- **Lock and generated files**: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`,
+  `Cargo.lock`, `go.sum` and other lock files, `*.min.js`, `*.min.css`, source maps. Mark
+  more with `-diff` in `.gitattributes`: Git then counts them as binary (`bin`).
+- **Large files**: more than 400 changed lines.
+- **Budget**: about 60 KB of patch text per answer. Smaller files are fitted first, so the
+  budget runs out on the big ones.
+- Binary files, conflicts, submodules, type changes, renames with edits, and more than 40
+  untracked files in one answer.
+
+Anything left out is one `get_diff` away. Tracked files are read with one `git diff` per side
+of the index, not one per file. Paths Git quotes in a patch header are read one by one.
 
 ### Hunk ids
 
-A hunk id looks like `w3-1a2b3c4d5e6f`:
+Only a hunk that is **not shown** carries an id: a hunk that is printed in full has nothing
+more to ask for. A hunk id looks like `w3-1a2b3c4d`:
 
 - The first letter is the side the hunk was read from: `w` working tree, `s` staged,
   `u` untracked, `c` a commit.
@@ -104,11 +166,11 @@ only if it is still exactly there. If the file changed in between, the answer is
 
 ### Size limits
 
-- A diff answer carries up to about 60 KB of patch text. Past that, the remaining hunks come
-  back with their metadata and `patch: null`, plus `truncated: true` and a `hint`. The JSON is
-  never cut mid-way.
-- A single hunk requested by id is cut at a line boundary past about 80 KB, with
-  `truncated: true` and `omittedLines`.
+- A diff answer carries up to about 60 KB of patch text. Past that, the remaining hunks are
+  printed as `@@ … @@ [w3-1a2b3c4d: +5 -2, not shown]`, followed by a line saying how to get
+  them. An answer is never cut in the middle of a hunk.
+- A single hunk requested by id is cut at a line boundary past about 80 KB, with a last line
+  that says how many lines were left out.
 - `get_commit` lists up to 300 files.
 - Untracked files over 1 MB are described, not diffed.
 - Any tool result over 120 000 characters is replaced by `OUTPUT_TOO_LARGE` with a hint.
@@ -142,11 +204,11 @@ Unknown tools and methods are JSON-RPC errors (`-32602`, `-32601`).
 
 A well-behaved agent:
 
-1. Calls `get_workspace_context` to see the branch, that nothing is mid-merge, and how many
-   files are staged and unstaged.
-2. Calls `list_changes` to get paths, statuses and line counts.
-3. Calls `get_diff` only for the files it needs to read, and `get_diff_hunk` for hunks
-   that were left out of a large diff.
+1. Calls `list_changes` with `diffs: true` (and `contextLines: 1` if it only needs the gist):
+   the branch, every file and every small patch in one answer.
+2. Calls `get_diff` only for the files that answer listed without a patch, and
+   `get_diff_hunk` for hunks marked `not shown`.
+3. Calls `get_workspace_context` if it needs to know about a merge or rebase in progress.
 4. Proposes a commit plan: which files and hunks go together, and a message for each.
 
 The agent only *proposes* the plan. The MCP server can't stage or commit anything; you carry
@@ -196,14 +258,18 @@ AI client ──stdio──▶ twig-mcp.mjs (bridge) ──local socket──▶
 - `main/mcp/twig-mcp.mjs`: the stdio bridge. 🌱 Twig copies it and `protocol.mjs` into
   `userData/mcp/` when the server is on, together with `endpoint.json` (socket path and
   version). The bridge retries the socket on every message and replays the client's
-  `initialize` when it attaches mid-session.
+  `initialize` when it attaches mid-session. The one thing it adds is its own working
+  directory, in `initialize`'s `_meta` (`app.nodex.twig/cwd`), so tools default to the
+  agent's repository. A bridge copied by an older version does not add it; 🌱 Twig rewrites
+  the copy every time the server starts.
 - `main/mcp/tools/`: `workspace.js`, `changes.js`, `history.js` and `ui.js`. The tools contain
-  no Git parsing; they call `loadWorktree`, `loadWorktreeDiff`, `loadUntrackedDiff`,
+  no Git parsing; they call `loadWorktree`, `loadWorktreeDiff`, `loadWorktreeDiffs`, `loadUntrackedDiff`,
   `loadWorktreeNumstat`, `loadCommit`, `loadCommitNumstat`, `loadFileDiff`,
   `loadCommitPatch`, `loadHistoryPage`, `loadRefHistory`, `resolveRevision` and
   `loadOperationState`.
 - `main/mcp/context.js`: resolves the repository, tags journal entries `MCP:` and sets the
-  read environment. `main/mcp/serialize.js` holds hunk ids, budgets and status words.
+  read environment, and matches the client's working directory to a connected repository.
+  `main/mcp/serialize.js` holds hunk ids, budgets and the text shapes (file lines, hunks).
   `main/mcp/ui-context.js` validates the window's reports.
 - `main/mcp/service.js` (lifecycle, no Electron imports), `main/mcp-ipc.js` (Settings
   channels and the UI report) and `main/mcp-store.js` (`mcp.json`, the on/off choice).

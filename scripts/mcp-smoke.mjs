@@ -44,8 +44,10 @@ function startBridge(launch) {
     request,
     async tool(name, args = {}) {
       const message = await request('tools/call', { name, arguments: args });
-      const payload = JSON.parse(message.result.content[0].text);
-      return message.result.isError ? { error: payload.error } : payload;
+      const raw = message.result.content[0].text;
+      if (message.result.isError) return { error: JSON.parse(raw).error };
+      // Lists and diffs are plain text; the small state answers are JSON.
+      try { return JSON.parse(raw); } catch { return raw; }
     },
     close: () => { child.stdin.end(); return new Promise(resolve => child.once('exit', resolve)); }
   };
@@ -127,27 +129,31 @@ try {
   assert.equal(context.branch.behind, 0);
   assert.equal(context.workingTree.unstaged, 1);
   assert.equal(context.workingTree.untracked, 1);
-  const changes = await bridge.tool('list_changes');
-  assert.deepEqual(changes.files.map(file => `${file.status} ${file.path}`).sort(), ['modified README.md', 'untracked notes.todo']);
-  const diff = await bridge.tool('get_diff', { path: 'README.md' });
-  assert.ok(diff.hunks.length > 0 && diff.hunks[0].patch.startsWith('@@'));
-  const history = await bridge.tool('get_history', { limit: 3 });
-  assert.equal(history.commits[0].message, 'Refine the workspace layout');
+  // This bridge runs in the source folder, which is not connected: the answer names the repository it read instead.
+  const changes = await bridge.tool('list_changes', { diffs: true });
+  assert.ok(changes.startsWith(`repository: ${demo.path}\nnote: Your working directory `), changes.slice(0, 300));
+  assert.deepEqual(changes.split('\n').filter(line => line.startsWith('## ')).map(line => line.split(' ')[1] + ' ' + line.split(' ').at(-1)).sort(), ['? notes.todo', 'M README.md']);
+  assert.ok(changes.includes('\n@@ '), 'the patches are in the same answer');
+  const diff = await bridge.tool('get_diff', { repository: demo.path, path: 'README.md' });
+  assert.match(diff, /^M \+\d+ -\d+ README\.md \(unstaged\)\n@@ /);
+  const history = await bridge.tool('get_history', { repository: demo.path, limit: 3 });
+  const top = history.split('\n')[1];
+  assert.match(top, /^[0-9a-f]{12} \d{4}-\d\d-\d\d .+: Refine the workspace layout$/);
 
   // What is selected follows the window.
-  const head = history.commits[0].hash;
+  const head = (await bridge.tool('get_workspace_context')).branch.head;
   const list = page.getByRole('listbox', { name: 'Commit history', exact: true });
   await list.getByRole('option', { name: /Add keyboard navigation to commit details/ }).click();
-  const keyboard = history.commits.find(commit => commit.message === 'Add keyboard navigation to commit details').hash;
+  const keyboard = history.split('\n').find(line => line.endsWith(': Add keyboard navigation to commit details')).slice(0, 12);
   await page.waitForFunction(() => true);
   let ui = await bridge.tool('get_ui_context');
-  for (let i = 0; i < 20 && ui.selectedCommit !== keyboard; i++) { await page.waitForTimeout(100); ui = await bridge.tool('get_ui_context'); }
-  assert.equal(ui.selectedCommit, keyboard, 'the clicked commit is what the agent sees');
+  for (let i = 0; i < 20 && !ui.selectedCommit?.startsWith(keyboard); i++) { await page.waitForTimeout(100); ui = await bridge.tool('get_ui_context'); }
+  assert.ok(ui.selectedCommit?.startsWith(keyboard), 'the clicked commit is what the agent sees');
   assert.equal(ui.view, 'history');
   assert.equal(ui.repository.path, demo.path);
   assert.equal(ui.selectedBranch, null);
   assert.equal(ui.selectedHunk, null);
-  assert.notEqual(keyboard, head);
+  assert.notEqual(keyboard, head.slice(0, 12));
 
   await page.getByRole('button', { name: /Uncommitted changes, 2 files/ }).click();
   const panel = page.getByRole('complementary', { name: 'Uncommitted changes', exact: true });

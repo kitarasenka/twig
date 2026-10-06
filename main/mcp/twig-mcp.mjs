@@ -11,12 +11,15 @@
 // tools/list from the catalog, and every tool call with TWIG_UNAVAILABLE — so
 // the client keeps its tools and the agent learns why they are empty. It
 // retries the socket on every message, so starting 🌱 Twig later just works.
+//
+// The one thing it adds is its own working directory, in initialize's
+// `_meta`: clients start it in the project the agent works on.
 
 import net from 'node:net';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { INSTRUCTIONS, SERVER_NAME, SERVER_TITLE, TOOLS, UNAVAILABLE_MESSAGE, errorResult, negotiateVersion } from './protocol.mjs';
+import { CWD_META, INSTRUCTIONS, SERVER_NAME, SERVER_TITLE, TOOLS, UNAVAILABLE_MESSAGE, errorResult, negotiateVersion } from './protocol.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const REPLAY_ID = '__twig_bridge_initialize__';
@@ -110,7 +113,14 @@ async function forward(line) {
     return;
   }
   const isInitialize = message.method === 'initialize';
-  if (isInitialize) initialize = message.params ?? {};
+  if (isInitialize) {
+    // The client started this process in the project it works on: 🌱 Twig
+    // reads that repository when a tool call names none.
+    const params = message.params && typeof message.params === 'object' ? message.params : {};
+    initialize = { ...params, _meta: { ...(params._meta && typeof params._meta === 'object' ? params._meta : {}), [CWD_META]: process.cwd() } };
+    message.params = initialize;
+    line = JSON.stringify(message);
+  }
   const wasConnected = Boolean(socket);
   const connection = await connect();
   if (!connection) { answerLocally(message); return; }

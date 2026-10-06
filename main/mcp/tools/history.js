@@ -4,7 +4,11 @@ import { loadCommitNumstat } from '../../git/numstat.js';
 import { parseFilePatchV1, splitPatchFiles } from '../../git/diff-parser.js';
 import { McpError, checked } from '../errors.js';
 import { readCursor } from '../arguments.js';
-import { DIFF_BUDGET, TRUNCATED_DIFF_HINT, capHunk, compactCommit, describeHunks, fitHunks, parseHunkId, statusWord } from '../serialize.js';
+import {
+  DIFF_BUDGET, TRUNCATED_DIFF_HINT, commitLine, describeHunks, fileLine, fitHunks, hunkTotals, parseHunkId, renderHunks,
+  repositoryPreamble, shortHash
+} from '../serialize.js';
+import { renderHunk } from './changes.js';
 
 /** Files a get_commit answer lists before it says the rest were left out. */
 export const COMMIT_FILE_LIMIT = 300;
@@ -16,7 +20,7 @@ const COMMIT_CONTEXT = 3;
 async function resolveCommit(ctx, repo, hash) {
   checked(validateRevision, hash, 'hash');
   const oid = await resolveRevision({ cwd: repo.path, log: ctx.log, revision: hash });
-  if (!oid) throw new McpError('COMMIT_NOT_FOUND', `No commit matches ${JSON.stringify(hash)}.`, { hint: 'A short hash may be ambiguous; get_history lists full hashes.' });
+  if (!oid) throw new McpError('COMMIT_NOT_FOUND', `No commit matches ${JSON.stringify(hash)}.`, { hint: 'A short hash may be ambiguous; get_history lists the commits.' });
   return oid;
 }
 
@@ -35,17 +39,17 @@ export async function getHistory(ctx, args) {
     checked(validateRevision, ref, 'branch');
     const oid = await resolveRevision({ cwd: repo.path, log: ctx.log, revision: ref });
     if (!oid) {
-      if (args.branch === null) return { repository: repo.path, ref, commits: [], nextCursor: null, unborn: true };
+      if (args.branch === null) return `${repositoryPreamble(repo)}HEAD: no commits yet\n`;
       throw new McpError('REF_NOT_FOUND', `No branch, tag or commit is named ${JSON.stringify(ref)}.`, { hint: 'get_workspace_context names the current branch.' });
     }
     page = await loadRefHistory({ ...options, revision: oid });
   }
-  return {
-    repository: repo.path, ref,
-    commits: page.commits.map(compactCommit),
-    nextCursor: page.nextSkip === null ? null : String(page.nextSkip)
-  };
+  const lines = [`${ref === '--all' ? 'all branches' : ref}, newest first:`, ...page.commits.map(commitLine)];
+  if (page.nextSkip !== null) lines.push(`… more: get_history with cursor "${page.nextSkip}"`);
+  return `${repositoryPreamble(repo)}${lines.join('\n')}\n`;
 }
+
+const totalsLine = totals => `${totals.files} ${totals.files === 1 ? 'file' : 'files'}, +${totals.insertions} -${totals.deletions}`;
 
 async function commitWithCounts(ctx, repo, oid) {
   const commit = await loadCommit({ cwd: repo.path, log: ctx.log, oid });
@@ -53,9 +57,8 @@ async function commitWithCounts(ctx, repo, oid) {
   const files = commit.files.map(file => {
     const count = counts.get(file.path);
     return {
-      path: file.path, status: statusWord(file.status),
-      insertions: count ? count.insertions : null, deletions: count ? count.deletions : null,
-      ...(count?.binary ? { binary: true } : {})
+      path: file.path, letter: file.status,
+      insertions: count ? count.insertions : null, deletions: count ? count.deletions : null, binary: Boolean(count?.binary)
     };
   });
   const totals = files.reduce((sum, file) => ({
@@ -68,19 +71,25 @@ export async function getCommit(ctx, args) {
   const repo = ctx.repository(args.repository);
   const oid = await resolveCommit(ctx, repo, args.hash);
   const { commit, files, totals } = await commitWithCounts(ctx, repo, oid);
-  const truncated = files.length > COMMIT_FILE_LIMIT;
-  return {
-    repository: repo.path,
-    hash: commit.oid, parents: commit.parents,
-    author: commit.author, committedAt: commit.committedAt,
-    subject: commit.subject, body: commit.body.trim(),
-    files: truncated ? files.slice(0, COMMIT_FILE_LIMIT) : files, totals,
-    ...(truncated ? { truncated: true, hint: `Only the first ${COMMIT_FILE_LIMIT} files are listed; get_commit_diff with a path reads any of them.` } : {})
-  };
+  const shown = files.length > COMMIT_FILE_LIMIT ? files.slice(0, COMMIT_FILE_LIMIT) : files;
+  const { author } = commit;
+  const lines = [
+    `${commit.oid} ${commit.subject}`,
+    `author: ${author.name} <${author.email}> ${author.date}`,
+    ...(commit.committedAt !== author.date ? [`committed: ${commit.committedAt}`] : []),
+    `parents: ${commit.parents.length ? commit.parents.map(shortHash).join(' ') : 'none (root commit)'}`
+  ];
+  const body = commit.body.trim();
+  if (body) lines.push('', body, '');
+  lines.push(`${totalsLine(totals)}:`, ...shown.map(fileLine));
+  if (shown !== files) lines.push(`… ${files.length - shown.length} more files; get_commit_diff with a path reads any of them.`);
+  return `${repositoryPreamble(repo)}${lines.join('\n')}\n`;
 }
 
-function fileFlags(patch) {
-  return { binary: patch.binary, ...(patch.added ? { added: true } : {}), ...(patch.deleted ? { deleted: true } : {}) };
+/** A file of a commit as text: its line, then its hunks or why there are none. */
+function renderFile(header, patch, fitted) {
+  const body = patch.binary ? '(binary: no text diff)\n' : fitted.hunks.length ? renderHunks(fitted.hunks) : `(${patch.mode ? 'mode change only' : 'no text change'})\n`;
+  return `${header}\n${body}`;
 }
 
 async function commitFileDiff(ctx, repo, oid, args) {
@@ -93,10 +102,12 @@ async function commitFileDiff(ctx, repo, oid, args) {
     if (parseHunkId(args.hunkId).side !== 'c') throw new McpError('INVALID_HUNK', 'That hunk belongs to the working tree.', { hint: 'Call get_diff_hunk for it.' });
     const hunk = hunks.find(item => item.id === args.hunkId);
     if (!hunk) throw new McpError('INVALID_HUNK', `Hunk ${args.hunkId} is not in ${path} in this commit.`);
-    return { path, hunk: capHunk(hunk) };
+    return renderHunk(repo, `${path} in ${shortHash(oid)}`, hunk);
   }
   const fitted = fitHunks(hunks, DIFF_BUDGET);
-  return { path, ...fileFlags(patch), hunks: fitted.hunks, truncated: fitted.truncated, ...(fitted.truncated ? { hint: TRUNCATED_DIFF_HINT } : {}) };
+  const letter = patch.added ? 'A' : patch.deleted ? 'D' : 'M';
+  const header = `${fileLine({ letter, path, binary: patch.binary, ...hunkTotals(hunks) })} (${shortHash(oid)})`;
+  return repositoryPreamble(repo) + renderFile(header, patch, fitted) + (fitted.truncated ? `${TRUNCATED_DIFF_HINT}\n` : '');
 }
 
 /**
@@ -106,27 +117,28 @@ async function commitFileDiff(ctx, repo, oid, args) {
  * machinery with `--no-renames` — and a count mismatch falls back to the list.
  */
 async function wholeCommitDiff(ctx, repo, oid) {
-  const { files, totals } = await commitWithCounts(ctx, repo, oid);
-  const list = { files, totals, truncated: true, hint: 'This commit is too large to read whole. Call get_commit_diff with a path.' };
-  if (files.length > WHOLE_COMMIT_FILES || totals.insertions + totals.deletions > WHOLE_COMMIT_LINES) return list;
+  const { commit, files, totals } = await commitWithCounts(ctx, repo, oid);
+  const title = `${shortHash(oid)} ${commit.subject} (${totalsLine(totals)})`;
+  const list = () => `${title}\n${files.map(file => fileLine(file)).join('\n')}\nThis commit is too large to read whole: get_commit_diff with a path reads one file.\n`;
+  if (files.length > WHOLE_COMMIT_FILES || totals.insertions + totals.deletions > WHOLE_COMMIT_LINES) return list();
   const chunks = splitPatchFiles(await loadCommitPatch({ cwd: repo.path, log: ctx.log, oid }));
-  if (chunks.length !== files.length) return list;
+  if (chunks.length !== files.length) return list();
   let budget = DIFF_BUDGET;
   let truncated = false;
-  const diffs = files.map((file, index) => {
+  const parts = files.map((file, index) => {
     const patch = parseFilePatchV1(chunks[index]);
     const fitted = fitHunks(describeHunks(patch, 'c', COMMIT_CONTEXT, file.path), budget);
     budget -= fitted.used;
     truncated ||= fitted.truncated;
-    return { path: file.path, status: file.status, ...fileFlags(patch), hunks: fitted.hunks };
+    return renderFile(`## ${fileLine(file)}`, patch, fitted);
   });
-  return { files: diffs, totals, truncated, ...(truncated ? { hint: TRUNCATED_DIFF_HINT } : {}) };
+  return `${title}\n${parts.join('')}${truncated ? `${TRUNCATED_DIFF_HINT} (get_commit_diff with the path and hunkId)\n` : ''}`;
 }
 
 export async function getCommitDiff(ctx, args) {
   const repo = ctx.repository(args.repository);
   if (args.hunkId !== undefined && args.path === undefined) throw new McpError('INVALID_ARGUMENT', 'hunkId needs the path it belongs to.');
   const oid = await resolveCommit(ctx, repo, args.hash);
-  const body = args.path !== undefined ? await commitFileDiff(ctx, repo, oid, args) : await wholeCommitDiff(ctx, repo, oid);
-  return { repository: repo.path, hash: oid, ...body };
+  if (args.path !== undefined) return commitFileDiff(ctx, repo, oid, args);
+  return repositoryPreamble(repo) + await wholeCommitDiff(ctx, repo, oid);
 }

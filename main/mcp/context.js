@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { resolveGitDir } from '../git/operation-state.js';
 import { McpError } from './errors.js';
@@ -40,26 +41,56 @@ export function createToolContext({ repositories, journal, getActiveId, getUiCon
   const log = agentLog(journal);
   const gitDirs = new Map();
 
-  function repository(selector) {
-    const list = repositories.snapshot().repositories;
-    let repo;
-    if (selector === undefined || selector === null) {
-      const activeId = getActiveId();
-      if (!activeId) throw new McpError('NO_REPOSITORY_OPEN', 'No repository is currently open in 🌱 Twig.',
-        { hint: 'Open one in 🌱 Twig, or pass `repository` — list_repositories shows the connected ones.' });
-      repo = list.find(item => item.id === activeId);
-      if (!repo) throw new McpError('NO_REPOSITORY_OPEN', 'The repository open in 🌱 Twig is no longer connected.');
-    } else {
-      repo = list.find(item => item.name === selector);
-      if (!repo && path.isAbsolute(selector)) {
-        const target = path.resolve(selector);
-        repo = list.filter(item => item.path && inside(item.path, target)).sort((a, b) => b.path.length - a.path.length)[0];
-      }
+  const connected = () => repositories.snapshot().repositories;
+  // A process reports its working directory resolved (/private/var/… on
+  // macOS) while a repository may be connected through a symlink (/var/…), so
+  // paths are matched both as written and resolved. Roots are resolved once.
+  const resolved = new Map();
+  const real = file => { try { return realpathSync.native(file); } catch { return file; } };
+  const realRoot = root => {
+    if (!resolved.has(root)) resolved.set(root, real(root));
+    return resolved.get(root);
+  };
+  /** The deepest connected repository that contains `target`, or undefined. */
+  const containing = target => {
+    const targets = [target, real(target)];
+    return connected()
+      .filter(item => item.path && targets.some(candidate => inside(item.path, candidate) || inside(realRoot(item.path), candidate)))
+      .sort((a, b) => b.path.length - a.path.length)[0];
+  };
+
+  function usable(repo, extra = {}) {
+    if (!repo.available) throw new McpError('REPOSITORY_NOT_FOUND', `${repo.name} is connected but unavailable — it may have moved or been removed.`);
+    return { id: repo.id, name: repo.name, path: repo.path, active: repo.id === getActiveId(), implicit: false, ...extra };
+  }
+
+  /**
+   * The repository a tool reads. Named by the agent — a name, a root or any
+   * path inside it. Not named — the agent's own working directory when it is
+   * inside a connected repository (the bridge reports it), else the one open
+   * in 🌱 Twig — and that last guess is `implicit`: the answer then says which
+   * repository it read, with a note when the agent's own folder is elsewhere.
+   * @param {unknown} selector
+   * @param {{ cwd?: ?string }} [client]
+   */
+  function repository(selector, client = {}) {
+    if (selector !== undefined && selector !== null) {
+      let repo = connected().find(item => item.name === selector);
+      if (!repo && path.isAbsolute(selector)) repo = containing(path.resolve(selector));
       if (!repo) throw new McpError('REPOSITORY_NOT_FOUND', `No repository connected to 🌱 Twig matches ${JSON.stringify(selector)}.`,
         { hint: 'Pass a name or an absolute path from list_repositories, or connect the repository in 🌱 Twig first.' });
+      return usable(repo);
     }
-    if (!repo.available) throw new McpError('REPOSITORY_NOT_FOUND', `${repo.name} is connected but unavailable — it may have moved or been removed.`);
-    return { id: repo.id, name: repo.name, path: repo.path, active: repo.id === getActiveId() };
+    const own = client.cwd ? containing(client.cwd) : undefined;
+    if (own) return usable(own);
+    const activeId = getActiveId();
+    const note = client.cwd ? `Your working directory ${client.cwd} is not a repository connected to 🌱 Twig; this is the one open in 🌱 Twig.` : null;
+    if (!activeId) throw new McpError('NO_REPOSITORY_OPEN', 'No repository is currently open in 🌱 Twig.',
+      { hint: client.cwd ? `Connect ${client.cwd} in 🌱 Twig, or pass \`repository\` — list_repositories shows the connected ones.`
+        : 'Open one in 🌱 Twig, or pass `repository` — list_repositories shows the connected ones.' });
+    const repo = connected().find(item => item.id === activeId);
+    if (!repo) throw new McpError('NO_REPOSITORY_OPEN', 'The repository open in 🌱 Twig is no longer connected.');
+    return usable(repo, { implicit: true, ...(note ? { note } : {}) });
   }
 
   return {
@@ -68,7 +99,15 @@ export function createToolContext({ repositories, journal, getActiveId, getUiCon
     /** How every tool reads the working tree: no index write-back, every untracked file by name. */
     worktree: cwd => ({ cwd, log, env: READ_ENV, allUntracked: true }),
     repository,
-    repositories: () => repositories.snapshot().repositories,
+    repositories: connected,
+    /**
+     * The same context for one client session: its working directory, as the
+     * bridge reported it, becomes the repository tools read by default.
+     * @param {{ cwd?: ?string }} client
+     */
+    forClient(client) {
+      return client?.cwd ? { ...this, repository: selector => repository(selector, client) } : this;
+    },
     activeId: getActiveId,
     ui: getUiContext,
     uiFor: id => uiContextFor(getUiContext(), id),

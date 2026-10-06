@@ -3,7 +3,7 @@ import { lstat } from 'node:fs/promises';
 import nodePath from 'node:path';
 import { runGit } from './exec.js';
 import { parseStatusV2 } from './status-parser.js';
-import { parseFilePatchV1 } from './diff-parser.js';
+import { parseFilePatchV1, splitPatchFiles } from './diff-parser.js';
 
 /**
  * @typedef {Object} FileChange
@@ -51,6 +51,12 @@ function contextArgs(context) {
 export function buildDiffArgv({ path, staged = false, context = null }) {
   validatePath(path);
   return ['diff', ...DIFF_ARGS, ...contextArgs(context), ...(staged ? ['--cached'] : []), '--', `:(literal)${path}`];
+}
+
+/** Several files' diffs on one side in one `git diff`, each path literal. */
+export function buildDiffsArgv({ paths, staged = false, context = null }) {
+  if (!Array.isArray(paths) || paths.length === 0) throw new TypeError('Invalid path list');
+  return ['diff', ...DIFF_ARGS, ...contextArgs(context), ...(staged ? ['--cached'] : []), '--', ...paths.map(file => `:(literal)${validatePath(file)}`)];
 }
 
 /**
@@ -127,6 +133,58 @@ export async function loadWorktreeDiff({ cwd, log, path, staged = false, context
   return { ...parseFilePatchV1(result.stdout), digest, text: result.stdout };
 }
 
+/**
+ * The path a chunk of `git diff --no-renames` describes, read from its
+ * `diff --git a/<p> b/<p>` line: without renames both sides name the same
+ * path, so its length is fixed by the line's. A quoted header (Git quotes
+ * unusual names) gives null and the caller reads that file on its own.
+ */
+export function chunkPath(chunk) {
+  const end = chunk.indexOf('\n');
+  const line = end < 0 ? chunk : chunk.slice(0, end);
+  const prefix = 'diff --git a/';
+  if (!line.startsWith(prefix)) return null;
+  const length = (line.length - prefix.length - 3) / 2;
+  if (!Number.isInteger(length) || length < 1) return null;
+  const path = line.slice(prefix.length, prefix.length + length);
+  return line.slice(prefix.length + length) === ` b/${path}` ? path : null;
+}
+
+/**
+ * Patches of many files on one side, for readers that show several at once.
+ * Git writes them in its own order, so each chunk is matched to a path by its
+ * header; a path whose chunk cannot be matched for certain is read on its own
+ * with `loadWorktreeDiff`. A path with no chunk had no text change (a mode
+ * change only, or a stat-only difference) and maps to an empty patch.
+ * @param {{ cwd: string, log: import('../command-log.js').CommandLog, paths: string[], staged?: boolean, context?: ?number, env?: ?Record<string, string> }} options
+ * @returns {Promise<Map<string, import('./diff-parser.js').FilePatch>>}
+ */
+export async function loadWorktreeDiffs({ cwd, log, paths, staged = false, context = null, env = null }) {
+  const patches = new Map();
+  if (paths.length === 0) return patches;
+  const result = await runGit({ argv: buildDiffsArgv({ paths, staged, context }), cwd, log, env,
+    operation: staged ? 'Read staged diffs' : 'Read working tree diffs' });
+  if (result.code !== 0) throw new Error('Git could not read these diffs.');
+  const wanted = new Set(paths);
+  const chunks = new Map();
+  let unsure = false;
+  for (const chunk of splitPatchFiles(result.stdout)) {
+    const path = chunkPath(chunk);
+    // A chunk that names no wanted path, or a second chunk for one path, means
+    // the pairing cannot be trusted for it: those paths are read alone.
+    if (path === null || !wanted.has(path)) unsure = true;
+    else if (chunks.has(path)) chunks.set(path, null);
+    else chunks.set(path, chunk);
+  }
+  for (const path of paths) {
+    const chunk = chunks.get(path);
+    if (chunk) patches.set(path, parseFilePatchV1(chunk));
+    else if (chunk === null || unsure) patches.set(path, await loadWorktreeDiff({ cwd, log, path, staged, context, env }));
+    else patches.set(path, parseFilePatchV1(''));
+  }
+  return patches;
+}
+
 /** Past this an untracked file is described, not diffed: Git would read it all into one patch. */
 export const UNTRACKED_DIFF_LIMIT = 1024 * 1024;
 
@@ -136,15 +194,17 @@ export const UNTRACKED_DIFF_LIMIT = 1024 * 1024;
  * a fresh status); a folder Git collapsed to `dir/`, or a file past
  * `UNTRACKED_DIFF_LIMIT`, comes back described instead of read.
  * `cwd` must be the repository root, which is how every caller holds it.
- * @param {{ cwd: string, log: import('../command-log.js').CommandLog, path: string, context?: ?number }} options
+ * `limit` lowers the size past which the file is only described, for readers
+ * with less room than one answer.
+ * @param {{ cwd: string, log: import('../command-log.js').CommandLog, path: string, context?: ?number, limit?: number }} options
  * @returns {Promise<(import('./diff-parser.js').FilePatch & { text: string }) | { directory: true } | { tooLarge: true, size: number }>}
  */
-export async function loadUntrackedDiff({ cwd, log, path, context = null }) {
+export async function loadUntrackedDiff({ cwd, log, path, context = null, limit = UNTRACKED_DIFF_LIMIT }) {
   validatePath(path);
   if (path.endsWith('/')) return { directory: true };
   const info = await lstat(nodePath.join(cwd, path));
   if (info.isDirectory()) return { directory: true };
-  if (info.size > UNTRACKED_DIFF_LIMIT) return { tooLarge: true, size: info.size };
+  if (info.size > Math.min(limit, UNTRACKED_DIFF_LIMIT)) return { tooLarge: true, size: info.size };
   const result = await runGit({ argv: buildUntrackedDiffArgv({ path, context }), cwd, log, operation: 'Read untracked file as a diff' });
   // `--no-index` answers 1 when the two sides differ, which they always do here.
   if (result.code !== 0 && result.code !== 1) throw new Error('Git could not read this file.');

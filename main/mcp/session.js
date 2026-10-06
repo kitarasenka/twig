@@ -1,4 +1,5 @@
-import { INSTRUCTIONS, SERVER_NAME, SERVER_TITLE, TOOLS, errorResult, negotiateVersion, toolResult } from './protocol.mjs';
+import path from 'node:path';
+import { CWD_META, INSTRUCTIONS, SERVER_NAME, SERVER_TITLE, TOOLS, errorResult, negotiateVersion, toolResult } from './protocol.mjs';
 import { validateArguments } from './arguments.js';
 import { McpError } from './errors.js';
 
@@ -14,6 +15,12 @@ const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error
 const rpcResult = (id, result) => ({ jsonrpc: '2.0', id, result });
 const validId = id => typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id));
 
+/** The client's working directory from `initialize`, or null when it is missing or not a plain absolute path. */
+export function clientCwd(params) {
+  const value = params?._meta?.[CWD_META];
+  return typeof value === 'string' && value.length <= 4096 && !value.includes('\0') && path.isAbsolute(value) ? path.resolve(value) : null;
+}
+
 /**
  * One MCP conversation, independent of how bytes arrive: a transport hands it
  * parsed JSON-RPC messages and writes back whatever `handle` returns. Only the
@@ -25,10 +32,11 @@ const validId = id => typeof id === 'string' || (typeof id === 'number' && Numbe
  * the bridge replays the client's `initialize` first — this is the fallback if
  * that replay did not happen.
  *
- * @param {{ version: string, tools: Record<string, (args: object) => Promise<object>>, onCall?: (name: string) => void }} options
+ * @param {{ version: string, tools: Record<string, (args: object, client: { cwd: ?string }) => Promise<object | string>>, onCall?: (name: string) => void }} options
  */
 export function createMcpSession({ version, tools, onCall = () => {} }) {
   let protocolVersion = negotiateVersion(null);
+  const client = { cwd: null };
   const catalog = new Map(TOOLS.map(definition => [definition.name, definition]));
 
   async function callTool(params) {
@@ -37,7 +45,7 @@ export function createMcpSession({ version, tools, onCall = () => {} }) {
     if (!run) return { error: [INVALID_PARAMS, `Unknown tool: ${String(params?.name)}`] };
     onCall(definition.name);
     try {
-      const payload = await run(validateArguments(definition.inputSchema, params.arguments));
+      const payload = await run(validateArguments(definition.inputSchema, params.arguments), client);
       const result = toolResult(payload);
       if (result.content[0].text.length > MAX_RESULT_CHARS) {
         return { result: errorResult('OUTPUT_TOO_LARGE', 'The result is larger than 🌱 Twig sends in one answer.',
@@ -64,6 +72,7 @@ export function createMcpSession({ version, tools, onCall = () => {} }) {
     switch (method) {
       case 'initialize':
         protocolVersion = negotiateVersion(params?.protocolVersion);
+        client.cwd = clientCwd(params);
         return rpcResult(id, {
           protocolVersion,
           capabilities: { tools: { listChanged: false } },

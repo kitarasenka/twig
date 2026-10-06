@@ -7,7 +7,7 @@ import { mcpStatusLine } from './mcp-view.js';
 // file, then history — and what is on screen here.
 const GIVES = [
   { icon: ListChecks, title: 'The state of your work', text: 'Branch, ahead/behind, a merge or rebase in progress, and which files are staged, changed, untracked or conflicted — in a few hundred bytes.' },
-  { icon: FileDiff, title: 'Diffs one file at a time', text: 'Hunks with ids and line counts. A huge diff arrives as an outline the agent opens hunk by hunk, so it never swallows the whole repository.' },
+  { icon: FileDiff, title: 'Every change in one answer', text: 'Each file as one line with its line counts and its hunks below, in plain git shapes. Lock files and huge files arrive as one line, and the agent can still open any file or hunk on its own.' },
   { icon: History, title: 'History and commits', text: 'Compact commit lists for any branch, then one commit’s message and files, then its diff for one file.' },
   { icon: MousePointerClick, title: 'What you have selected here', text: 'The commit, compare range or file open in 🌱 Twig, so “explain this commit” needs no hash pasted.' }
 ];
@@ -78,6 +78,6 @@ export default function McpSettings({ onBusyChange, onChange = () => {} }) {
     </div>)}
     <h3 className="mcp-heading"><MessageSquareText aria-hidden="true" />Try asking</h3>
     <ul className="mcp-prompts">{PROMPTS.map(prompt => <li key={prompt}>“{prompt}”</li>)}</ul>
-    <p className="settings-note">The agent proposes; you decide. It cannot stage or commit — do that here, where every step can be undone. on 🌱 Twig’s own executable, so no separate Node.js is needed; if 🌱 Twig is closed, the agent’s tools answer that 🌱 Twig is off.</p>
+    <p className="settings-note">The agent proposes; you decide. It cannot stage or commit — do that here, where every step can be undone. The bridge runs on 🌱 Twig’s own executable, so no separate Node.js is needed; if 🌱 Twig is closed, the agent’s tools answer that 🌱 Twig is off.</p>
   </section>;
 }

@@ -22,7 +22,11 @@ const IMPLEMENTATIONS = Object.freeze({
 
 export const TOOL_NAMES = Object.freeze(Object.keys(IMPLEMENTATIONS));
 
-/** Binds every tool to one context, in the shape `createMcpSession` takes. */
+/**
+ * Binds every tool to one context, in the shape `createMcpSession` takes. The
+ * session passes what it knows about its client (its working directory), so
+ * one context serves every connection.
+ */
 export function bindTools(ctx) {
-  return Object.fromEntries(Object.entries(IMPLEMENTATIONS).map(([name, run]) => [name, async args => run(ctx, args)]));
+  return Object.fromEntries(Object.entries(IMPLEMENTATIONS).map(([name, run]) => [name, async (args, client = {}) => run(ctx.forClient(client), args)]));
 }
