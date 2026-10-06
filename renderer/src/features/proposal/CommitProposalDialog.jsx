@@ -23,6 +23,10 @@ export default function CommitProposalDialog({ view, running, step, failure, onD
   const pushReason = !view.pushTarget?.mode ? 'There is nowhere to push' : undefined;
   const decide = action => onDecide({ action, message, bump: view.bump ? bump : null });
   const commands = proposalCommands(view, primary === 'commit-push');
+  const newVersions = view.bump?.targets?.flatMap(target => {
+    const version = target.next?.[bump];
+    return version ? [{ path: target.path, version }] : [];
+  }) ?? [];
 
   // Esc or the close button is a Cancel while the proposal is open, and just closes once it has failed.
   return <Dialog title="Commit proposed by an agent" wide onClose={failure ? onClose : () => decide('cancel')} closeReason={busyReason}>
@@ -38,7 +42,11 @@ export default function CommitProposalDialog({ view, running, step, failure, onD
       {view.bump && <label className="proposal-bump" htmlFor="proposal-bump"><span>Version <span className="muted">— from your “Bump version” automation</span></span>
         <select id="proposal-bump" value={bump ?? 'none'} disabled={running} onChange={event => setBump(event.target.value)}>
           {BUMP_CHOICES.map(choice => <option key={choice} value={choice}>{bumpLabel(view.bump, choice)}</option>)}
-        </select></label>}
+        </select>
+        {newVersions.length > 0 && <span className="proposal-bump-new" aria-live="polite">
+          New version{newVersions.length === 1 ? '' : 's'}: {newVersions.map(({ path, version }) => <code key={path}>{path} {version}</code>)}
+        </span>}
+      </label>}
       <p className="muted">These commands will run, after your pre-commit automations:</p>
       <code className="confirm-command proposal-commands">{commands.map(line => <span key={line}>$ {line}</span>)}</code>
       {running && <p role="status" className="proposal-progress">{step ? `${step.name}: ${step.status}` : 'Committing…'}</p>}
