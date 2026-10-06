@@ -126,7 +126,7 @@ only when it has control characters, quotes, leading/trailing spaces or ` -> `.
 |---|---|---|
 | `get_workspace_context` | `repository?` | Name and path, branch (head, upstream, ahead/behind), operation in progress (merge, rebase, cherry-pick, revert, am) with conflict count, counts of staged/unstaged/untracked/conflicted/modified/added/deleted/renamed files, and the selection in 🌱 Twig. No diffs, usually under 800 bytes. |
 | `list_repositories` | — | Connected repositories, and which one is open in 🌱 Twig. |
-| `list_changes` | `repository?`, `diffs` (false), `contextLines` (0–20, 3), `limit` (1–1000, 200), `cursor?` | Text. The branch and counts, then the files grouped `staged:` / `unstaged:` / `untracked:`, one line each. A file changed in both the index and on disk appears on both sides. With `diffs: true`, each file's patch follows its line — see [What `diffs: true` leaves out](#what-diffs-true-leaves-out). Paginated: a last line names the next `cursor`. |
+| `list_changes` | `repository?`, `diffs` (false), `contextLines` (0–20, 3), `maxBytes` (4096–100000, 60000), `limit` (1–1000, 200), `cursor?` | Text. The branch and counts, then the files grouped `staged:` / `unstaged:` / `untracked:`, one line each. A file changed in both the index and on disk appears on both sides. With `diffs: true`, each file's patch follows its line — see [What `diffs: true` leaves out](#what-diffs-true-leaves-out). Paginated: a last line names the next `cursor`. |
 | `get_diff` | `path`, `staged` (false), `contextLines` (0–20, 3), `repository?` | Text. The file's line with its side (`M +2 -0 src/app.js (unstaged)`), then its hunks. An untracked file is shown as the patch that would add it. Conflicted files and submodules are described, not diffed. Hunks past the budget are printed as their header with an id, marked `not shown`. |
 | `get_diff_hunk` | `path`, `hunkId`, `repository?` | Text. Exactly one hunk that `get_diff` marked `not shown`. |
 | `get_history` | `limit` (1–100, 20), `branch?` (null = HEAD), `all` (false), `cursor?`, `repository?` | Text, one commit per line: `38e4efb73234 2026-10-06 Ada Lovelace: subject`, merges with `(merge of a, b)`. No diffs. `all: true` reads every ref, like 🌱 Twig's graph. |
@@ -142,8 +142,10 @@ Each file is either shown whole or listed with its reason in parentheses:
   `Cargo.lock`, `go.sum` and other lock files, `*.min.js`, `*.min.css`, source maps. Mark
   more with `-diff` in `.gitattributes`: Git then counts them as binary (`bin`).
 - **Large files**: more than 400 changed lines.
-- **Budget**: about 60 KB of patch text per answer. Smaller files are fitted first, so the
-  budget runs out on the big ones.
+- **Budget**: the whole answer stays within `maxBytes` (60 000 by default, 4096 at least).
+  Every file line of the page always fits; the patches share what is left, smallest files
+  first, so the budget runs out on the big ones. If the file lines alone fill a small budget,
+  use `limit` to page.
 - Binary files, conflicts, submodules, type changes, renames with edits, and more than 40
   untracked files in one answer.
 

@@ -13,6 +13,11 @@ import {
 export const FILE_LINE_LIMIT = 400;
 /** Untracked files list_changes reads in one answer; each is its own `git diff --no-index`. */
 export const UNTRACKED_READS = 40;
+/** What list_changes with diffs may weigh by default, and the least an agent can ask for. */
+export const DEFAULT_MAX_BYTES = 60_000;
+export const MIN_MAX_BYTES = 4096;
+/** Room kept per listed file for its counts and a "(why it is not shown)" line. */
+const NOTE_RESERVE = 80;
 
 /**
  * Files whose diff says nothing a reader wants: lock files and minified or
@@ -77,10 +82,14 @@ function skipReason(entry) {
 /**
  * Reads the patches of the page's files that are worth reading: one
  * `git diff` per side for tracked files, one per untracked file (at most
- * UNTRACKED_READS). Small files are fitted into DIFF_BUDGET first, so a
- * budget runs out on the big ones; a file is shown whole or not at all.
+ * UNTRACKED_READS). Patches share what is left of `maxBytes` once every
+ * file line and a note for each are counted; small files are fitted first, so
+ * the budget runs out on the big ones, and a file is shown whole or not at all.
  */
-async function attachDiffs(ctx, repo, page, context) {
+async function attachDiffs(ctx, repo, page, context, maxBytes, head) {
+  const overhead = Buffer.byteLength(head) + 32
+    + page.reduce((sum, entry) => sum + Buffer.byteLength(fileLine(entry)) + 4 + NOTE_RESERVE, 0);
+  let budget = Math.max(0, maxBytes - overhead);
   for (const entry of page) entry.note = skipReason(entry);
   const readable = page.filter(entry => !entry.note && !entry.binary && !entry.originalPath);
   const bySide = side => readable.filter(entry => entry.side === side).map(entry => entry.path);
@@ -94,22 +103,22 @@ async function attachDiffs(ctx, repo, page, context) {
       continue;
     }
     if (untrackedReads++ >= UNTRACKED_READS) { entry.note = 'not read: too many untracked files in one answer; get_diff reads it'; continue; }
-    const result = await loadUntrackedDiff({ cwd: repo.path, log: ctx.log, path: entry.path, context, limit: DIFF_BUDGET });
+    const result = await loadUntrackedDiff({ cwd: repo.path, log: ctx.log, path: entry.path, context, limit: budget });
     if (result.directory) entry.note = 'untracked folder';
-    else if (result.tooLarge) entry.note = `${result.size} bytes, too large to inline: get_diff reads it`;
+    else if (result.tooLarge) entry.note = `${result.size} bytes, more than this answer has room for: get_diff reads it`;
     else {
       entry.patch = result;
       if (result.binary) entry.binary = true;
     }
   }
-  let budget = DIFF_BUDGET;
   const sized = readable.filter(entry => entry.patch && !entry.binary).map(entry => {
     entry.text = entry.patch.hunks.map(hunkPatch).join('');
+    entry.bytes = Buffer.byteLength(entry.text);
     if (entry.side === 'untracked') ({ insertions: entry.insertions, deletions: entry.deletions } = hunkTotals(describeHunks(entry.patch, 'u', context ?? 3, entry.path)));
     return entry;
   });
-  for (const entry of [...sized].sort((a, b) => a.text.length - b.text.length)) {
-    if (entry.text.length <= budget) budget -= entry.text.length;
+  for (const entry of [...sized].sort((a, b) => a.bytes - b.bytes)) {
+    if (entry.bytes <= budget) budget -= entry.bytes;
     else { entry.note = 'did not fit in this answer: get_diff reads it'; entry.text = null; }
   }
   for (const entry of page) {
@@ -124,8 +133,9 @@ export async function listChanges(ctx, args) {
   const { branch, entries } = await readEntries(ctx, repo);
   const start = readCursor(args.cursor);
   const page = entries.slice(start, start + args.limit);
-  if (args.diffs) await attachDiffs(ctx, repo, page, args.contextLines);
-  const lines = [repositoryPreamble(repo) + branchLine(branch, entries)];
+  const head = repositoryPreamble(repo) + branchLine(branch, entries);
+  if (args.diffs) await attachDiffs(ctx, repo, page, args.contextLines, args.maxBytes, head);
+  const lines = [head];
   let side = null;
   for (const entry of page) {
     if (entry.side !== side) { side = entry.side; lines.push(`${side}:`); }

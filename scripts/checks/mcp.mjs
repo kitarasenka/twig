@@ -85,7 +85,7 @@ assert.ok(buildUntrackedDiffArgv({ path: 'n.txt' }).includes('--no-index'));
 {
   const schema = TOOLS.find(tool => tool.name === 'get_diff').inputSchema;
   assert.deepEqual(validateArguments(schema, { path: 'a' }), { path: 'a', staged: false, contextLines: 3 });
-  assert.deepEqual(validateArguments(TOOLS.find(tool => tool.name === 'list_changes').inputSchema, {}), { diffs: false, contextLines: 3, limit: 200 });
+  assert.deepEqual(validateArguments(TOOLS.find(tool => tool.name === 'list_changes').inputSchema, {}), { diffs: false, contextLines: 3, maxBytes: 60000, limit: 200 });
   for (const bad of [{}, { path: 1 }, { path: 'a', extra: 1 }, { path: 'a', contextLines: 99 }, { path: 'a', contextLines: 1.5 }, { path: 'a\0' }, []]) {
     assert.throws(() => validateArguments(schema, bad), error => error.code === 'INVALID_ARGUMENT', JSON.stringify(bad));
   }
@@ -540,6 +540,21 @@ try {
     assert.equal(inlined.length + left.length, 30);
     assert.ok(left.length > 0 && inlined.length > 0);
     assert.ok(Math.max(...inlined) < Math.min(...left), 'the smaller files were the ones inlined');
+
+    // maxBytes: the whole answer stays within it, every file is still listed, and the smallest are the ones shown.
+    // (bulk/fNN grows with NN, so file numbers order them by size.)
+    const numbers = (text, shownOnly) => [...text.matchAll(/^## \? (?:\+\d+ -0 )?bulk\/f(\d\d)\.txt\n(.)/gm)]
+      .filter(match => (match[2] === '@') === shownOnly).map(match => Number(match[1]));
+    for (const [maxBytes, limit] of [[4096, 6], [20000, 200]]) {
+      const small = await call('list_changes', { repository: main.cwd, diffs: true, maxBytes, limit });
+      assert.ok(Buffer.byteLength(small) <= maxBytes, `${Buffer.byteLength(small)} > ${maxBytes}`);
+      const shown = numbers(small, true);
+      const hidden = numbers(small, false);
+      assert.equal(shown.length + hidden.length, Math.min(limit, 30), 'every file of the page keeps its line');
+      assert.ok(shown.length > 0 && hidden.length > 0 && Math.max(...shown) < Math.min(...hidden), `${maxBytes}: smallest first — ${shown} / ${hidden}`);
+    }
+    await expectError('INVALID_ARGUMENT', 'list_changes', { diffs: true, maxBytes: 1000 });
+    await expectError('INVALID_ARGUMENT', 'list_changes', { diffs: true, maxBytes: 500000 });
     await main.git('clean', '-qfd');
   }
 

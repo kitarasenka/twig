@@ -47,11 +47,12 @@ export const TOOLS = Object.freeze([
   tool('list_repositories', 'Connected repositories',
     'Repositories connected to 🌱 Twig, and which one is open in its window. Use a path from here as `repository` in other tools.'),
   tool('list_changes', 'Changed files',
-    'Changed files in the working tree as text, grouped staged / unstaged / untracked, one line each: status letter, +inserted -deleted, path (a file changed in the index and on disk is listed on both sides). `diffs: true` adds each file’s patch under its line in the same answer — small files first, within one answer’s budget; lock files, generated files and files over 400 changed lines are listed with the reason and read with get_diff. Paginated with `cursor`.',
+    'Changed files in the working tree as text, grouped staged / unstaged / untracked, one line each: status letter, +inserted -deleted, path (a file changed in the index and on disk is listed on both sides). `diffs: true` adds each file’s patch under its line in the same answer — small files first, within `maxBytes`; lock files, generated files and files over 400 changed lines are listed with the reason and read with get_diff. Paginated with `cursor`.',
     {
       repository,
       diffs: { type: 'boolean', default: false, description: 'Include each file’s patch.' },
       contextLines,
+      maxBytes: { type: 'integer', minimum: 4096, maximum: 100000, default: 60000, description: 'With diffs: the most the answer may weigh. File lines always fit; patches share the rest, smallest files first.' },
       limit: { type: 'integer', minimum: 1, maximum: 1000, default: 200, description: 'Files per page.' },
       cursor: { type: 'string', description: 'The cursor the previous page ended with.' }
     }),
