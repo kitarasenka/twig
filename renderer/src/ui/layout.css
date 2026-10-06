@@ -20,7 +20,9 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .tab-bar { display: flex; flex-shrink: 0; align-items: stretch; height: var(--tabs-height); border-bottom: 1px solid var(--border); background: var(--bg); }
 .brand { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); width: var(--sidebar-width); flex-shrink: 0; font-size: var(--text-lg); letter-spacing: -.02em; }
 .brand-logo { width: var(--brand-icon-size); height: var(--brand-icon-size); object-fit: contain; flex-shrink: 0; }
-.tabs { display: flex; align-items: stretch; overflow-x: auto; min-width: 0; }
+.tabs { display: flex; align-items: stretch; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+/* Tabs still scroll (trackpad, mouse wheel, the active tab scrolls into view), just without a bar under them. */
+.tabs::-webkit-scrollbar { display: none; }
 .tabs > .button-wrap { align-self: center; margin: 0 var(--space-2); }
 .tab { display: flex; align-items: center; padding: 0 var(--space-1); border-inline: 1px solid transparent; border-top: 2px solid transparent; }
 .tab.active { background: var(--surface); border-inline-color: var(--border); border-top-color: var(--accent); }

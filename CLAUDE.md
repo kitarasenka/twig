@@ -17,6 +17,24 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Закрытые вкладки переживают перезапуск (2026-10-06, вне вех): `closedTabs`
+в `App.jsx` жил только в памяти — после перезапуска открывались все
+подключённые репозитории. Теперь набор лежит в `localStorage`
+(`twig:closed-tabs`, чистый `renderer/src/app/closed-tabs.js`:
+`readClosedTabs`/`writeClosedTabs` в try/catch, `startRepositoryId` —
+сохранённый активный, если его вкладка открыта, иначе первая открытая).
+Пишутся только id из текущего списка. Любой путь, который делает закрытый
+репозиторий активным (REPOSITORY, Open repository на ту же папку, Connected
+repositories), возвращает вкладку — раньше Open repository на закрытый
+репозиторий не показывал вкладку вовсе. Демо по-прежнему — `sandboxHidden` в
+main. У полосы вкладок спрятана горизонтальная полоса прокрутки
+(`scrollbar-width: none` + `::-webkit-scrollbar`); прокрутка — трекпадом,
+колесом мыши (вертикальное колесо → `scrollLeft`), активная вкладка сама
+`scrollIntoView`. Проверки: `scripts/checks/closed-tabs.mjs` (в `npm test`);
+`repositories-smoke.mjs` — закрыть вкладку клона, перезапуск, вкладки нет,
+активна демо, выбор в REPOSITORY возвращает её, у полосы `scrollbarWidth:
+none`. Версия не менялась.
+
 Проверка обновлений при запуске по умолчанию (2026-10-06, вне вех; решение
 пользователя): у установленного приложения «Check automatically» теперь «At
 launch and daily» без выбора — `UpdateStore(dir, { defaultAuto: app.isPackaged

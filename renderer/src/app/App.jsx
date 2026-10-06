@@ -4,6 +4,7 @@ import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
 import { Console } from './Console.jsx';
 import { pickFailedEntry } from './console-focus.js';
+import { readClosedTabs, startRepositoryId, writeClosedTabs } from './closed-tabs.js';
 import { fetchExplanation, fetchStatusLine, intervalLabel, pullTitle } from './background-fetch-view.js';
 import { autoCheckExplanation, installVerb, percent, toolbarUpdate, updateStatusLine } from './update-view.js';
 import HistoryWorkspace from '../features/graph/HistoryWorkspace.jsx';
@@ -95,10 +96,11 @@ export default function App() {
   const pushGateResolve = useRef(null);
   const [worktreeVersion, setWorktreeVersion] = useState(0);
   const [remoteRevisions, setRemoteRevisions] = useState({});
-  const [closedTabs, setClosedTabs] = useState(() => new Set());
+  const [closedTabs, setClosedTabs] = useState(() => { try { return readClosedTabs(localStorage); } catch { return new Set(); } });
   const [undoState, setUndoState] = useState({ undo: false, redo: false, undoReason: 'No application actions to undo.', redoReason: 'No next action.' });
   const [undoMoving, setUndoMoving] = useState(false);
   const repositoryFilters = useRef(new Map());
+  const tabsRef = useRef(null);
   const selectionRequest = useRef(0);
   const divergenceRequest = useRef(0);
   const stashRequest = useRef(0);
@@ -116,7 +118,11 @@ export default function App() {
       .then(([appInfo, initialWorkspace, initialEntries]) => {
         if (!alive) return;
         setInfo(appInfo); setWorkspace(initialWorkspace); setEntries(initialEntries);
-        const startId = initialWorkspace.activeId || initialWorkspace.repositories[0]?.id;
+        // A tab closed last time stays closed: start on the remembered one only
+        // while its tab is open.
+        let closed = new Set();
+        try { closed = readClosedTabs(localStorage); } catch { /* Nothing remembered. */ }
+        const startId = startRepositoryId(initialWorkspace.repositories, initialWorkspace.activeId, closed);
         // Nothing to show — no connected repository and a closed demo — is a
         // real state now, and it starts on the New repository tab, not on a
         // blank window.
@@ -149,6 +155,28 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('twig:commit-colors', commitColors); } catch { /* Preference remains session-local if storage is unavailable. */ }
   }, [commitColors]);
+  // Closed tabs survive a restart. Only ids still in the list are kept, so a
+  // repository removed from 🌱 Twig does not linger in the stored set.
+  useEffect(() => {
+    if (!workspace) return;
+    const known = new Set(workspace.repositories.map(item => item.id));
+    try { writeClosedTabs(localStorage, [...closedTabs].filter(id => known.has(id))); } catch { /* Session-local if storage is unavailable. */ }
+  }, [closedTabs, workspace]);
+  // The tab strip has no visible scrollbar: the active tab scrolls into view,
+  // and a plain mouse wheel scrolls the strip sideways.
+  useEffect(() => {
+    tabsRef.current?.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [active, closedTabs, emptyOpen]);
+  function scrollTabs(event) {
+    if (event.deltaX === 0 && event.deltaY !== 0) event.currentTarget.scrollLeft += event.deltaY;
+  }
+  // Whatever makes a closed repository active — the REPOSITORY picker, Open
+  // repository on the same folder, Connected repositories — brings its tab back.
+  useEffect(() => {
+    if (!active.startsWith('repository:')) return;
+    const id = active.slice(11);
+    if (closedTabs.has(id)) setClosedTabs(current => { const copy = new Set(current); copy.delete(id); return copy; });
+  }, [active, closedTabs]);
   const branchName = repository?.status?.branch?.name || null;
   const fetchRequest = useRef(0);
   const readFetchStatus = useCallback(() => {
@@ -504,7 +532,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header className="tab-bar"><div className="brand"><img className="brand-logo" src="./twig-logo.png" alt="" width="36" height="36" /><strong>🌱 Twig</strong></div>
-      <nav className="tabs" aria-label="Repository tabs">
+      <nav className="tabs" aria-label="Repository tabs" ref={tabsRef} onWheel={scrollTabs}>
         {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{item.sandbox ? <small>DEMO</small> : !item.available && <small>OFFLINE</small>}</button><Button icon={X} aria-label={`Close ${item.name} tab`} title={item.sandbox ? `Close the demo workspace · ${mod}+W` : `${mod}+W`} onClick={() => { if (item.sandbox) void setDemoVisible(false); else closeRepositoryTab(item.id); }} /></div>)}
         {emptyOpen && <div className={`tab ${active === 'new' ? 'active' : ''}`}><button aria-current={active === 'new' ? 'page' : undefined} onClick={() => setActive('new')}><FolderOpen />New repository</button><Button icon={X} aria-label="Close new tab" onClick={() => { setEmptyOpen(false); if (sandboxId) setActive(`repository:${sandboxId}`); }} /></div>}
         <Button icon={Plus} aria-label="New repository tab" title={`${mod}+T`} onClick={openEmpty} />

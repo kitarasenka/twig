@@ -25,7 +25,7 @@ try {
   delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
   const args = ['.', `--user-data-dir=${path.join(root, 'app')}`];
   app = await electron.launch({ args, env });
-  const page = await app.firstWindow(); page.setDefaultTimeout(20000);
+  let page = await app.firstWindow(); page.setDefaultTimeout(20000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await app.evaluate(({ dialog }, directory) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] }); }, root);
   await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
@@ -68,6 +68,21 @@ try {
   await backup.getByRole('button', { name: 'Confirm remote removal', exact: true }).click();
   await backup.waitFor({ state: 'detached' });
   await page.keyboard.press('Escape');
+  // A closed tab stays closed after a restart; the repository stays connected,
+  // and choosing it again brings the tab back. The strip shows no scrollbar.
+  const tabs = () => page.getByRole('navigation', { name: 'Repository tabs', exact: true });
+  assert.equal(await tabs().evaluate(element => getComputedStyle(element).scrollbarWidth), 'none');
+  await tabs().getByRole('button', { name: 'Close twig-clone tab', exact: true }).click();
+  await tabs().getByRole('button', { name: 'twig-clone', exact: true }).waitFor({ state: 'detached' });
+  await app.close(); app = await electron.launch({ args, env });
+  page = await app.firstWindow(); page.setDefaultTimeout(20000);
+  page.on('pageerror', error => errors.push(error.message));
+  await tabs().getByRole('button', { name: /workspace-demo/ }).and(page.locator('[aria-current="page"]')).waitFor();
+  assert.equal(await tabs().getByRole('button', { name: 'Close twig-clone tab', exact: true }).count(), 0);
+  assert.ok((await page.evaluate(() => window.twig.getWorkspace())).repositories.some(item => item.id === cloned.id));
+  await page.locator('#repository-select').selectOption(`repository:${cloned.id}`);
+  await tabs().getByRole('button', { name: 'twig-clone', exact: true }).and(page.locator('[aria-current="page"]')).waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem('twig:closed-tabs')), '[]');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Manage repositories', exact: true }).click();
   const manager = page.getByRole('dialog', { name: 'Repositories', exact: true });
@@ -97,5 +112,5 @@ try {
   const restartedRepos = (await restarted.evaluate(() => window.twig.getWorkspace())).repositories;
   assert.deepEqual(restartedRepos.filter(item => !item.sandbox), []);
   assert.equal(restartedRepos.filter(item => item.sandbox).length, 1);
-  console.log('M5 repositories Electron passed: clone and history, remote add/edit/fetch/remove, repository filtering/removal, restart, disk preservation, journal, IPC and themes.');
+  console.log('M5 repositories Electron passed: clone and history, remote add/edit/fetch/remove, repository filtering/removal, closed tab survives restart and reopens, restart, disk preservation, journal, IPC and themes.');
 } finally { await app?.close(); await rm(root, { recursive: true, force: true }); }
