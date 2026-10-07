@@ -93,9 +93,12 @@ try {
   const bumper = createBumper({ log, automations });
 
   assert.equal(await bumper.plan({ repo, files: ['src/game.js'] }), null, 'no bump action, no plan');
+  // Without the automation the root package.json is still offered, bumping nothing unless chosen.
+  assert.deepEqual(await bumper.packagePlan({ repo }), { choice: 'none', source: 'package',
+    targets: [{ path: 'package.json', current: '1.2.3', next: { patch: '1.2.4', minor: '1.3.0', major: '2.0.0' }, lock: 'package-lock.json' }] });
   await automations.saveConfig(cwd, { pipelines: [TEMPLATES.find(item => item.id === 'bump-version').build()] });
   const plan = await bumper.plan({ repo, files: ['src/game.js'] });
-  assert.deepEqual(plan, { choice: 'patch', targets: [{ path: 'package.json', current: '1.2.3', next: { patch: '1.2.4', minor: '1.3.0', major: '2.0.0' }, lock: 'package-lock.json' }] });
+  assert.deepEqual(plan, { choice: 'patch', targets: [{ path: 'package.json', current: '1.2.3', next: { patch: '1.2.4', minor: '1.3.0', major: '2.0.0' }, lock: 'package-lock.json' }], source: 'automation' });
 
   // Applied and reverted byte for byte.
   {

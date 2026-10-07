@@ -50,8 +50,25 @@ export function createBumper({ log, automations }) {
       .flatMap(pipeline => pipeline.actions.filter(action => action.type === 'bumpVersion' && evaluateConditions(action.conditions, context)));
     if (!actions.length) return null;
 
+    const targets = await readTargets(cwd, new Set(actions.flatMap(action => bumpTargets(action, changedFiles))));
+    return targets.length ? { choice: actions[0].default, targets, source: 'automation' } : null;
+  }
+
+  /**
+   * The root package.json as a bump target, for a commit with no "Bump
+   * version" automation: the person may still choose a version in the
+   * commit-proposal dialog. `choice` is 'none' — nothing is bumped unless
+   * they ask. null when there is no package.json with an X.Y.Z version.
+   * @param {{ repo: { path: string } }} request
+   */
+  async function packagePlan({ repo }) {
+    const targets = await readTargets(repo.path, ['package.json']);
+    return targets.length ? { choice: 'none', targets, source: 'package' } : null;
+  }
+
+  async function readTargets(cwd, files) {
     const targets = [];
-    for (const file of new Set(actions.flatMap(action => bumpTargets(action, changedFiles)))) {
+    for (const file of files) {
       if (!validBumpPath(file)) continue;
       const text = await readInside(cwd, file);
       const current = text === null ? null : findStringValue(text, ['version'])?.value ?? null;
@@ -62,7 +79,7 @@ export function createBumper({ log, automations }) {
       const lock = lockText !== null && LOCK_PATHS.some(keys => findStringValue(lockText, keys)?.value === current) ? lockPath : null;
       targets.push({ path: file, current, next, lock });
     }
-    return targets.length ? { choice: actions[0].default, targets } : null;
+    return targets;
   }
 
   /**
@@ -113,7 +130,7 @@ export function createBumper({ log, automations }) {
     }
   }
 
-  return { plan, apply, revert };
+  return { plan, packagePlan, apply, revert };
 }
 
 /**

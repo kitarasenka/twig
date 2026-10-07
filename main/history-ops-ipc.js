@@ -2,7 +2,7 @@ import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { loadOperationState, resolveGitDir } from './git/operation-state.js';
 import { cherryPick, cherryPickMany, findMergeCommits, merge, reset, revert, revertMany, sequencer } from './git/history-ops.js';
-import { checkout, createBranch, createTag, deleteBranch, deleteTag, renameBranch, setUpstream } from './git/refs-ops.js';
+import { checkout, createBranch, createTag, deleteBranch, deleteTag, readTagRef, renameBranch, setUpstream } from './git/refs-ops.js';
 import { loadBisectState, runBisect } from './git/bisect.js';
 import { rewordHead } from './git/commit-ops.js';
 import { clearPlan, planFiles, startRebase } from './git/rebase.js';
@@ -158,7 +158,10 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
   handler('refs:create-tag', 4, (options, name, oid, message) => {
     if (typeof message !== 'string' || message.length > 10000) throw new Error('Invalid tag request');
     return withState(options, () => createTag({ ...options, name: asString(name, 255), oid, message })
-      .then(() => ({ ok: true, message: null })));
+      .then(async () => {
+        const ref = await readTagRef({ ...options, name });
+        return { ok: true, message: null, undo: ref ? [name, ref] : null };
+      }));
   });
 
   handler('refs:checkout', 3, (options, target, detach) => {

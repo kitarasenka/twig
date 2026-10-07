@@ -25,6 +25,15 @@ export async function proposeCommit(ctx, args) {
   return outcome ? `${outcome}\n` : pending(id);
 }
 
+/** propose_commit for a release: the same dialog with the version bump and the tag switched on. */
+export async function newVersion(ctx, args) {
+  const store = proposals(ctx);
+  const repo = ctx.repository(args.repository);
+  const id = await store.propose({ repo, kind: 'release', message: args.message ?? null, push: args.push, bump: args.bump, tag: args.tag ?? null });
+  const outcome = await store.wait(id, ctx.waitMs ?? WAIT_MS);
+  return outcome ? `${outcome}\n` : pending(id);
+}
+
 export async function awaitCommit(ctx, args) {
   const outcome = await proposals(ctx).wait(args.proposalId, ctx.waitMs ?? WAIT_MS);
   return outcome ? `${outcome}\n` : pending(args.proposalId);

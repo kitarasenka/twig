@@ -102,6 +102,17 @@ export function createTag({ cwd, log, name, oid, message = '' }) {
 }
 
 /**
+ * What `refs/tags/<name>` holds — the tag object of an annotated tag, the
+ * commit of a lightweight one — or null when there is no such tag. Undo keeps
+ * this so it deletes (and Redo recreates) exactly that tag.
+ * @param {{ cwd: string, log: object, name: string }} options
+ */
+export async function readTagRef({ cwd, log, name }) {
+  const result = await runGit({ cwd, log, argv: ['rev-parse', '--verify', '--quiet', `refs/tags/${validateRefName(name)}`], operation: `Read tag ${name}` });
+  return result.code === 0 ? result.stdout.trim() : null;
+}
+
+/**
  * @param {{ cwd: string, log: object, target: string, detach?: boolean }} options
  * @returns {Promise<true>} `target` is a branch name unless `detach` is set, in which case it is an object id
  */

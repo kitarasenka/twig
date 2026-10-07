@@ -378,6 +378,8 @@ export default function App() {
     try {
       const answer = await window.twig.decideCommitProposal(proposal.id, decision);
       if (answer.stale) { setProposal(answer.stale); setProposalRun({ running: false, step: null, failure: '' }); return; }
+      // A tag that cannot be made (it exists, a bad name): the dialog stays open to fix it.
+      if (answer.invalid) { setProposalRun({ running: false, step: null, failure: '', invalid: answer.invalid }); return; }
       if (decision.action === 'cancel') { setProposal(null); setProposalRun({ running: false, step: null, failure: '' }); return; }
       if (answer.ok) {
         setProposal(null);
@@ -651,7 +653,7 @@ export default function App() {
         setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
       }} />}
     </Dialog>}
-    {proposal && <CommitProposalDialog key={proposal.id} view={proposal} running={proposalRun.running} step={proposalRun.step} failure={proposalRun.failure}
+    {proposal && <CommitProposalDialog key={proposal.id} view={proposal} running={proposalRun.running} step={proposalRun.step} failure={proposalRun.failure} invalid={proposalRun.invalid}
       onDecide={decision => void decideProposal(decision)} onClose={() => { setProposal(null); setProposalRun({ running: false, step: null, failure: '' }); }} />}
     {pushGate && <ExecutionPanel event="pre-push" label="Before Push" phase="pre" steps={pushGate.steps} result={pushGate.result}
       blocked={pushGate.blocked} onClose={() => closePushGate(false)} onRetry={() => closePushGate(false)}

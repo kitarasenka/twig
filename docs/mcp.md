@@ -17,9 +17,9 @@ agent as few tokens as possible:
   because the per-file `diff --git` / `index` / `---` / `+++` headers are left out.
 - **Progressive disclosure when you want it.** A summary first, then one file, then one hunk.
 
-Reading is all an agent can do on its own. The one write, [`propose_commit`](#proposing-a-commit),
-is off unless you allow it, and even then it only *asks*: 🌱 Twig shows the commit in its
-window and nothing happens until you press Commit there. No tool stages, checks out, resets,
+Reading is all an agent can do on its own. The writes, [`propose_commit`](#proposing-a-commit)
+and [`new_version`](#a-new-version), are off unless you allow them, and even then they only
+*ask*: 🌱 Twig shows the commit in its window and nothing happens until you press Commit there. No tool stages, checks out, resets,
 merges, rebases, deletes a branch, or runs a command.
 
 ## Turn it on
@@ -222,11 +222,12 @@ out the plan in 🌱 Twig, where staging works by line and every step can be und
 
 Settings → AI agents (MCP) → **Allow agents to propose commits** (Off by default, and Off
 even while the server is on; stored next to the server switch in `mcp.json`). While it is
-off, `propose_commit` answers `WRITE_DISABLED`.
+off, `propose_commit` and `new_version` answer `WRITE_DISABLED`.
 
 | Tool | Arguments | Returns |
 |---|---|---|
 | `propose_commit` | `message` (subject, blank line, body), `push` (false), `repository?` | Text: the outcome, or `waiting` with a `proposalId` if the person has not answered within ~45 s. |
+| `new_version` | `bump` (`patch`), `message?`, `tag?`, `push` (true), `repository?` | The same, for a release: see [A new version](#a-new-version). |
 | `await_commit` | `proposalId` | Waits up to ~45 s more and answers the same way. |
 
 What happens:
@@ -250,17 +251,51 @@ What happens:
 5. **Commit & Push** then runs the pre-push automations and the app's own push
    (`git push`, or `git push --set-upstream origin <branch>`).
 
-**Version bump.** If the repository has a pre-commit pipeline with a **Bump version** action
-(Automations → template "Bump version", or `"type": "bumpVersion"` in `.twig/hooks.json`), the
-dialog also shows "current → new" and a choice of patch, minor, major or no bump, starting at
-the action's default. The bump happens with the commit, after every automation passed and
-right before `git commit`, so a refused commit never leaves a bumped file. It changes only the
-`version` string of the package.json the action names (`"target": "file"`, `"path"`) — or of
-every `modules/<dir>/package.json` with a change (`"target": "modules"`) — and, when present,
-the root `"version"` and `packages[""].version` of the package-lock.json next to it. The
-edit is textual, so formatting and line endings stay; npm never runs. The bumped files go into
-the same commit, and the answer gets a line per file: `version package.json: 1.3.0 → 1.3.1`.
-The commit panel offers the same choice.
+**Version and tag.** Under the message the dialog has two switches, so the version and the
+tag are chosen at commit time whichever agent proposed the commit — one that asked you about
+the version, or one that never did.
+
+- **Bump version** with patch, minor or major, showing "current → new". It is offered when
+  the repository has a pre-commit pipeline with a **Bump version** action (Automations →
+  template "Bump version", or `"type": "bumpVersion"` in `.twig/hooks.json`) — the switch then
+  starts at the action's default — or, without one, for the root `package.json` if its
+  `version` is X.Y.Z (the switch starts off). The bump happens with the commit, after every
+  automation passed and right before `git commit`, so a refused commit never leaves a bumped
+  file. It changes only the `version` string of the package.json the action names
+  (`"target": "file"`, `"path"`) — or of every `modules/<dir>/package.json` with a change
+  (`"target": "modules"`) — and, when present, the root `"version"` and
+  `packages[""].version` of the package-lock.json next to it. The edit is textual, so
+  formatting and line endings stay; npm never runs. With no package.json the version is the
+  previous tag's, and the switch only changes the tag.
+- **Tag this commit** with a name that follows the previous tag: the newest tag reachable from
+  HEAD that has an X.Y.Z in it gives the pattern (`twig-v0.16.2` → `twig-v0.16.3`; a
+  pre-release suffix such as `-rc.1` is not carried over), and with no such tag it is
+  `v<version>`. The name follows the version until you type your own ("Follow the version"
+  goes back). A tag that already exists or is not a valid name keeps the dialog open with the
+  reason. The tag is lightweight (`git tag -- <name> HEAD`, right after the commit) and is its
+  own Undo record: the first **Undo** deletes the tag, the next takes the commit back.
+  **Commit & Push** pushes the branch and then the tag to the same remote
+  (`git push --progress <remote> -- refs/tags/<name>`).
+
+The bumped files go into the same commit. The commit panel offers the version choice too, when
+a Bump version action applies.
+
+### A new version
+
+`new_version` is `propose_commit` for a release: the same dialog with **Bump version**
+(the agent's `bump`, patch by default) and **Tag this commit** switched on, and Commit & Push
+preselected. Without `message` the commit is `chore(release): <version>`, following the
+version you pick until you edit it; `tag` suggests another tag name. A clean tree is fine:
+the commit is the version bump alone, and with the bump switched off there is no commit at
+all — Create tag / Tag & Push tag HEAD. The agent should not bump the files itself first.
+
+```
+committed 5d0c41e2a9b3 on main: chore(release): 1.5.0
+version package.json: 1.4.0 → 1.5.0
+tagged v1.5.0 at 5d0c41e2a9b3
+pushed to origin/main
+pushed tag v1.5.0 to origin
+```
 
 Answers, one line each:
 
@@ -271,13 +306,14 @@ pushed to origin/main
 
 or `cancelled by user`, `not committed: a pre-commit automation blocked it` followed by the
 failing step and the end of its output, `not committed: Commit failed. …` followed by what the
-Git hook printed, `push failed: <what Git said>`, `superseded: a newer proposal replaced it`,
+Git hook printed, `push failed: <what Git said>`, `not tagged: …`, `tag push failed: …`, `superseded: a newer proposal replaced it`,
 `expired: nobody confirmed it in 🌱 Twig` (after 30 minutes). One proposal is on screen at a
 time. 🌱 Twig adds no trailer to the message.
 
 Errors before anything is shown: `WRITE_DISABLED`, `NOTHING_TO_COMMIT`, `REPOSITORY_BUSY`
 (operation in progress, conflicts, detached HEAD), `CONFIRMATION_UNAVAILABLE` (the window is
-closed), `PROPOSAL_NOT_FOUND` (await_commit with an unknown or expired id).
+closed), `PROPOSAL_NOT_FOUND` (await_commit with an unknown or expired id). `new_version`
+does not need changes, so it answers `NOTHING_TO_COMMIT` only on a branch with no commit.
 
 Why two tools: MCP clients give up on a call after a while (Codex after 60 s by default), and a
 person may think for minutes. `propose_commit` answers by itself within ~45 s either way.
@@ -290,8 +326,8 @@ person may think for minutes. `propose_commit` answers by itself within ~45 s ei
   and no network listener. If the userData path is too long for a socket, 🌱 Twig uses a `0700`
   folder under your temp directory. It refuses to listen there if the folder belongs to anyone
   else or other users can open it.
-- **Reads by itself, writes only through you.** Every tool but `propose_commit` and
-  `await_commit` only reads and is marked `readOnlyHint: true`. Those two are marked
+- **Reads by itself, writes only through you.** Every tool but `propose_commit`,
+  `new_version` and `await_commit` only reads and is marked `readOnlyHint: true`. Those three are marked
   `readOnlyHint: false`, are off until you allow them in Settings, and change nothing until
   you confirm in 🌱 Twig's window. There is no `run_command`, `run_git`, `shell` or `execute`.
 - **Connected repositories only.** `repository` is resolved against the list you connected in
@@ -348,7 +384,7 @@ AI client ──stdio──▶ twig-mcp.mjs (bridge) ──local socket──▶
 
 ```sh
 node scripts/checks/mcp.mjs     # part of npm test: tools on real repositories, read-only, transport, bridge
-node scripts/checks/mcp-commit.mjs   # part of npm test: propose_commit on real Git — cancel, stale tree, automations, hooks, Undo, push
+node scripts/checks/mcp-commit.mjs   # part of npm test: propose_commit and new_version on real Git — cancel, stale tree, automations, hooks, Undo, tags, push
 npm run build && node scripts/mcp-smoke.mjs   # part of npm run test:smoke: Settings, a real bridge on the app executable
 ```
 

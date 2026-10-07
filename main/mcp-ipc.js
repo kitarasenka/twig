@@ -79,8 +79,9 @@ export function registerMcpIpc(getWindow, entryUrl, { repositories, journal, sto
     const [id, decision] = args;
     if (!valid(event, args, 2) || typeof id !== 'string' || id.length > 64 || !decision || typeof decision !== 'object'
       || !DECISIONS.includes(decision.action) || typeof decision.message !== 'string' || decision.message.length > MESSAGE_LIMIT
-      || !BUMPS.includes(decision.bump ?? null)) throw new Error('Invalid MCP request');
-    return proposals.decide(id, { action: decision.action, message: decision.message, bump: decision.bump ?? null });
+      || !BUMPS.includes(decision.bump ?? null)
+      || !(decision.tag === undefined || decision.tag === null || (typeof decision.tag === 'string' && decision.tag.length <= 255))) throw new Error('Invalid MCP request');
+    return proposals.decide(id, { action: decision.action, message: decision.message, bump: decision.bump ?? null, tag: decision.tag ?? null });
   });
   // One-way and frequent (every selection change), so a malformed report is
   // dropped rather than thrown back at the window.

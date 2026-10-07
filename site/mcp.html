@@ -131,7 +131,7 @@ untracked:
     </section>
 
     <section class="tools-section wrap section-space" id="tools" aria-labelledby="tools-title">
-      <div class="section-heading"><div><p class="eyebrow">11 ИНСТРУМЕНТОВ · 9 ЧИТАЮТ, 2 ПРЕДЛАГАЮТ КОММИТ</p><h2 id="tools-title">Небольшие инструменты<br><span>вместо get_everything.</span></h2></div><p>Каждый принимает необязательный <code>repository</code> — имя, корень или любой путь внутри. Без него читается репозиторий рабочей папки агента, если он подключён, иначе открытый в 🌱 Twig — и тогда ответ первым делом называет его.</p></div>
+      <div class="section-heading"><div><p class="eyebrow">12 ИНСТРУМЕНТОВ · 9 ЧИТАЮТ, 3 ПРЕДЛАГАЮТ КОММИТ</p><h2 id="tools-title">Небольшие инструменты<br><span>вместо get_everything.</span></h2></div><p>Каждый принимает необязательный <code>repository</code> — имя, корень или любой путь внутри. Без него читается репозиторий рабочей папки агента, если он подключён, иначе открытый в 🌱 Twig — и тогда ответ первым делом называет его.</p></div>
       <div class="tool-grid">
         <article data-reveal><code>get_workspace_context</code><p>Сводка: ветка, upstream, операция, счётчики файлов, выделенное в окне.</p></article>
         <article data-reveal><code>list_repositories</code><p>Подключённые репозитории и тот, что открыт в 🌱 Twig.</p></article>
@@ -142,7 +142,8 @@ untracked:
         <article data-reveal><code>get_commit</code><p>Сообщение, автор, родители и файлы со счётчиками строк. Без патча.</p></article>
         <article data-reveal><code>get_commit_diff</code><p>Патч коммита: целиком для маленького, по файлу или по ханку для большого.</p></article>
         <article data-reveal><code>get_ui_context</code><p>Что открыто в окне: вид, коммит, диапазон, файл. Чего 🌱 Twig не хранит — <code>null</code>.</p></article>
-        <article data-reveal><code>propose_commit</code><p>Предлагает коммит всех изменений с сообщением агента. Окно показывает файлы и сообщение; Commit, Commit &amp; Push или Cancel — ваш выбор. Выключен, пока вы не разрешите.</p></article>
+        <article data-reveal><code>propose_commit</code><p>Предлагает коммит всех изменений с сообщением агента. Окно показывает файлы и сообщение, а переключатели — поднять ли версию и поставить ли тег; Commit, Commit &amp; Push или Cancel — ваш выбор. Выключен, пока вы не разрешите.</p></article>
+        <article data-reveal><code>new_version</code><p>Предлагает выпуск: коммит с поднятой версией (patch, minor или major) и тегом по образцу прошлого — <code>v1.2.3</code> → <code>v1.2.4</code>. Версию и тег вы меняете переключателями; Commit &amp; Push отправляет коммит и тег.</p></article>
         <article data-reveal><code>await_commit</code><p>Ждёт вашего ответа дальше, если вы думаете дольше ~45 секунд, и отвечает тем же: хэш коммита, пуш или отмена.</p></article>
       </div>
     </section>

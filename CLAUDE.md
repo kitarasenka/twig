@@ -17,6 +17,45 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+MCP `new_version` и переключатели версии/тега в диалоге предложения
+(2026-10-07, вне вех; по поручению пользователя: Claude со скиллом спрашивает
+версию сам, другие агенты нет — выбор должен быть в 🌱 Twig). В диалоге
+`CommitProposalDialog` под сообщением блок из двух `.switch`: **Bump version**
+(patch/minor/major, «current → new») и **Tag this commit** (поле имени).
+Bump предлагается, если есть автоматизация «Bump version» (как раньше, старт
+с её default) или без неё — корневой package.json с X.Y.Z
+(`bumper.packagePlan`, `source: 'package'`, старт Off); без package.json
+версия берётся из прошлого тега и меняет только тег. Имя тега следует версии
+по образцу прошлого (`readPreviousTag`: новейший тег, достижимый из HEAD, с
+X.Y.Z; `twig-v0.16.2` → `twig-v0.16.3`, суффикс `-rc…` не переносится, без
+тегов — `v<версия>`), пока человек не впишет своё («Follow the version»
+возвращает). Существующий или кривой тег → main отвечает `{ invalid }`, диалог
+остаётся открытым (`proposalRun.invalid` в App). Тег лёгкий,
+`git tag -- <имя> HEAD` сразу после коммита, **своя запись Undo**
+`refs:create-tag` (args `[имя, значение ref]`; Undo `update-ref -d` с
+проверкой значения, Redo `update-ref … 000…`) — первый Undo снимает тег,
+второй коммит; заодно тег из меню коммита тоже стал отменяемым. Commit & Push
+пушит ветку, затем тег `push --progress <remote> -- refs/tags/<имя>` на remote
+ветки (`pushTarget.remote` из `branch.<b>.remote`). Инструмент **`new_version`**
+(`bump` enum = patch, `message?`, `tag?`, `push` = true): тот же диалог
+(«New version proposed by an agent»), оба переключателя On; без `message` —
+`chore(release): <версия>`, следующий за выбором; чистое дерево разрешено
+(коммит = только bump, без bump — Create tag / Tag & Push только тегируют
+HEAD). Ответ агенту: `version …`, `tagged <tag> at <hash>`, `pushed tag … to
+<remote>`, `not tagged: …`, `tag push failed: …`. `arguments.js` теперь
+проверяет `enum`. Чистые модули: `renderer/src/features/automations/
+release-tag.js` (parse/pick/releaseVersion/releaseTagName/tagNameProblem/
+tagArgv/tagPushArgv), `proposal-view.js` (`releaseState`, `stepLabel`,
+`actionLabels`, `proposalCommands(view, push, { commit, tag })`). Канал
+`mcp:proposal-decide` принимает `tag`. Проверки: `mcp-commit.mjs` — слова,
+теги, тег + Undo/Redo/Undo, `new_version` с bump и push коммита и тега в bare,
+существующий тег, только тег, «нечего делать»; `version-bump.mjs` —
+`packagePlan`; `mcp.mjs`/`mcp-smoke.mjs` — 12 инструментов, смоук на демо
+(версия из `v0.0.2`, minor → `v0.1.0`, занятый тег, Commit, два Undo), снимки
+`artifacts/mcp-release-{dark,light}.png` (просмотрены). `docs/mcp.md`
+(«Version and tag», «A new version»), `site/mcp.html` — 12 инструментов.
+Панель коммита (не агентская) тег не предлагает. Версия не менялась.
+
 Замер токенов MCP против git на сайте (2026-10-06, вне вех): на `site/mcp.html`
 секция `#tokens` (пункт «Токены» в навигации) — три плитки, таблица и «Что
 ещё стоит токенов» / «Как мерили». Скрипт `scripts/mcp-tokens.mjs` (не

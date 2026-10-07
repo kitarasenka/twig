@@ -119,7 +119,7 @@ try {
   assert.equal(init.result.serverInfo.name, 'twig');
   assert.equal(init.result.serverInfo.version, await page.evaluate(() => window.twig.getAppInfo().then(info => info.version)));
   const tools = (await bridge.request('tools/list')).result.tools.map(tool => tool.name);
-  assert.deepEqual(tools, ['get_workspace_context', 'list_repositories', 'list_changes', 'get_diff', 'get_diff_hunk', 'get_history', 'get_commit', 'get_commit_diff', 'get_ui_context', 'propose_commit', 'await_commit']);
+  assert.deepEqual(tools, ['get_workspace_context', 'list_repositories', 'list_changes', 'get_diff', 'get_diff_hunk', 'get_history', 'get_commit', 'get_commit_diff', 'get_ui_context', 'propose_commit', 'new_version', 'await_commit']);
 
   // The workspace the window has open, with the demo's README edit and untracked note.
   const context = await bridge.tool('get_workspace_context');
@@ -211,6 +211,7 @@ try {
   assert.equal(await proposalDialog.getByLabel(/^Message/).inputValue(), proposal.message);
   await proposalDialog.getByText('$ git add --all').waitFor();
   await proposalDialog.getByText(/Push goes to origin\/main\./).waitFor();
+  assert.equal(await proposalDialog.getByLabel('Tag this commit').isChecked(), false, 'propose_commit starts without a tag');
   for (const theme of ['dark', 'light']) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
     await page.screenshot({ path: `artifacts/mcp-proposal-${theme}.png`, animations: 'disabled' });
@@ -236,6 +237,36 @@ try {
   await page.evaluate(id => window.twig.moveUndo(id, 'undo'), demo.id);
   assert.equal((await bridge.tool('get_workspace_context')).branch.head, headBefore, 'Undo took the agent’s commit back');
 
+  // new_version: the same dialog with the version and the tag on. The demo has no package.json,
+  // so the version comes from its last tag (v0.0.2) and the tag follows the chosen step.
+  const releaseDialog = page.getByRole('dialog', { name: 'New version proposed by an agent' });
+  answer = bridge.request('tools/call', { name: 'new_version', arguments: { repository: demo.path, push: false } });
+  await releaseDialog.waitFor();
+  assert.equal(await releaseDialog.getByLabel('Tag this commit').isChecked(), true);
+  assert.equal(await releaseDialog.getByLabel('Bump version').isChecked(), true);
+  assert.equal(await releaseDialog.getByLabel('Tag name').inputValue(), 'v0.0.3');
+  assert.equal(await releaseDialog.getByLabel(/^Message/).inputValue(), 'chore(release): 0.0.3', 'the message follows the version');
+  await releaseDialog.getByLabel('Version step').selectOption('minor');
+  assert.equal(await releaseDialog.getByLabel('Tag name').inputValue(), 'v0.1.0');
+  await releaseDialog.getByText('previous: v0.0.2').waitFor();
+  await releaseDialog.getByText('$ git tag -- v0.1.0 HEAD').waitFor();
+  await releaseDialog.getByLabel('Tag name').fill('v0.0.2');
+  await releaseDialog.getByText('v0.0.2 already exists').waitFor();
+  assert.equal(await releaseDialog.getByRole('button', { name: 'Commit: v0.0.2 already exists' }).isDisabled(), true, 'an existing tag cannot be pressed through');
+  await releaseDialog.getByRole('button', { name: 'Follow the version' }).click();
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    await page.screenshot({ path: `artifacts/mcp-release-${theme}.png`, animations: 'disabled' });
+  }
+  await releaseDialog.getByRole('button', { name: 'Commit', exact: true }).click();
+  const released = (await answer).result.content[0].text;
+  assert.match(released, /^committed ([0-9a-f]{12}) on main: chore\(release\): 0\.1\.0\ntagged v0\.1\.0 at \1\n$/);
+  await releaseDialog.waitFor({ state: 'hidden' });
+  await page.evaluate(id => window.twig.moveUndo(id, 'undo'), demo.id);
+  assert.equal((await page.evaluate(id => window.twig.getTagDetails(id), demo.id)).some(tag => tag.name === 'v0.1.0'), false, 'the first Undo deletes the tag');
+  await page.evaluate(id => window.twig.moveUndo(id, 'undo'), demo.id);
+  assert.equal((await bridge.tool('get_workspace_context')).branch.head, headBefore, 'the second takes the commit back');
+
   // The choice survives a restart, and the same bridge reattaches by itself.
   await app.close();
   const offline = await bridge.tool('get_workspace_context');
@@ -255,7 +286,7 @@ try {
   assert.equal((await bridge.tool('list_changes')).error.code, 'TWIG_UNAVAILABLE');
   await page.keyboard.press('Escape');
   assert.deepEqual(errors, []);
-  console.log('mcp-smoke: settings, bridge on the app executable, workspace and UI context, journal, commit proposal (refused, cancelled, committed, undone), restart, off');
+  console.log('mcp-smoke: settings, bridge on the app executable, workspace and UI context, journal, commit proposal (refused, cancelled, committed, undone), new_version (version from the tag, tag, undone), restart, off');
 } finally {
   await bridge?.close().catch(() => {});
   await app?.close().catch(() => {});

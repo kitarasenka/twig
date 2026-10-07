@@ -21,7 +21,7 @@ export const INSTRUCTIONS = [
   'To go smaller: get_diff (one file) → get_diff_hunk (one hunk); for history: get_history → get_commit → get_commit_diff.',
   'Diffs and file lists come back as plain text in git’s own shape (`M +2 -1 path`, then the hunks).',
   'With no `repository`, tools read the repository of your working directory if it is connected, else the one open in 🌱 Twig, and the answer starts with which.',
-  'Nothing here changes a repository by itself. The one write, propose_commit, shows your commit message and the changed files in 🌱 Twig’s window; the person edits, commits (and pushes) or cancels there, and the tool answers with what happened. There is no stage, checkout, reset or command execution.'
+  'Nothing here changes a repository by itself. The writes, propose_commit and new_version, show your commit message and the changed files in 🌱 Twig’s window; the person edits, picks the version and tag, commits (and pushes) or cancels there, and the tool answers with what happened. There is no stage, checkout, reset or command execution.'
 ].join(' ');
 
 const repository = {
@@ -106,8 +106,17 @@ export const TOOLS = Object.freeze([
       message: { type: 'string', description: 'The full commit message: subject line, blank line, body.' },
       push: { type: 'boolean', default: false, description: 'Suggest Commit & Push: after committing, push to the upstream (or set origin/<branch> as upstream). The person can still choose Commit only.' }
     }, ['message'], PROPOSES),
+  tool('new_version', 'Propose a new version',
+    'Asks the person to release a new version: commit ALL current changes together with a version bump, tag that commit, and with Commit & Push push the commit and the tag. 🌱 Twig shows the same dialog as propose_commit with two switches on: Bump version (package.json, and package-lock.json’s root entries; your `bump` is preselected; with no package.json the version comes from the previous tag) and Tag this commit (named after the previous tag, e.g. v1.2.3 → v1.2.4, or `tag`). The person can change both. Works on a clean tree too: the commit is the bump alone, or with no bump only HEAD is tagged. Answers like propose_commit, plus `version <file>: 1.2.3 → 1.2.4`, `tagged <tag> at <hash>`, `pushed tag <tag> to <remote>`. Do not bump the version in the files yourself before calling it.',
+    {
+      repository,
+      bump: { type: 'string', enum: ['patch', 'minor', 'major'], default: 'patch', description: 'The version step to preselect.' },
+      message: { type: 'string', description: 'The commit message. Omit it for `chore(release): <version>`, which follows the version the person picks.' },
+      tag: { type: 'string', description: 'A tag name to suggest instead of the one made from the previous tag.' },
+      push: { type: 'boolean', default: true, description: 'Suggest Commit & Push (the commit and the tag). The person can still choose Commit only.' }
+    }, [], PROPOSES),
   tool('await_commit', 'Wait for a proposed commit',
-    'Waits up to ~45 s more for the person’s answer to a propose_commit that came back `waiting`, and answers the same way propose_commit does.',
+    'Waits up to ~45 s more for the person’s answer to a propose_commit or new_version that came back `waiting`, and answers the same way they do.',
     { proposalId: { type: 'string', description: 'The proposalId from a `waiting` answer.' } }, ['proposalId'], PROPOSES)
 ]);
 

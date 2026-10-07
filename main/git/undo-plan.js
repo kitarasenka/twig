@@ -58,6 +58,15 @@ export function buildUndoPlan(entry, direction) {
     return { commands: moveBranchInverse(args, direction), destructive: false,
       explanation: undo ? `Moves ${args[0]} back to ${args[1].slice(0, 7)}, where it was before.` : `Moves ${args[0]} to ${args[2].slice(0, 7)} again.` };
   }
+  if (kind === 'refs:create-tag') {
+    if (!Array.isArray(args) || args.length !== 2) throw new TypeError('Invalid saved tag');
+    branchName(args[0]); validateOid(args[1]);
+    // Both are compare-and-swap: Undo deletes the tag only while it still
+    // points where it was made, Redo recreates it only if no such tag exists.
+    const ref = `refs/tags/${args[0]}`;
+    return { commands: [undo ? ['update-ref', '-d', ref, args[1]] : ['update-ref', ref, args[1], '0'.repeat(args[1].length)]], destructive: false,
+      explanation: undo ? `Deletes the tag ${args[0]} that was just created.` : `Creates the tag ${args[0]} again.` };
+  }
   if (kind === 'worktree:commit' || kind === 'ops:reword') {
     // A reword always has a commit under it; only a first commit undoes to nothing.
     commands = undo && !before.head ? [['update-ref', '-d', 'HEAD', after.head]]
@@ -98,6 +107,6 @@ export function inverseReason(kind, before, after, args) {
   if (kind === 'stash:pop' && args[0] > 0) return 'Undo cannot safely restore the position of a popped stash below the top entry.';
   if (kind === 'refs:checkout' && !before.head) return 'Checkout from an unborn branch has no revision to restore.';
   if (kind === 'refs:create-branch' && !before.head) return 'There is no previous revision to restore.';
-  if (!['worktree:discard', 'worktree:ignore', 'reflog:move-branch', 'worktree:commit', 'ops:reword', 'ops:merge', 'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind)) return `${kind.replaceAll(':', ' ')} ends the Undo chain.`;
+  if (!['worktree:discard', 'worktree:ignore', 'reflog:move-branch', 'refs:create-tag', 'worktree:commit', 'ops:reword', 'ops:merge', 'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind)) return `${kind.replaceAll(':', ' ')} ends the Undo chain.`;
   return null;
 }

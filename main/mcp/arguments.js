@@ -9,7 +9,7 @@ const TYPES = {
 
 /**
  * Checks tool arguments against the subset of JSON Schema the catalog uses —
- * `type` (one or several), `minimum`/`maximum`, `required` and no extra keys —
+ * `type` (one or several), `enum`, `minimum`/`maximum`, `required` and no extra keys —
  * and fills in declared defaults. Strings are capped so no argument can make a
  * tool hold an unbounded value. A mismatch is INVALID_ARGUMENT, not a crash.
  * @param {{ properties: object, required: string[] }} schema
@@ -31,6 +31,7 @@ export function validateArguments(schema, input) {
     if (value === undefined) continue;
     const types = Array.isArray(spec.type) ? spec.type : [spec.type];
     if (!types.some(type => TYPES[type](value))) throw new McpError('INVALID_ARGUMENT', `${key} must be ${types.join(' or ')}`);
+    if (spec.enum && !spec.enum.includes(value)) throw new McpError('INVALID_ARGUMENT', `${key} must be one of ${spec.enum.join(', ')}`);
     if (typeof value === 'string' && (value.length > 4096 || value.includes('\0'))) throw new McpError('INVALID_ARGUMENT', `${key} is too long or contains NUL`);
     if (typeof value === 'number' && ((spec.minimum !== undefined && value < spec.minimum) || (spec.maximum !== undefined && value > spec.maximum))) {
       throw new McpError('INVALID_ARGUMENT', `${key} must be between ${spec.minimum} and ${spec.maximum}`);
