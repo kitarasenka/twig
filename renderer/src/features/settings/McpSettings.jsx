@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Bot, Check, Copy, FileDiff, History, ListChecks, MessageSquareText, MousePointerClick, Plug, ShieldCheck } from 'lucide-react';
+import { TOOLS } from '../../../../main/mcp/protocol.mjs';
 import Button from '../../ui/Button.jsx';
 import { mcpStatusLine } from './mcp-view.js';
 
@@ -83,6 +84,17 @@ export default function McpSettings({ onBusyChange, onChange = () => {} }) {
       : <><strong>Read-only.</strong> There is no tool to commit, stage, check out or run commands. Every Git command an agent causes is in the console’s Full History, tagged MCP.</>}</span></p>
     <h3 className="mcp-heading"><Bot aria-hidden="true" />What your agent gets</h3>
     <ul className="mcp-gives">{GIVES.map(item => <li key={item.title}><item.icon aria-hidden="true" /><span><strong>{item.title}</strong><small>{item.text}</small></span></li>)}</ul>
+    <h3 className="mcp-heading"><ListChecks aria-hidden="true" />Available MCP tools</h3>
+    <p className="muted mcp-tools-note">These names and descriptions are the tools agents receive from Twig. Commit tools can only propose a commit; Twig still asks you to approve it.</p>
+    <ul className="mcp-tool-list" aria-label="MCP tools and descriptions">{TOOLS.map(tool => {
+      const readOnly = tool.annotations.readOnlyHint;
+      const access = readOnly ? 'Read-only' : settings.allowCommits ? 'Commit proposal enabled' : 'Commit proposal disabled';
+      return <li key={tool.name}>
+        <div className="mcp-tool-title"><span><strong>{tool.title}</strong><code>{tool.name}</code></span>
+          <small className={readOnly ? '' : 'mcp-tool-write'}>{access}</small></div>
+        <p>{tool.description}</p>
+      </li>;
+    })}</ul>
     <h3 className="mcp-heading"><Plug aria-hidden="true" />Connect an agent</h3>
     <ol className="mcp-steps"><li>Turn the server <strong>On</strong> above.</li><li>Copy the line for your agent below and run or paste it once.</li><li>Restart the agent and ask it about your repository.</li></ol>
     {CLIENTS.map(client => <div className="mcp-client" key={client.key}>
