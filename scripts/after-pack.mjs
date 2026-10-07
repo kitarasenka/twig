@@ -38,16 +38,11 @@ async function exists(file) {
   try { await access(file); return true; } catch { return false; }
 }
 
-// macOS refuses to run any arm64 binary that carries no signature at all —
-// not a bypassable Gatekeeper warning, but a hard "app is damaged" refusal
-// from the kernel. `build.mac.identity` is `null` (no paid Developer ID
-// certificate exists), which makes electron-builder skip its own signing
-// step entirely and, with it, the `afterSign` hook — see
-// `doSignAfterPack` in electron-builder, which only fires `afterSign` when
-// signing actually happened. `afterPack` always runs regardless, so the
-// ad-hoc signature (no identity, no entitlements, just enough for the
-// kernel to accept the code) goes here instead.
+// Without a Developer ID identity, electron-builder skips signing and its
+// afterSign hook. Keep an ad-hoc signature for unsigned builds so Apple
+// Silicon can run them; signed releases use electron-builder's signer.
 async function adHocSignMac(context) {
+  if (process.env.CSC_LINK || process.env.CSC_NAME) return;
   const name = context.packager.appInfo.productFilename;
   const appPath = path.join(context.appOutDir, `${name}.app`);
   if (process.platform !== 'darwin') return; // codesign only exists on macOS; mac builds only ever run there

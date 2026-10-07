@@ -67,9 +67,9 @@ assert.equal(await readFile(path.join(linux, 'twig'), 'utf8'), launcher);
 // macOS: the .app gets an ad-hoc signature (no identity, just enough for the
 // kernel to accept it) — that's the difference between a normal Gatekeeper
 // warning and arm64's hard "app is damaged" refusal for wholly unsigned code.
-// build.mac.identity is null, so electron-builder's own afterSign hook never
-// fires (see the comment on adHocSignMac); this only proves our afterPack
-// step reaches a real `codesign` and it accepts the result.
+// With signing secrets absent, the generated builder config sets identity to
+// null, so this only proves our afterPack step reaches a real `codesign` and
+// it accepts the ad-hoc result.
 if (process.platform === 'darwin') {
   const dir = await stagePack('darwin');
   const contentsDir = path.join(dir, '🌱 Twig.app', 'Contents');

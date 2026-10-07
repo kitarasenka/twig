@@ -221,12 +221,16 @@ fontconfig at its own cache directory, so the app starts on hosts whose system
 fontconfig is newer than the one bundled with Electron. Set
 `TWIG_SYSTEM_FONTCONFIG=1` to skip that.
 
-No paid Apple Developer ID or notarization is planned for v1: the macOS build
-is ad-hoc signed (no identity, just enough for arm64 to accept the code at
-all — fully unsigned code is refused outright as "damaged" on Apple Silicon,
-not just warned about) so Gatekeeper falls back to its normal "unidentified
-developer" prompt. Open it via right-click → Open, or allow it in System
-Settings → Privacy & Security — only for a build whose origin you trust.
+The macOS release workflow supports Developer ID signing and notarization when
+its Apple credentials are configured. Add these GitHub Actions repository
+secrets: `MAC_CSC_LINK` (base64-encoded Developer ID Application `.p12`),
+`MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY` (base64-encoded App Store Connect
+`.p8`), `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`. The build enables Hardened
+Runtime, signs the app, notarizes it, and staples Apple's ticket. Until those
+secrets are configured, macOS builds keep the ad-hoc signature so Apple
+Silicon can run them; Gatekeeper still shows the "unidentified developer"
+prompt. Open such a build via right-click → Open, or allow it in System
+Settings → Privacy & Security, only if you trust its origin.
 
 The landing page lives in `site/`. `npm run build:site` writes `site/dist/`,
 `npm run preview:site` serves it at `http://127.0.0.1:5190`. A GitHub Actions
