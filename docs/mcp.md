@@ -4,18 +4,28 @@
 agents such as Claude Code, Codex and Cursor can use it to read structured context from
 the Git repositories you connected in 🌱 Twig, and to see what is selected in its window.
 
-It is **not** a wrapper around the `git` CLI. The tools answer from 🌱 Twig's own Git layer,
-the same readers the graph, staging screen and commit panel use. They are designed to cost an
-agent as few tokens as possible:
+It is **not** a wrapper around the `git` CLI. A tool is here only if it saves an agent
+something over running git itself (fewer tokens, fewer calls) or gives it something git
+can't: what you selected in 🌱 Twig, or your confirmation of a commit. Anything git already
+answers compactly, such as a commit list (`git log --oneline`) or one file's diff
+(`git diff -- <path>`), is left to git. The tools answer from 🌱 Twig's own Git layer, the
+same readers the graph, staging screen and commit panel use:
 
 - **One call for all changes.** `list_changes` with `diffs: true` returns every changed file
   with its patch. Lock files, minified output and very large files are listed with their
-  line counts and a reason instead of being inlined, so a 12 MB generated file costs one line.
+  line counts and the `git diff` that reads them instead of being inlined, so a 12 MB
+  generated file costs one line.
+- **One call for a commit.** `get_commit` returns the message and every file's patch the
+  same way, so explaining a commit doesn't need a second call.
 - **Plain text, in git's own shapes.** File lists look like `M +2 -1 src/app.js`; diffs are
   ordinary unified hunks. Nothing is escaped into JSON strings, so an answer is no larger
   than the same information from `git diff --numstat` plus `git diff`, and usually smaller,
   because the per-file `diff --git` / `index` / `---` / `+++` headers are left out.
-- **Progressive disclosure when you want it.** A summary first, then one file, then one hunk.
+- **Search that filters, not just repackages.** `git log -S foo -p` hands back every hunk of
+  every file that matched; `search_history` returns only a few lines around each changed line
+  that contains `foo`. `get_blame` turns one line per source line into one line per run of
+  lines from the same commit, with each commit's subject once. See
+  [Searching history and blame](#searching-history-and-blame).
 
 Reading is all an agent can do on its own. The writes, [`propose_commit`](#proposing-a-commit)
 and [`new_version`](#a-new-version), are off unless you allow them, and even then they only
@@ -105,7 +115,7 @@ staged:
 +Staged line.
 unstaged:
 ## M +1 -1 package-lock.json
-(lock or generated file: get_diff reads it)
+(lock or generated file: git diff -- package-lock.json)
 ## M +2 -0 src/app.js
 @@ -1 +1,3 @@
  export const one = 1;
@@ -126,19 +136,17 @@ only when it has control characters, quotes, leading/trailing spaces or ` -> `.
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `get_workspace_context` | `repository?` | Name and path, branch (head, upstream, ahead/behind), operation in progress (merge, rebase, cherry-pick, revert, am) with conflict count, counts of staged/unstaged/untracked/conflicted/modified/added/deleted/renamed files, and the selection in 🌱 Twig. No diffs, usually under 800 bytes. |
-| `list_repositories` | — | Connected repositories, and which one is open in 🌱 Twig. |
+| `get_workspace_context` | `repository?` | JSON. Name and path, branch (head, upstream, ahead/behind), operation in progress (merge, rebase, cherry-pick, revert, am) with conflict count, counts of staged/unstaged/untracked/conflicted/modified/added/deleted/renamed files, the selection in 🌱 Twig, and `repositories`: the other connected repositories (`name`, `path`, `openInTwig`, `available: false` when missing, `demo`). Usually under 800 bytes. With no repository to read, it still answers, with `repository: null`, the `reason` and the list. |
 | `list_changes` | `repository?`, `diffs` (false), `contextLines` (0–20, 3), `maxBytes` (4096–100000, 60000), `limit` (1–1000, 200), `cursor?` | Text. The branch and counts, then the files grouped `staged:` / `unstaged:` / `untracked:`, one line each. A file changed in both the index and on disk appears on both sides. With `diffs: true`, each file's patch follows its line — see [What `diffs: true` leaves out](#what-diffs-true-leaves-out). Paginated: a last line names the next `cursor`. |
-| `get_diff` | `path`, `staged` (false), `contextLines` (0–20, 3), `repository?` | Text. The file's line with its side (`M +2 -0 src/app.js (unstaged)`), then its hunks. An untracked file is shown as the patch that would add it. Conflicted files and submodules are described, not diffed. Hunks past the budget are printed as their header with an id, marked `not shown`. |
-| `get_diff_hunk` | `path`, `hunkId`, `repository?` | Text. Exactly one hunk that `get_diff` marked `not shown`. |
-| `get_history` | `limit` (1–100, 20), `branch?` (null = HEAD), `all` (false), `cursor?`, `repository?` | Text, one commit per line: `38e4efb73234 2026-10-06 Ada Lovelace: subject`, merges with `(merge of a, b)`. No diffs. `all: true` reads every ref, like 🌱 Twig's graph. |
-| `get_commit` | `hash`, `repository?` | Text: full hash and subject, author, committer date if different, parents, the message body, then the changed files as file lines with totals. No patch. `hash` may be short, or a revision such as `HEAD~2`. |
-| `get_commit_diff` | `hash`, `path?`, `hunkId?`, `repository?` | Text, against the first parent. With `path`: one file; with `path` + `hunkId`: one hunk marked `not shown`. Without `path`: the whole commit if it is small (≤ 60 files and ≤ 4000 changed lines), otherwise its file list. |
+| `get_commit` | `hash`, `diffs` (true), `contextLines` (0–20, 3), `maxBytes` (4096–100000, 60000), `repository?` | Text: full hash and subject, author, committer date if different, parents, the message body, then every changed file as `## M +3 -1 path` with its patch against the first parent (a merge says `against the first parent`). Left out the same way as `list_changes`, with `git show --format= <hash> -- <path>` to read it. `diffs: false` lists the files only. `hash` may be short, or a revision such as `HEAD~2` or a tag. |
+| `search_history` | `query`, `mode` (code, regex, message, author; code), `path?`, `branch?` (null = HEAD), `all` (false), `limit` (1–50, 10), `contextLines` (0–10, 3), `cursor?`, `repository?` | Text. Commits newest first, one line each; for `code` and `regex`, each matching file as `## M +3 -1 path` and small hunks around the matching lines. See [Searching history and blame](#searching-history-and-blame). |
+| `get_blame` | `path`, `startLine?`, `endLine?`, `revision?` (null = the file on disk), `code` (false), `repository?` | Text. Runs of lines from the same commit (`40-58 a1b2c3d4e5f6`, `61 uncommitted`), then `commits:` — hash, date, author and subject of each, newest first. With `code: true`, each line's text under its run, after a tab. |
 | `get_ui_context` | — | What the person is looking at in 🌱 Twig: `repository`, `view` (history, changes, staging, compare, file-history, blame, conflict, branches, stashes, reflog, worktrees, submodules, maintenance, automations), `selectedCommit`, `selectedCommits`, `compare`, `selectedFile` (`path`, `commit`, `side`). `selectedBranch` and `selectedHunk` are always null, because 🌱 Twig doesn't track either. |
 
 ### What `diffs: true` leaves out
 
-Each file is either shown whole or listed with its reason in parentheses:
+`list_changes` and `get_commit` show each file whole or list it with its reason in
+parentheses:
 
 - **Lock and generated files**: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`,
   `Cargo.lock`, `go.sum` and other lock files, `*.min.js`, `*.min.css`, source maps. Mark
@@ -146,36 +154,75 @@ Each file is either shown whole or listed with its reason in parentheses:
 - **Large files**: more than 400 changed lines.
 - **Budget**: the whole answer stays within `maxBytes` (60 000 by default, 4096 at least).
   Every file line of the page always fits; the patches share what is left, smallest files
-  first, so the budget runs out on the big ones. If the file lines alone fill a small budget,
-  use `limit` to page.
+  first, so the budget runs out on the big ones. Those say `(did not fit in this answer)`, and
+  the answer ends with one command for all of them:
+  `Did not fit, all in one call: git diff -- a.js b.js` (one per side of the index for
+  `list_changes`, `git show --format= <hash> -- …` for `get_commit`). If the file lines alone
+  fill a small budget, use `limit` to page.
 - Binary files, conflicts, submodules, type changes, renames with edits, and more than 40
   untracked files in one answer.
 
-Anything left out is one `get_diff` away. Tracked files are read with one `git diff` per side
-of the index, not one per file. Paths Git quotes in a patch header are read one by one.
+Every reason names the command that reads the file: `git diff [--cached] -- <path>`
+(with `-U<n>` when you asked for other than 3 context lines, `-M -- old new` for a rename),
+`git show --format= <hash> -- <path>` for a commit, or "read the file itself" for a new file.
+Paths are quoted for a POSIX shell when they need it. Tracked files are read with one
+`git diff` per side of the index, and a commit with one `git show`, not one per file. Paths
+Git quotes in a patch header are read one by one.
 
-### Hunk ids
+### Searching history and blame
 
-Only a hunk that is **not shown** carries an id: a hunk that is printed in full has nothing
-more to ask for. A hunk id looks like `w3-1a2b3c4d`:
+`search_history` answers "when was this added or removed" without whole diffs:
 
-- The first letter is the side the hunk was read from: `w` working tree, `s` staged,
-  `u` untracked, `c` a commit.
-- The number is the context line count.
-- The rest is a hash of the path and the hunk's text.
+```text
+HEAD: commits where "readPreviousTag" was added or removed, newest first:
+c972cb2630f1 2026-10-07 ktarasenko: feat(mcp): new_version tool and version/tag switches …
+## M +141 -59 main/mcp/commit-proposal.js
+@@ -73,0 +81,7 @@ export async function readProposalState({ cwd, log }) {
++ * The newest tag reachable from HEAD that carries an X.Y.Z, parsed — the
++ * pattern a release tag follows (`twig-v0.16.2` → `twig-v0.16.3`) — or null.
++ */
++export async function readPreviousTag({ cwd, log, head }) {
+…
+```
 
-Ids are checked, not trusted. Asking for a hunk re-reads the diff the same way and returns it
-only if it is still exactly there. If the file changed in between, the answer is
-`INVALID_HUNK`, never a neighbouring hunk.
+- `code` is `git log -S`: the number of occurrences of the text changed, so a line that only
+  moved does not count. `regex` is `git log -G` (POSIX extended): an added or removed line
+  matches. The matching lines are found again in the patch (a `regex` with syntax JavaScript
+  cannot read lists the file without marking lines). `message` and `author` list commits only.
+- Each window is the matching lines with `contextLines` around them, inside their hunk, with
+  a header carrying the real line numbers and the hunk's heading. Windows that touch merge.
+  A file shows at most 5; the rest are counted, with the `git show --format= <hash> -- <path>` that reads it whole.
+- Lock and generated files are listed, not shown, as in `list_changes`, with the same `git show`.
+- An answer holds about 60 KB. Commits go in whole; one that does not fit starts the next page
+  (`… more: search_history with cursor "N"`). A search reads at most its first 1000 matches.
+  Pages are read as the first `cursor + limit` matches, because Git applies `--skip` before
+  `-S`/`-G` filter commits.
+- A search that runs longer than 45 s is stopped with `GIT_OPERATION_FAILED` and a hint to
+  narrow it with `path` or `branch`.
+
+`get_blame` answers "who changed these lines, and why" in one call:
+
+```text
+main/mcp/tools/history.js on disk, lines 90-144: 18 runs from 2 commits
+90-92 3a759009262c
+93-104 d9a1d5ff7cac
+…
+commits:
+3a759009262c 2026-10-06 ktarasenko: feat(mcp): fewer tokens — text answers, every change in one call, …
+d9a1d5ff7cac 2026-10-04 ktarasenko: feat(mcp): read-only MCP server for AI agents, toolbar button and site page
+```
+
+By default it blames the file on disk, so the line numbers are the ones the agent read and
+lines not committed yet are `uncommitted`. The code itself is left out unless `code: true`:
+an agent has usually read the file already. Runs past about 60 KB end the answer with the
+`startLine` to continue from. Files over 50 000 lines need `startLine`/`endLine`.
 
 ### Size limits
 
-- A diff answer carries up to about 60 KB of patch text. Past that, the remaining hunks are
-  printed as `@@ … @@ [w3-1a2b3c4d: +5 -2, not shown]`, followed by a line saying how to get
-  them. An answer is never cut in the middle of a hunk.
-- A single hunk requested by id is cut at a line boundary past about 80 KB, with a last line
-  that says how many lines were left out.
-- `get_commit` lists up to 300 files.
+- `list_changes` and `get_commit` with diffs stay within `maxBytes` (60 000 by default); see
+  above. A file is never cut in the middle.
+- `search_history` and `get_blame` answers hold about 60 KB and say where to continue.
+- `get_commit` lists up to 300 files; past that, `git show --name-status <hash>` lists the rest.
 - Untracked files over 1 MB are described, not diffed.
 - Any tool result over 120 000 characters is replaced by `OUTPUT_TOO_LARGE` with a hint.
 
@@ -184,20 +231,19 @@ only if it is still exactly there. If the file changed in between, the answer is
 Errors are tool results with `isError: true` and this text:
 
 ```json
-{ "error": { "code": "FILE_NOT_FOUND", "message": "README.md has no staged changes; its changes are not staged.", "hint": "Call get_diff with staged: false." } }
+{ "error": { "code": "COMMIT_NOT_FOUND", "message": "No commit matches \"v9.9.9\".", "hint": "A short hash may be ambiguous: pass more of it, or a branch or tag name." } }
 ```
 
 | Code | Meaning |
 |---|---|
 | `NO_REPOSITORY_OPEN` | No `repository` was passed and none is open in 🌱 Twig. |
 | `REPOSITORY_NOT_FOUND` | `repository` matches no connected repository, or the repository is unavailable. |
-| `FILE_NOT_FOUND` | The path has no changes on that side, or did not change in that commit. |
+| `FILE_NOT_FOUND` | (blame) The path is not in that version of the repository. |
 | `COMMIT_NOT_FOUND` | No commit matches the hash (including an ambiguous short hash). |
 | `REF_NOT_FOUND` | No branch, tag or revision has that name. |
-| `INVALID_HUNK` | The hunk id is malformed or no longer matches the file. |
 | `INVALID_ARGUMENT` | An argument is missing, has the wrong type, is out of range, or is a path outside the repository. |
 | `OUTPUT_TOO_LARGE` | The answer would be too large; ask for something smaller. |
-| `GIT_OPERATION_FAILED` | Git failed. The exact command is in 🌱 Twig's console. |
+| `GIT_OPERATION_FAILED` | Git failed, or a search or blame ran longer than 45 s. The exact command is in 🌱 Twig's console. |
 | `TWIG_UNAVAILABLE` | Returned by the bridge: 🌱 Twig is not running, or the server is off. |
 
 Unknown tools and methods are JSON-RPC errors (`-32602`, `-32601`).
@@ -210,8 +256,7 @@ A well-behaved agent:
 
 1. Calls `list_changes` with `diffs: true` (and `contextLines: 1` if it only needs the gist):
    the branch, every file and every small patch in one answer.
-2. Calls `get_diff` only for the files that answer listed without a patch, and
-   `get_diff_hunk` for hunks marked `not shown`.
+2. Runs the `git diff` that answer printed, only for the files it listed without a patch.
 3. Calls `get_workspace_context` if it needs to know about a merge or rebase in progress.
 4. Proposes a commit plan: which files and hunks go together, and a message for each.
 
@@ -368,14 +413,16 @@ AI client ──stdio──▶ twig-mcp.mjs (bridge) ──local socket──▶
   directory, in `initialize`'s `_meta` (`app.nodex.twig/cwd`), so tools default to the
   agent's repository. A bridge copied by an older version does not add it; 🌱 Twig rewrites
   the copy every time the server starts.
-- `main/mcp/tools/`: `workspace.js`, `changes.js`, `history.js` and `ui.js`. The tools contain
-  no Git parsing; they call `loadWorktree`, `loadWorktreeDiff`, `loadWorktreeDiffs`, `loadUntrackedDiff`,
-  `loadWorktreeNumstat`, `loadCommit`, `loadCommitNumstat`, `loadFileDiff`,
-  `loadCommitPatch`, `loadHistoryPage`, `loadRefHistory`, `resolveRevision` and
-  `loadOperationState`.
+- `main/mcp/tools/`: `workspace.js`, `changes.js`, `show.js` (`get_commit`), `search.js`,
+  `blame.js`, `ui.js` and `commit.js` (the proposals). The readers contain no Git parsing;
+  they call `loadWorktree`, `loadWorktreeDiffs`, `loadUntrackedDiff`, `loadWorktreeNumstat`,
+  `loadCommit`, `loadCommitNumstat`, `loadCommitDiffs`, `resolveRevision`,
+  `loadOperationState`, `searchCommits` and `loadBlameRange`. `main/mcp/file-patches.js` is
+  what `list_changes` and `get_commit` share: which files to leave out, the budget, and the
+  git command a left-out file is read with.
 - `main/mcp/context.js`: resolves the repository, tags journal entries `MCP:` and sets the
   read environment, and matches the client's working directory to a connected repository.
-  `main/mcp/serialize.js` holds hunk ids, budgets and the text shapes (file lines, hunks).
+  `main/mcp/serialize.js` holds the text shapes (file lines, hunks, commit lines).
   `main/mcp/ui-context.js` validates the window's reports.
 - `main/mcp/service.js` (lifecycle, no Electron imports), `main/mcp-ipc.js` (Settings
   channels and the UI report) and `main/mcp-store.js` (`mcp.json`, the on/off choice).
@@ -387,6 +434,9 @@ node scripts/checks/mcp.mjs     # part of npm test: tools on real repositories, 
 node scripts/checks/mcp-commit.mjs   # part of npm test: propose_commit and new_version on real Git — cancel, stale tree, automations, hooks, Undo, tags, push
 npm run build && node scripts/mcp-smoke.mjs   # part of npm run test:smoke: Settings, a real bridge on the app executable
 ```
+
+`node scripts/mcp-tokens.mjs [--count] [--only=changes|search]` measures what the same
+questions cost through `git` and through 🌱 Twig; the texts stay in `artifacts/mcp-tokens/`.
 
 To try it by hand, run 🌱 Twig from source (`npm run dev`), turn the server on, then use the
 MCP Inspector with the command and arguments from Settings:
@@ -400,8 +450,7 @@ ELECTRON_RUN_AS_NODE=1 npx @modelcontextprotocol/inspector "<command from Settin
 - The only write is a commit of everything (plus push) that you confirm. There is no partial
   commit (`paths`), no staging of hunks, no branch, checkout or merge tool.
 - The only transport is local stdio through the socket bridge. HTTP is not offered.
-- Hunks are identified per file and side. There is no hunk *selection* in 🌱 Twig to report,
-  and no branch selection.
+- There is no hunk *selection* in 🌱 Twig to report, and no branch selection.
 - `get_ui_context` reports the history workspace: the selected commit(s), compare range,
   open file diff, file history, blame and conflict file. File selection inside the staging
   screen is not reported.
@@ -419,5 +468,5 @@ ELECTRON_RUN_AS_NODE=1 npx @modelcontextprotocol/inspector "<command from Settin
 - a confirmation in 🌱 Twig's window for each mutation, showing the exact command, like the
   app's other confirmation dialogs;
 - the existing Undo service, so an agent's action can be undone like the person's own;
-- the same hunk ids as now, so `stage_hunk` applies exactly the hunk the agent read.
+- hunks named by their content, so `stage_hunk` applies exactly the hunk the agent read.
   Staging already works this way: main re-reads the diff and refuses if it changed.

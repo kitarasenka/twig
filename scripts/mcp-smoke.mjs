@@ -119,7 +119,7 @@ try {
   assert.equal(init.result.serverInfo.name, 'twig');
   assert.equal(init.result.serverInfo.version, await page.evaluate(() => window.twig.getAppInfo().then(info => info.version)));
   const tools = (await bridge.request('tools/list')).result.tools.map(tool => tool.name);
-  assert.deepEqual(tools, ['get_workspace_context', 'list_repositories', 'list_changes', 'get_diff', 'get_diff_hunk', 'get_history', 'get_commit', 'get_commit_diff', 'get_ui_context', 'propose_commit', 'new_version', 'await_commit']);
+  assert.deepEqual(tools, ['get_workspace_context', 'list_changes', 'get_commit', 'search_history', 'get_blame', 'get_ui_context', 'propose_commit', 'new_version', 'await_commit']);
 
   // The workspace the window has open, with the demo's README edit and untracked note.
   const context = await bridge.tool('get_workspace_context');
@@ -134,17 +134,16 @@ try {
   assert.ok(changes.startsWith(`repository: ${demo.path}\nnote: Your working directory `), changes.slice(0, 300));
   assert.deepEqual(changes.split('\n').filter(line => line.startsWith('## ')).map(line => line.split(' ')[1] + ' ' + line.split(' ').at(-1)).sort(), ['? notes.todo', 'M README.md']);
   assert.ok(changes.includes('\n@@ '), 'the patches are in the same answer');
-  const diff = await bridge.tool('get_diff', { repository: demo.path, path: 'README.md' });
-  assert.match(diff, /^M \+\d+ -\d+ README\.md \(unstaged\)\n@@ /);
-  const history = await bridge.tool('get_history', { repository: demo.path, limit: 3 });
-  const top = history.split('\n')[1];
-  assert.match(top, /^[0-9a-f]{12} \d{4}-\d\d-\d\d .+: Refine the workspace layout$/);
+  const top = await bridge.tool('get_commit', { repository: demo.path, hash: 'HEAD' });
+  assert.match(top, /^[0-9a-f]{40} Refine the workspace layout\n/);
+  assert.match(top, /\n## M \+\d+ -\d+ \S+\n@@ /, 'the commit comes with its patch');
+  const found = await bridge.tool('search_history', { repository: demo.path, query: 'Add keyboard navigation to commit details', mode: 'message' });
 
   // What is selected follows the window.
   const head = (await bridge.tool('get_workspace_context')).branch.head;
   const list = page.getByRole('listbox', { name: 'Commit history', exact: true });
   await list.getByRole('option', { name: /Add keyboard navigation to commit details/ }).click();
-  const keyboard = history.split('\n').find(line => line.endsWith(': Add keyboard navigation to commit details')).slice(0, 12);
+  const keyboard = found.split('\n').find(line => line.endsWith(': Add keyboard navigation to commit details')).slice(0, 12);
   await page.waitForFunction(() => true);
   let ui = await bridge.tool('get_ui_context');
   for (let i = 0; i < 20 && !ui.selectedCommit?.startsWith(keyboard); i++) { await page.waitForTimeout(100); ui = await bridge.tool('get_ui_context'); }

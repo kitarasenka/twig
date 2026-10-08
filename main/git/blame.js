@@ -48,7 +48,7 @@ export function buildReverseBlameArgv(startOid, endOid, path) {
 }
 
 /** Undo Git's C-quoting of a path (`core.quotePath`): octal escapes are UTF-8 bytes. */
-function unquotePath(value) {
+export function unquotePath(value) {
   if (!value.startsWith('"') || !value.endsWith('"') || value.length < 2) return value;
   const body = value.slice(1, -1);
   const bytes = [];
@@ -177,6 +177,39 @@ export async function loadReverseBlame({ cwd, log, startOid, endOid, path, signa
   if (result.code !== 0) throw classify(result.stderr);
   const parsed = parseBlamePorcelain(result.stdout);
   return { mode: 'reverse', startOid, endOid, path, ...parsed };
+}
+
+/**
+ * Blame of some lines, for a reader that names them: `-L start,` runs to the
+ * end of the file. `oid` null blames the file as it is on disk — the line
+ * numbers an editor shows — and lines not committed yet come back with the
+ * all-zero oid. The path goes raw after `--`, as in buildBlameArgv.
+ * @param {{ oid?: ?string, path: string, start?: ?number, end?: ?number }} options
+ */
+export function buildBlameRangeArgv({ oid = null, path, start = null, end = null }) {
+  if (oid !== null) validateOid(oid);
+  validateFile(path);
+  if (start !== null) validateLine(start);
+  if (end !== null) validateLine(end);
+  if (start !== null && end !== null && end < start) throw new TypeError('The last line comes before the first');
+  const range = start === null && end === null ? [] : ['-L', `${start ?? 1},${end ?? ''}`];
+  return ['blame', '--line-porcelain', '--no-textconv', ...range, ...(oid === null ? [] : [oid]), '--', path];
+}
+
+/**
+ * @param {{ cwd: string, log: object, env?: ?Record<string, string>, signal?: ?AbortSignal } & Parameters<typeof buildBlameRangeArgv>[0]} options
+ * @returns {Promise<{ lines: object[], commits: Record<string, object> }>}
+ */
+export async function loadBlameRange({ cwd, log, env = null, signal = null, ...options }) {
+  const result = await runGit({ argv: buildBlameRangeArgv(options), cwd, log, env, signal, operation: 'Blame lines' });
+  if (result.cancelled) throw new BlameError('Blame was cancelled.', 'cancelled');
+  if (result.code !== 0) {
+    const short = /has only (\d+) lines?/.exec(result.stderr);
+    if (short) throw new BlameError(`The file has only ${short[1]} lines.`, 'range');
+    if (options.oid === null && /no such path .* in HEAD/i.test(result.stderr)) throw new BlameError('Not in HEAD: a file that was never committed has no history.', 'absent');
+    throw classify(result.stderr);
+  }
+  return parseBlamePorcelain(result.stdout);
 }
 
 async function git(cwd, log, argv, operation, signal) {

@@ -78,7 +78,7 @@ export function createToolContext({ repositories, journal, getActiveId, getUiCon
       let repo = connected().find(item => item.name === selector);
       if (!repo && path.isAbsolute(selector)) repo = containing(path.resolve(selector));
       if (!repo) throw new McpError('REPOSITORY_NOT_FOUND', `No repository connected to 🌱 Twig matches ${JSON.stringify(selector)}.`,
-        { hint: 'Pass a name or an absolute path from list_repositories, or connect the repository in 🌱 Twig first.' });
+        { hint: 'Pass a name or an absolute path get_workspace_context lists, or connect the repository in 🌱 Twig first.' });
       return usable(repo);
     }
     const own = client.cwd ? containing(client.cwd) : undefined;
@@ -86,8 +86,8 @@ export function createToolContext({ repositories, journal, getActiveId, getUiCon
     const activeId = getActiveId();
     const note = client.cwd ? `Your working directory ${client.cwd} is not a repository connected to 🌱 Twig; this is the one open in 🌱 Twig.` : null;
     if (!activeId) throw new McpError('NO_REPOSITORY_OPEN', 'No repository is currently open in 🌱 Twig.',
-      { hint: client.cwd ? `Connect ${client.cwd} in 🌱 Twig, or pass \`repository\` — list_repositories shows the connected ones.`
-        : 'Open one in 🌱 Twig, or pass `repository` — list_repositories shows the connected ones.' });
+      { hint: client.cwd ? `Connect ${client.cwd} in 🌱 Twig, or pass \`repository\` — get_workspace_context lists the connected ones.`
+        : 'Open one in 🌱 Twig, or pass `repository` — get_workspace_context lists the connected ones.' });
     const repo = connected().find(item => item.id === activeId);
     if (!repo) throw new McpError('NO_REPOSITORY_OPEN', 'The repository open in 🌱 Twig is no longer connected.');
     return usable(repo, { implicit: true, ...(note ? { note } : {}) });

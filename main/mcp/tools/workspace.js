@@ -31,8 +31,31 @@ export function summarizeWorktree({ staged, unstaged, untracked }) {
   return counts;
 }
 
+/** The other repositories connected to 🌱 Twig, so an agent can name one as `repository`. */
+function otherRepositories(ctx, currentId) {
+  const activeId = ctx.activeId();
+  return ctx.repositories().filter(repo => repo.id !== currentId).map(repo => ({
+    name: repo.name, path: repo.path,
+    ...(repo.id === activeId ? { openInTwig: true } : {}),
+    ...(repo.available ? {} : { available: false }),
+    ...(repo.sandbox ? { demo: true } : {})
+  }));
+}
+
+/**
+ * The repository a tool would read, its branch, operation and change counts,
+ * and the other connected repositories. When no repository can be told — the
+ * agent's folder is not connected and none is open in 🌱 Twig — the answer is
+ * still the list, with the reason, not an error: it is how an agent finds one.
+ */
 export async function getWorkspaceContext(ctx, args) {
-  const repo = ctx.repository(args.repository);
+  let repo;
+  try {
+    repo = ctx.repository(args.repository);
+  } catch (error) {
+    if (args.repository !== undefined || error?.code !== 'NO_REPOSITORY_OPEN') throw error;
+    return { repository: null, reason: error.message, repositories: otherRepositories(ctx, null) };
+  }
   const cwd = repo.path;
   const worktree = await loadWorktree(ctx.worktree(cwd));
   const operation = await loadOperationState({ cwd, log: ctx.log, env: ctx.env, gitDir: await ctx.gitDir(cwd) });
@@ -50,16 +73,7 @@ export async function getWorkspaceContext(ctx, args) {
     operation: operation.kind === 'none' ? null
       : { kind: operation.kind, step: operation.step, total: operation.total, conflicts: operation.conflicts.length },
     workingTree: summarizeWorktree(worktree),
-    selection: ui ? { view: ui.view, commit: ui.selectedCommit, file: ui.selectedFile?.path ?? null } : null
-  };
-}
-
-export function listRepositories(ctx) {
-  const activeId = ctx.activeId();
-  return {
-    repositories: ctx.repositories().map(repo => ({
-      name: repo.name, path: repo.path, openInTwig: repo.id === activeId, available: Boolean(repo.available),
-      ...(repo.sandbox ? { demo: true } : {})
-    }))
+    selection: ui ? { view: ui.view, commit: ui.selectedCommit, file: ui.selectedFile?.path ?? null } : null,
+    repositories: otherRepositories(ctx, repo.id)
   };
 }

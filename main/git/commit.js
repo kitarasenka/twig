@@ -1,4 +1,6 @@
 import { runGit } from './exec.js';
+import { parseFilePatchV1, splitPatchFiles } from './diff-parser.js';
+import { chunkPath } from './worktree.js';
 
 export function validateOid(oid) {
   if (typeof oid !== 'string' || !/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(oid)) throw new TypeError('Invalid commit identifier');
@@ -97,12 +99,44 @@ export async function resolveRevision({ cwd, log, revision }) {
 }
 
 /**
- * Every file's patch in one commit, against the same first parent `loadCommit`
- * lists files for. One `git show` for the whole commit; the caller splits it.
- * @param {{ cwd: string, log: import('../command-log.js').CommandLog, oid: string }} options
- * @returns {Promise<string>}
+ * Several files' patches in one commit, against its first parent (a root
+ * commit against nothing), each path literal. `context` is the number of
+ * unchanged lines around each change, Git's own 3 when null.
  */
-export async function loadCommitPatch({ cwd, log, oid }) {
+export function buildCommitDiffsArgv({ oid, paths, context = null }) {
   validateOid(oid);
-  return execute(cwd, log, ['show', '--format=', '--first-parent', '--no-ext-diff', '--no-textconv', '--no-renames', '--no-color', oid, '--'], 'Read commit diff');
+  if (!Array.isArray(paths) || paths.length === 0) throw new TypeError('Invalid path list');
+  if (context !== null && (!Number.isInteger(context) || context < 0 || context > 100)) throw new TypeError('Invalid context line count');
+  return ['show', '--format=', '--first-parent', '--no-ext-diff', '--no-textconv', '--no-renames', '--no-color',
+    ...(context === null ? [] : [`--unified=${context}`]), oid, '--', ...paths.map(file => `:(literal)${validateFile(file)}`)];
+}
+
+/**
+ * Patches of the named files of one commit, by path — one `git show` for all
+ * of them, its chunks matched to paths by their headers the way
+ * `loadWorktreeDiffs` does. A path whose chunk cannot be matched for certain
+ * is read on its own; one with no chunk had no text change.
+ * @param {{ cwd: string, log: import('../command-log.js').CommandLog, oid: string, paths: string[], context?: ?number }} options
+ * @returns {Promise<Map<string, import('./diff-parser.js').FilePatch>>}
+ */
+export async function loadCommitDiffs({ cwd, log, oid, paths, context = null }) {
+  const patches = new Map();
+  if (paths.length === 0) return patches;
+  const read = async files => execute(cwd, log, buildCommitDiffsArgv({ oid, paths: files, context }), 'Read commit diff');
+  const wanted = new Set(paths);
+  const chunks = new Map();
+  let unsure = false;
+  for (const chunk of splitPatchFiles(await read(paths))) {
+    const file = chunkPath(chunk);
+    if (file === null || !wanted.has(file)) unsure = true;
+    else if (chunks.has(file)) chunks.set(file, null);
+    else chunks.set(file, chunk);
+  }
+  for (const file of paths) {
+    const chunk = chunks.get(file);
+    if (chunk) patches.set(file, parseFilePatchV1(chunk));
+    else if (chunk === null || unsure) patches.set(file, parseFilePatchV1(await read([file])));
+    else patches.set(file, parseFilePatchV1(''));
+  }
+  return patches;
 }

@@ -1,11 +1,16 @@
-import { getWorkspaceContext, listRepositories } from './workspace.js';
-import { getDiff, getDiffHunk, listChanges } from './changes.js';
-import { getCommit, getCommitDiff, getHistory } from './history.js';
+import { getWorkspaceContext } from './workspace.js';
+import { listChanges } from './changes.js';
+import { getCommit } from './show.js';
+import { searchHistory } from './search.js';
+import { getBlame } from './blame.js';
 import { getUiContext } from './ui.js';
 import { awaitCommit, newVersion, proposeCommit } from './commit.js';
 
 /**
- * The implementations behind protocol.mjs's catalog, by tool name. Each one is
+ * The implementations behind protocol.mjs's catalog, by tool name. A tool is
+ * here only when it saves an agent something over running git itself — fewer
+ * tokens, fewer calls — or gives it what git cannot (the person's selection,
+ * their confirmation); a plain git command the agent can run is not wrapped. Each one is
  * `(ctx, args) => payload`; arguments arrive already checked against the
  * tool's schema with defaults filled in. All of them only read, except
  * propose_commit and new_version, which ask the person in 🌱 Twig's window
@@ -13,13 +18,10 @@ import { awaitCommit, newVersion, proposeCommit } from './commit.js';
  */
 const IMPLEMENTATIONS = Object.freeze({
   get_workspace_context: getWorkspaceContext,
-  list_repositories: listRepositories,
   list_changes: listChanges,
-  get_diff: getDiff,
-  get_diff_hunk: getDiffHunk,
-  get_history: getHistory,
   get_commit: getCommit,
-  get_commit_diff: getCommitDiff,
+  search_history: searchHistory,
+  get_blame: getBlame,
   get_ui_context: getUiContext,
   propose_commit: proposeCommit,
   new_version: newVersion,

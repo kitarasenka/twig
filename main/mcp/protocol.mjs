@@ -17,8 +17,10 @@ export const SERVER_TITLE = '🌱 Twig';
 
 export const INSTRUCTIONS = [
   'Read-only view of Git repositories connected to 🌱 Twig, and of what is selected in its window.',
-  'For everything that changed, one call: list_changes with diffs: true — every file with its patch, lock files and very large files listed by size only.',
-  'To go smaller: get_diff (one file) → get_diff_hunk (one hunk); for history: get_history → get_commit → get_commit_diff.',
+  'Each tool saves you tokens or calls over plain git, or gives you what git cannot; for anything else, use git itself.',
+  'Start with get_workspace_context. Everything that changed, in one call: list_changes with diffs: true. One commit, message and patch: get_commit.',
+  'Lock and generated files, very large files and what does not fit are listed by size with the git command that reads them.',
+  'When code was added or removed: search_history. Who changed a line and why: get_blame.',
   'Diffs and file lists come back as plain text in git’s own shape (`M +2 -1 path`, then the hunks).',
   'With no `repository`, tools read the repository of your working directory if it is connected, else the one open in 🌱 Twig, and the answer starts with which.',
   'Nothing here changes a repository by itself. The writes, propose_commit and new_version, show your commit message and the changed files in 🌱 Twig’s window; the person edits, picks the version and tag, commits (and pushes) or cancels there, and the tool answers with what happened. There is no stage, checkout, reset or command execution.'
@@ -30,6 +32,8 @@ const repository = {
 };
 
 const contextLines = { type: 'integer', minimum: 0, maximum: 20, default: 3, description: 'Unchanged lines around each change.' };
+
+const maxBytes = { type: 'integer', minimum: 4096, maximum: 100000, default: 60000, description: 'With diffs: the most the answer may weigh. File lines always fit; patches share the rest, smallest files first.' };
 
 const READ_ONLY = Object.freeze({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false });
 
@@ -45,58 +49,50 @@ function tool(name, title, description, properties = {}, required = [], annotati
 
 export const TOOLS = Object.freeze([
   tool('get_workspace_context', 'Workspace context',
-    'Cheap summary of a repository: name and path, current branch with upstream ahead/behind, an operation in progress (merge, rebase, …), counts of staged/unstaged/untracked/conflicted files, and what is selected in 🌱 Twig. No diffs. Call this first.',
+    'Cheap summary of a repository as JSON: name and path, current branch with upstream ahead/behind, an operation in progress (merge, rebase, …), counts of staged/unstaged/untracked/conflicted files, what is selected in 🌱 Twig, and the other connected repositories (`repositories`) to pass as `repository`. No diffs. Call this first.',
     { repository }),
-  tool('list_repositories', 'Connected repositories',
-    'Repositories connected to 🌱 Twig, and which one is open in its window. Use a path from here as `repository` in other tools.'),
   tool('list_changes', 'Changed files',
-    'Changed files in the working tree as text, grouped staged / unstaged / untracked, one line each: status letter, +inserted -deleted, path (a file changed in the index and on disk is listed on both sides). `diffs: true` adds each file’s patch under its line in the same answer — small files first, within `maxBytes`; lock files, generated files and files over 400 changed lines are listed with the reason and read with get_diff. Paginated with `cursor`.',
+    'Changed files in the working tree as text, grouped staged / unstaged / untracked, one line each: status letter, +inserted -deleted, path (a file changed in the index and on disk is listed on both sides). `diffs: true` adds each file’s patch under its line in the same answer — small files first, within `maxBytes`; lock files, generated files, files over 400 changed lines and files that did not fit are listed with the `git diff` that reads them. Paginated with `cursor`.',
     {
       repository,
       diffs: { type: 'boolean', default: false, description: 'Include each file’s patch.' },
       contextLines,
-      maxBytes: { type: 'integer', minimum: 4096, maximum: 100000, default: 60000, description: 'With diffs: the most the answer may weigh. File lines always fit; patches share the rest, smallest files first.' },
+      maxBytes,
       limit: { type: 'integer', minimum: 1, maximum: 1000, default: 200, description: 'Files per page.' },
       cursor: { type: 'string', description: 'The cursor the previous page ended with.' }
     }),
-  tool('get_diff', 'Diff of one file',
-    'Diff of ONE changed file in the working tree as text: its line (`M +2 -1 path (unstaged)`), then the hunks. `staged: true` reads the index side. An untracked file is shown as the patch that would add it. Hunks past one answer’s budget are printed as their header with an id and marked "not shown" — read them with get_diff_hunk.',
+  tool('get_commit', 'One commit with its patch',
+    'One commit as text in one call: full hash and subject, author, parents, the message body, then every changed file as `## M +3 -1 path` with its patch against the first parent — small files first, within `maxBytes`. Lock files, generated files, files over 400 changed lines and files that did not fit are listed with the `git show` that reads them. `diffs: false` lists the files only. Use it instead of `git show`.',
     {
       repository,
-      path: { type: 'string', description: 'Repository-relative path, as list_changes prints it.' },
-      staged: { type: 'boolean', default: false, description: 'true for the staged side (index vs HEAD), false for unstaged (working tree vs index).' },
-      contextLines
-    }, ['path']),
-  tool('get_diff_hunk', 'One hunk of a file diff',
-    'One hunk that get_diff marked "not shown", by its id. The id carries the side and context it was read with. INVALID_HUNK means the file changed since: call get_diff again.',
+      hash: { type: 'string', description: 'Full or short hash, or a revision such as HEAD, HEAD~2 or a tag.' },
+      diffs: { type: 'boolean', default: true, description: 'false: the message and file list only.' },
+      contextLines,
+      maxBytes
+    }, ['hash']),
+  tool('search_history', 'Search history',
+    'When code was added or removed, showing only the changed lines that match — not whole diffs. Per commit: `hash date author: subject`, then `## M +3 -1 path` and small hunks around each match with real line numbers. mode `code`: the text appeared or disappeared (git log -S); `regex`: a changed line matches (git log -G); `message`, `author`: list commits only. HEAD by default. Use it instead of `git log -S … -p`.',
+    {
+      repository,
+      query: { type: 'string', description: 'Text (case-sensitive), or a regex in regex mode.' },
+      mode: { type: 'string', enum: ['code', 'regex', 'message', 'author'], default: 'code' },
+      path: { type: 'string', description: 'Only commits that changed this file or folder.' },
+      branch: { type: ['string', 'null'], default: null, description: 'Branch, tag or revision; null is HEAD.' },
+      all: { type: 'boolean', default: false, description: 'Every branch and tag.' },
+      limit: { type: 'integer', minimum: 1, maximum: 50, default: 10, description: 'Commits per page.' },
+      contextLines: { type: 'integer', minimum: 0, maximum: 10, default: 3 },
+      cursor: { type: 'string' }
+    }, ['query']),
+  tool('get_blame', 'Who last changed each line',
+    'Who last changed each line, and why: runs like `40-58 a1b2c3d4e5f6`, then a `commits:` table with date, author and subject. No code unless `code: true`. By default the file on disk, so line numbers match your editor; uncommitted lines say `uncommitted`. Use it instead of `git blame`.',
     {
       repository,
       path: { type: 'string', description: 'Repository-relative path.' },
-      hunkId: { type: 'string', description: 'A hunk id get_diff printed.' }
-    }, ['path', 'hunkId']),
-  tool('get_history', 'Commit history',
-    'Commit list as text, newest first, one line each: short hash, date, author, subject (merges name their parents). No diffs. Defaults to the history of HEAD; `branch` reads another branch or tag; `all: true` reads every branch like 🌱 Twig’s graph.',
-    {
-      repository,
-      limit: { type: 'integer', minimum: 1, maximum: 100, default: 20, description: 'Commits per page.' },
-      branch: { type: ['string', 'null'], default: null, description: 'Branch, tag or revision (e.g. origin/main, v1.2, HEAD~10). null means HEAD.' },
-      all: { type: 'boolean', default: false, description: 'Every branch, tag and remote branch together.' },
-      cursor: { type: 'string', description: 'The cursor the previous page ended with.' }
-    }),
-  tool('get_commit', 'One commit',
-    'One commit as text: full hash and subject, author, parents, the message body, then its changed files as `M +3 -1 path`. No patch — use get_commit_diff.',
-    {
-      repository,
-      hash: { type: 'string', description: 'Full or short hash, or a revision such as HEAD or HEAD~2.' }
-    }, ['hash']),
-  tool('get_commit_diff', 'Diff of a commit',
-    'Patch of one commit against its first parent, as text. Pass `path` for one file, and `hunkId` with it for a hunk marked "not shown". Without `path`, small commits come back whole; large ones as their file list.',
-    {
-      repository,
-      hash: { type: 'string', description: 'Full or short hash, or a revision such as HEAD.' },
-      path: { type: 'string', description: 'One changed file in that commit.' },
-      hunkId: { type: 'string', description: 'A hunk id an earlier get_commit_diff of the same file printed.' }
-    }, ['hash']),
+      startLine: { type: 'integer', minimum: 1, maximum: 50000 },
+      endLine: { type: 'integer', minimum: 1, maximum: 50000 },
+      revision: { type: ['string', 'null'], default: null, description: 'A commit, branch or tag; null is the file on disk.' },
+      code: { type: 'boolean', default: false, description: 'Print each line under its run.' }
+    }, ['path']),
   tool('get_ui_context', 'What is selected in 🌱 Twig',
     'What the person is looking at in 🌱 Twig right now: the open repository, the view (history, changes, staging, compare, blame, conflict, …), the selected commit(s) and the selected file. Fields 🌱 Twig does not track are null; there is no hunk selection.'),
   tool('propose_commit', 'Propose a commit',

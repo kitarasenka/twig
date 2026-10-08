@@ -17,6 +17,44 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+MCP без прокси-инструментов (2026-10-09, вне вех; решение пользователя: «не
+быть прокси между git» — инструмент есть, только если экономит агенту токены
+или вызовы, или даёт то, чего у git нет). Убраны `get_diff`, `get_diff_hunk`,
+`get_history`, `get_commit_diff`, `list_repositories` (и вся машинерия hunk id:
+`hunkId`/`parseHunkId`/`fitHunks`/`capHunk`/`HUNK_BUDGET`, код `INVALID_HUNK`;
+из Git-слоя — `loadRefHistory`/`buildRefHistoryArgv`/`loadCommitPatch`).
+Осталось 9: `get_workspace_context` (теперь с `repositories` — остальные
+подключённые; без репозитория не падает, а отвечает `repository: null`,
+`reason` и списком), `list_changes`, `get_commit`, `search_history`,
+`get_blame`, `get_ui_context`, `propose_commit`, `new_version`,
+`await_commit`. **`get_commit`** (`main/mcp/tools/show.js`, `diffs` = true,
+`contextLines`, `maxBytes`) — сообщение и патч каждого файла против первого
+родителя одним `git show` по путям (`loadCommitDiffs`/`buildCommitDiffsArgv`
+в `main/git/commit.js`, чанки по `chunkPath`), merge — «against the first
+parent». Общее с `list_changes` — `main/mcp/file-patches.js`: lock/
+сгенерированные/больше 400 строк — строкой с причиной и **командой git**,
+которая их читает (`git diff [--cached] [-U<n>] -- <путь>`, `-M -- old new`,
+`git show --format= [--first-parent] <hash> -- <путь>`, «read the file
+itself» для нового), пути — `shellWord` (POSIX-кавычки). Не влезшие в
+`maxBytes` помечены `(did not fit in this answer)`, а ответ кончается одной
+строкой `Did not fit, all in one call: git diff -- a b` (по стороне индекса)
+или `git show --format= <hash> -- …` — дочитать всё можно одним вызовом.
+`search_history` тоже называет `git show --format=`. Замер
+(`mcp-tokens.mjs --only=changes --count`, Opus 5.5; сторона 🌱 Twig дочитывает
+названными командами, историю — `git log --oneline -10`): сводка 295→102,
+401→169, 1112→555, 616→309; всё для коммита 3903→3522, 10240→9712,
+43825→41916, 48063→43873 (−4…−10 %, вызовов 2–5 вместо 5–9); разбор коммита
+3965→3780, 10356→9944, 44278→43247, 48689→44385 (−2…−9 %, 1–2 вызова; было
+−2…+3 % и до 18 вызовов). Описания 6 читающих инструментов — 2 563 токена
+(было 11 и 3 947), весь каталог — 3 933. Обновлены `docs/mcp.md`,
+`site/mcp.html` (лестница → `get_commit`, таблица токенов, 9 инструментов,
+сценарии), `site/partials/agent-card.html`, `site/index.html`;
+`site/check.mjs` сверяет карточки с `TOOLS`. Проверки: `mcp.mjs` (`get_commit`
+против `git show`, lock/большой/бюджет/merge/root, одна команда на не
+влезшее, `list_changes` против `git status`+`git diff`×2+`cat`, сводка без
+репозитория), `mcp-smoke.mjs`. Числа поиска/blame на сайте — замер
+2026-10-08, до добавки `--format=` в подсказки. Версия не менялась.
+
 Просмотрщик изменённых картинок (2026-10-09, вне вех; по запросу
 пользователя): вместо «Binary file changed» у PNG/JPEG/GIF/WebP/AVIF/BMP/ICO
 (`main/git/image-types.js`, SVG — нет, у него текстовый дифф) открывается
@@ -48,6 +86,47 @@ not shown». Декодирование — `createImageBitmap` из Blob (бе�
 диске, untracked без трекинга, staging, отказы IPC; снимки
 `artifacts/image-*.png` просмотрены). UI/UX-скилл не прогонялся. Версия не
 менялась.
+
+MCP: `search_history` и `get_blame` (2026-10-09, вне вех; по поручению
+пользователя после исследования, где ещё 🌱 Twig экономит токены против git).
+**`search_history`** (`query`, `mode` code|regex|message|author = code,
+`path?`, `branch?`/`all`, `limit` 1–50 = 10, `contextLines` 0–10 = 3,
+`cursor`): code = `-S`, regex = `-G`; вместо всех ханков найденного файла —
+окна ±contextLines вокруг каждой изменённой строки с совпадением, с настоящими
+номерами строк и heading ханка (`matchWindows`), до 5 окон на файл (`… N more
+matches`), lock-файлы — строкой. Git-слой — `main/git/pickaxe.js`: **два
+запуска** — `log <pickaxe> --format=%H --max-count=skip+limit+1` (только хэши)
+и `show <pickaxe> -p --no-ext-diff --no-textconv --no-renames -U<n>` по
+хэшам страницы (pickaxe в `show` тоже отсекает файлы без совпадения). `--skip`
+не используется: с `-S`/`-G` Git применяет его **до** фильтра, а
+`--max-count` — после (поймала проверка); страницы режутся из списка хэшей,
+потолок 1000 совпадений. Ответ ≤ ~60 КБ, коммиты целиком, не влезший —
+начало следующей страницы. Regex агента для разметки строк исполняется в
+`vm.runInNewContext` с таймаутом 1 с (`lineMatcher`): катастрофический
+pattern не вешает main-процесс, файл тогда идёт строкой «matching lines not
+marked». Поиск и blame рвутся через 45 с (`GIT_OPERATION_FAILED` с
+подсказкой сузить). **`get_blame`** (`path`, `startLine?`, `endLine?`,
+`revision?` = null — файл на диске, `code` = false): `buildBlameRangeArgv` /
+`loadBlameRange` в `blame.js` (`-L a,`), ответ — куски строк по коммитам
+(`40-58 <hash12>`, `uncommitted`) и таблица `commits:` с датой, автором и
+темой; без кода, пока не попросят. Описания обоих — 1 007 токенов за
+сессию. Замер (`node scripts/mcp-tokens.mjs --only=search --count`, новая
+секция скрипта, флаг `--only=changes|search`, `search-results.json` и
+`search-*.txt` в `artifacts/mcp-tokens/`; закреплены twig c61ac19 и garden
+1e5b2ff), токены git → 🌱 Twig: поиск 3969→1396, 10572→893, 38448→3413,
+107882→9202, 189272→2992 (−65…−98 % против `git log -S -p`, −16…−37 %
+против того же через `grep -C3`); blame 5120→414, 6941→434, 19922→1017
+(−92…−95 %, 1 вызов вместо 3–9: `git blame` + `git log -1` на коммит). На
+`site/mcp.html` — блок `#search-tokens` в секции «Токены» (три плитки,
+таблица, «Что учесть»/«Как мерили»), 14 инструментов в сетке, сценарии 05/06
+(сетка сценариев — 3 колонки), фраза в карточке 02 и в героях обеих страниц;
+`docs/mcp.md` — «Searching history and blame». Проверки: `scripts/checks/mcp.mjs`
+— argv обоих запусков (запрос одним токеном, без `--skip`), разбор, пути с
+пробелом и в кавычках, окна и их заголовки, regex с таймаутом, blame-argv и
+куски; на настоящем Git — все режимы, path/branch/all, страницы, отказы,
+blame на диске с незакоммиченной строкой, `revision`, `code`, побайтная
+неизменность `.git` и дерева, бюджет и «more matches»; `mcp-smoke.mjs` — 14
+инструментов; `site/check.mjs` — 14 карточек. Версия не менялась.
 
 Подпись Developer ID и нотаризация macOS (2026-10-08, вне вех; пользователь
 вступил в Apple Developer Program). Механизм — `electron-builder.config.cjs`
