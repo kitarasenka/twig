@@ -303,7 +303,7 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
         </section>
       </div>
       <div className="worktree-detail">
-        {open && diff && <StageDiff file={open.path} diff={diff} staged={open.staged} selection={selection}
+        {open && diff && <StageDiff repositoryId={repository.id} file={open.path} diff={diff} staged={open.staged} selection={selection}
           onSelection={setSelection} onApply={apply} busy={busy} onClose={() => { setOpen(null); setDiff(null); }}
           onDiscard={open.staged || diff.added || diff.deleted ? null : discardSelected} />}
         {open && !diff && <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div>}

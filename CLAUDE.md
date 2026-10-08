@@ -17,6 +17,38 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Просмотрщик изменённых картинок (2026-10-09, вне вех; по запросу
+пользователя): вместо «Binary file changed» у PNG/JPEG/GIF/WebP/AVIF/BMP/ICO
+(`main/git/image-types.js`, SVG — нет, у него текстовый дифф) открывается
+`features/diff/ImageDiff.jsx` — в панели диффа коммита, сравнения, истории
+файла, незакоммиченного (и у untracked-картинки вместо «нет диффа») и на
+экране staging. Режимы **Side by side / Swipe / Onion skin / Difference**
+(`twig:image-mode`), **Changed areas** — пронумерованные рамки вокруг
+изменившихся пикселей (`twig:image-areas`) и список областей «30 × 20 at 40,
+30» (клик подсвечивает и прокручивает только свой контейнер — `scrollIntoView`
+сдвигал всю панель), масштаб Fit / 1:1 / 2:1 (крошечные — до 8× с
+`pixelated`). Байты: канал `history:image` (id, путь, источник `commit
+{oid, base}` | `staged` | `unstaged` | `untracked`), `main/git/image-blob.js`
+— `cat-file --batch-check` (есть ли сторона и размер) + `cat-file --batch`
+по oid, обе с кодом 0; диск — `lstat`, без симлинков, `realpath` внутри
+дерева; > 20 МБ (`MAX_IMAGE_BYTES`) — только размер. `runGit` получил
+`binary`/`maxBytes`: stdout — Buffer, в журнал — «N bytes of binary output,
+not shown». Декодирование — `createImageBitmap` из Blob (без URL, CSP не
+менялась), сравнение — чистый `features/diff/image-diff.js`: обе версии на
+общем холсте от левого верхнего угла, пиксель изменён при любом отличии
+канала (оба прозрачных — равны), ячейки ~1/100 размера, соседство 2 ячейки,
+слияние пересекающихся рамок, ≤ 60 областей (остальные — «and N more»),
+больше 8 Мп сравнивается в уменьшенном масштабе с пометкой. Difference —
+серый полупрозрачный поверх `--bg` сцены, поэтому следует теме. Проверки:
+`scripts/checks/image-diff.mjs` (в `npm test`: области, слияние, лимит,
+сводка, prefs, и на настоящем Git все источники, root, удаление, симлинк и
+выход наружу, > 20 МБ, журнал без байтов), `scripts/image-smoke.mjs` (в
+`test:smoke`: настоящие PNG, две области ровно там, где нарисованы, четыре
+режима, swipe мышью, 2:1, скрытие рамок, расширенная на 20 px картинка на
+диске, untracked без трекинга, staging, отказы IPC; снимки
+`artifacts/image-*.png` просмотрены). UI/UX-скилл не прогонялся. Версия не
+менялась.
+
 Подпись Developer ID и нотаризация macOS (2026-10-08, вне вех; пользователь
 вступил в Apple Developer Program). Механизм — `electron-builder.config.cjs`
 (be7c8f6): все пять секретов → `hardenedRuntime` + `notarize`, ни одного →

@@ -33,6 +33,8 @@ import { ConfirmDialog, MessageDialog, NameDialog } from '../ops/dialogs.jsx';
 import { buildCommitMenu, buildMultiCommitMenu } from '../ops/commit-menu.js';
 import { buildRefMenu, buildSectionMenu } from '../refs/ref-menu.js';
 import { absolutePath, buildFileMenu } from '../diff/file-menu.js';
+import ImageDiff from '../diff/ImageDiff.jsx';
+import { imageType } from '../../../../main/git/image-types.js';
 import { buildRewordPlan } from '../ops/reword-plan.js';
 import { buildSquashPlan } from '../ops/squash-plan.js';
 import { createLaneLayout } from './layout.js';
@@ -93,13 +95,20 @@ function BranchTree({ refs, onSelect, onMenu, onRename, drag, headBranch }) {
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.label}</span>{(ref.ahead > 0 || ref.behind > 0) && <small>↑{ref.ahead} ↓{ref.behind}</small>}</button>; })}</>;
 }
 
-function Diff({ diff, onClose, onCommit, onBlame }) {
+/**
+ * An image file opens in the image viewer instead of "Binary file changed":
+ * a binary change, or an untracked image, which has no Git diff at all but
+ * whose file on disk is there to look at.
+ */
+const showsImage = diff => Boolean(diff.source && imageType(diff.file) && (diff.binary || diff.source.kind === 'untracked'));
+
+function Diff({ diff, repositoryId, onClose, onCommit, onBlame }) {
   return <section className="diff-view" aria-label="File diff"><header className="panel-heading"><code>{diff.file}</code>
     {diff.section && <span className="pill">{diff.section === 'staged' ? 'Staged' : diff.section === 'untracked' ? 'Untracked' : 'Not staged'}</span>}
     {onBlame && <Button icon={AlignLeft} onClick={onBlame}>Blame</Button>}
     <Button icon={X} aria-label="Close diff" onClick={onClose} /></header>
     {onCommit && <div className="file-history-diff-heading"><code>{diff.oid.slice(0, 8)}</code><Button icon={GitBranch} onClick={onCommit}>Go to commit</Button></div>}
-    {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : diff.note ? <p className="empty-inline">{diff.note}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : diff.patch ? <DiffLines patch={diff.patch} path={diff.file} /> : <p className="empty-inline">No changes for this file in this comparison.</p>}
+    {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : showsImage(diff) ? <ImageDiff repositoryId={repositoryId} file={diff.file} source={diff.source} /> : diff.note ? <p className="empty-inline">{diff.note}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : diff.patch ? <DiffLines patch={diff.patch} path={diff.file} /> : <p className="empty-inline">No changes for this file in this comparison.</p>}
   </section>;
 }
 
@@ -937,10 +946,11 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   async function openFile(file) {
     const request = ++diffRequest.current;
     setFileHistory(null);
+    const source = { kind: 'commit', oid: selected, base: range?.base || null };
     setDiff({ file, loading: true });
     try {
       const result = await window.twig.getFileDiff(repository.id, selected, file, range?.base || null);
-      if (request === diffRequest.current) setDiff({ file, ...result, loading: false });
+      if (request === diffRequest.current) setDiff({ file, source, ...result, loading: false });
     } catch { if (request === diffRequest.current) setDiff({ file, error: 'Could not read the diff. Show output in the console.', loading: false }); }
   }
   /**
@@ -952,15 +962,16 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   async function openWorktreeFile(file, section) {
     const request = ++diffRequest.current;
     setFileHistory(null);
+    const source = { kind: section };
     if (section === 'untracked') {
-      setDiff({ file: file.path, section, loading: false,
+      setDiff({ file: file.path, section, source, loading: false,
         note: 'Untracked — Git has no diff for this file until it is added. Open staging to add it.' });
       return;
     }
     setDiff({ file: file.path, section, loading: true });
     try {
       const result = await window.twig.getWorktreeDiff(repository.id, file.path, section === 'staged');
-      if (request === diffRequest.current) setDiff({ file: file.path, section, patch: result.text, binary: result.binary, loading: false });
+      if (request === diffRequest.current) setDiff({ file: file.path, section, source, patch: result.text, binary: result.binary, loading: false });
     } catch { if (request === diffRequest.current) setDiff({ file: file.path, section, error: 'Could not read the diff. Show output in the console.', loading: false }); }
   }
   async function openFileHistory(path) {
@@ -993,7 +1004,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     setDiff({ file, oid, loading: true });
     try {
       const result = await window.twig.getFileDiff(repository.id, oid, file, null);
-      if (request === diffRequest.current) setDiff({ file, oid, ...result, loading: false });
+      if (request === diffRequest.current) setDiff({ file, oid, source: { kind: 'commit', oid, base: null }, ...result, loading: false });
     } catch { if (request === diffRequest.current) setDiff({ file, oid, error: 'Could not read the diff. Show output in the console.', loading: false }); }
   }
   // What is staged, changed and untracked, split from the status the workspace
@@ -1235,7 +1246,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
         onRunEvent={(event, options) => void runAutomation(event, options)} />}
       {!conflict && blame && <BlameView repository={repository} seed={blame} onConsole={onConsole}
         onClose={closeBlame} onJump={oid => { closeBlame(); void jump(oid); }} onSelect={setBlameSel} />}
-      {!conflict && !blame && diff && !fileHistory && <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }}
+      {!conflict && !blame && diff && !fileHistory && <Diff diff={diff} repositoryId={repository.id} onClose={() => { diffRequest.current++; setDiff(null); }}
         onBlame={diff.file && (diff.oid || indexMap.has(selected)) ? () => openBlame(diff.file, diff.oid || selected) : undefined} />}
       {!conflict && !blame && fileHistory && <FileHistory data={fileHistory} selected={diff?.oid} onConsole={onConsole}
         onSelect={openHistoryDiff} onClose={() => { diffRequest.current++; setFileHistory(null); setDiff(null); }} />}
@@ -1246,7 +1257,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     {showDetail && blame && <BlameDetail repositoryId={repository.id} sel={blameSel}
       onJump={oid => { closeBlame(); void jump(oid); }} onConsole={onConsole} />}
     {showDetail && !blame && fileHistory && <aside className="file-history-detail" aria-label="File history changes">
-      {diff ? <Diff diff={diff} onClose={() => { diffRequest.current++; setDiff(null); }} onCommit={() => void jump(diff.oid)}
+      {diff ? <Diff diff={diff} repositoryId={repository.id} onClose={() => { diffRequest.current++; setDiff(null); }} onCommit={() => void jump(diff.oid)}
         onBlame={() => openBlame(diff.file, diff.oid)} />
         : <p className="empty-inline">Select a commit to view this file’s changes.</p>}
     </aside>}

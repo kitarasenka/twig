@@ -27,10 +27,15 @@ function validArguments(argv) {
  * would change how unrelated commands behave. It cannot override the fixed
  * safety variables below, and the caller must say in `operation` that it
  * installed an editor, because the console shows argv and not the environment.
+ * `binary` returns stdout as a Buffer (image bytes would not survive UTF-8),
+ * and the journal records only how many bytes came back, never the bytes.
+ * `maxBytes` stops such a read once it outgrows what the caller can use: the
+ * process is killed and the result says `truncated`.
  * @param {{ argv: string[], cwd: string, log: import('../command-log.js').CommandLog,
- *   operation?: string, stdin?: ?string, signal?: ?AbortSignal, env?: ?Record<string, string> }} options
+ *   operation?: string, stdin?: ?string, signal?: ?AbortSignal, env?: ?Record<string, string>,
+ *   binary?: boolean, maxBytes?: number }} options
  */
-export async function runGit({ argv, cwd, log, operation = 'Git command', stdin = null, signal = null, env = null }) {
+export async function runGit({ argv, cwd, log, operation = 'Git command', stdin = null, signal = null, env = null, binary = false, maxBytes = Infinity }) {
   if (!validArguments(argv) || typeof cwd !== 'string' || !cwd) throw new TypeError('Invalid Git command');
   if (stdin !== null && typeof stdin !== 'string') throw new TypeError('Invalid Git command');
   if (env !== null && (typeof env !== 'object' || Object.values(env).some(value => typeof value !== 'string'))) {
@@ -48,11 +53,21 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
     let settled = false;
     let abort = null;
     let cancelled = false;
+    const chunks = [];
+    let bytes = 0;
+    let truncated = false;
     const finish = async (code) => {
       if (settled) return;
       settled = true;
       if (signal && abort) signal.removeEventListener('abort', abort);
       const result = { argv: command, cwd, code, stdout, stderr, cancelled, ms: Math.round(performance.now() - started), startedAt };
+      if (binary) {
+        const summary = `${bytes} bytes of binary output, not shown${truncated ? ` (stopped at ${maxBytes} bytes)` : ''}.\n`;
+        await log.output(id, 'stdout', summary);
+        await log.finish(id, { ...result, stdout: summary });
+        resolve({ ...result, stdout: Buffer.concat(chunks), truncated });
+        return;
+      }
       await log.finish(id, result);
       resolve(result);
     };
@@ -87,9 +102,15 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
       if (signal.aborted) abort();
       else signal.addEventListener('abort', abort, { once: true });
     }
-    child.stdout.setEncoding('utf8');
+    if (!binary) child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => {
+    if (binary) child.stdout.on('data', (chunk) => {
+      if (truncated) return;
+      bytes += chunk.length;
+      if (bytes > maxBytes) { truncated = true; child.kill(); return; }
+      chunks.push(chunk);
+    });
+    else child.stdout.on('data', (chunk) => {
       const text = chunk.toString('utf8');
       stdout += text;
       void log.output(id, 'stdout', text);

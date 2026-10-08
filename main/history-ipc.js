@@ -61,5 +61,11 @@ export function registerHistoryIpc(getWindow, entryUrl, { repositories, journal 
   });
   handler('history:files', 2, (options, oid) => loadCommitFiles({ ...options, oid }));
   handler('history:diff', 4, (options, oid, file, base) => loadFileDiff({ ...options, oid, file, base }));
+  // Both versions of an image, as bytes, for the image viewer. Read-only: the
+  // sides are blobs Git already holds, or the file on disk for unstaged work.
+  handler('history:image', 3, async (options, file, source) => {
+    const { loadImagePair } = await import('./git/image-blob.js');
+    return loadImagePair({ ...options, file, source });
+  });
   handler('history:compare', 3, (options, base, oid) => loadRangeFiles({ ...options, base, oid }));
 }

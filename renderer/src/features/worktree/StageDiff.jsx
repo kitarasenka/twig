@@ -6,6 +6,8 @@ import { languageFor } from '../diff/languages.js';
 import useHighlighter from '../diff/useHighlighter.js';
 import { DiffPieces, DiffToolbar } from '../diff/DiffLines.jsx';
 import useDiffPrefs from '../diff/useDiffPrefs.js';
+import ImageDiff from '../diff/ImageDiff.jsx';
+import { imageType } from '../../../../main/git/image-types.js';
 
 const changeable = line => line.kind !== 'context';
 const MARKER = { add: '+', delete: '-' };
@@ -40,7 +42,7 @@ function numbering(hunk) {
   });
 }
 
-export default function StageDiff({ file, diff, staged, selection, onSelection, onApply, onDiscard = null, busy, onClose }) {
+export default function StageDiff({ repositoryId = null, file, diff, staged, selection, onSelection, onApply, onDiscard = null, busy, onClose }) {
   const [prefs] = useDiffPrefs();
   const language = languageFor(file);
   const gutters = useMemo(() => diff.hunks.map(numbering), [diff.hunks]);
@@ -72,10 +74,11 @@ export default function StageDiff({ file, diff, staged, selection, onSelection, 
         <Button onClick={onClose} aria-label="Close diff">Close</Button>
       </span>
     </header>
-    {diff.binary && <p className="empty-inline">Binary file changed. Stage it whole; there is no text diff to pick from.</p>}
+    {diff.binary && repositoryId && imageType(file) && <ImageDiff repositoryId={repositoryId} file={file} source={{ kind: staged ? 'staged' : 'unstaged' }} />}
+    {diff.binary && !(repositoryId && imageType(file)) && <p className="empty-inline">Binary file changed. Stage it whole; there is no text diff to pick from.</p>}
     {!diff.binary && diff.hunks.length === 0 && <p className="empty-inline">No textual changes in this file.</p>}
     {!diff.binary && diff.hunks.length > 0 && <DiffToolbar language={language} words={false} />}
-    <div className={`diff-scroll${syntax ? ' diff-syntax' : ''}`}>
+    <div className={`diff-scroll${syntax ? ' diff-syntax' : ''}`} hidden={diff.binary}>
       {diff.hunks.map((hunk, hunkIndex) => {
         const lines = hunk.lines.map((line, index) => (changeable(line) ? index : -1)).filter(index => index >= 0);
         const chosen = selection[hunkIndex] || [];
