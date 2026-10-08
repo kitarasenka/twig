@@ -17,6 +17,39 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Подпись Developer ID и нотаризация macOS (2026-10-08, вне вех; пользователь
+вступил в Apple Developer Program). Механизм — `electron-builder.config.cjs`
+(be7c8f6): все пять секретов → `hardenedRuntime` + `notarize`, ни одного →
+ad-hoc, часть → сборка падает. Исправлено: `APPLE_API_KEY` у electron-builder
+уходит в `notarytool --key` как **путь**, а секрет — текст `.p8`; шаг
+`release.yml` пишет его в `$RUNNER_TEMP/AuthKey.p8` (и удаляет в `always()`),
+без секретов — `::warning::`. Второе: импорт `CSC_LINK` в electron-builder
+26.0.12 ломается — `set-key-partition-list -k` получает пароль `.p12`, а не
+своего keychain («passphrase not correct»). Поэтому keychain создаёт
+`scripts/mac-signing-keychain.sh create <p12> <kc>` (печатает имя без префикса
+«Developer ID Application: » — с ним electron-builder отказывает), сборка
+получает `CSC_NAME` + `CSC_KEYCHAIN`, в конце `delete`. После сборки `.app`
+проверяется `codesign --verify --deep --strict`, `stapler validate`,
+`spctl --assess`. Сертификат `Developer ID Application: Kiryl Tarasenka
+(7KUBZGRSSZ)` (G2, до 2031-09-17) получен без Xcode (Xcode 27 падает на
+старте на macOS 26.6 beta): ключ и CSR через openssl, `.p12` с промежуточным
+G2 и legacy-PBE; файлы — `~/twig-signing/` вне репозитория. Секреты
+`MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY` (текст .p8),
+`APPLE_API_KEY_ID`, `APPLE_API_ISSUER` заведены 2026-10-08. Живьём локально:
+arm64 подписан, нотаризован, `spctl` → «Notarized Developer ID». Неподписанный
+DMG (умолчание electron-builder) скачанным проверяется сам и даёт «cannot
+verify the developer» ещё до приложения, поэтому при подписи конфиг включает
+`dmg.sign`, а хук `afterAllArtifactBuild` = `scripts/notarize-dmg.mjs`
+(`notarytool submit --wait --output-format json`, до 3 попыток на сетевой
+сбой, не Accepted → лог и падение; затем `stapler staple`/`validate`). CI
+проверяет и DMG (`codesign`, `stapler validate`, `spctl -t open`). arm64-DMG
+с отметкой карантина: `accepted`, «Notarized Developer ID», приложение внутри
+тоже. x64 локально не дошёл: сеть до Apple рвалась (`connectTimeout` при
+загрузке, «timestamp service is not available» при подписи). Установленная
+0.17.0 — ad-hoc из CI до сертификата, предупреждение уйдёт с первым
+подписанным релизом. Версия 0.17.0 → **0.17.1** (patch, по поручению
+пользователя): тегом `twig-v0.17.1` уезжает первый подписанный релиз.
+
 MCP `new_version` и переключатели версии/тега в диалоге предложения
 (2026-10-07, вне вех; по поручению пользователя: Claude со скиллом спрашивает
 версию сам, другие агенты нет — выбор должен быть в 🌱 Twig). В диалоге

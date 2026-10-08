@@ -86,17 +86,78 @@ jobs:
 
       - run: npm ci
 
+      # The Developer ID identity goes into a keychain made here (see
+      # scripts/mac-signing-keychain.sh for why not electron-builder's own
+      # CSC_LINK import), and the build gets CSC_NAME + CSC_KEYCHAIN.
+      # notarytool takes the App Store Connect key as a *file* (`--key <path>`),
+      # so the secret (the .p8 text) is written to the runner's temp dir too.
+      - name: Prepare macOS signing
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          P12_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          if [ -n "${MAC_CSC_LINK}" ]; then
+            p12="${RUNNER_TEMP}/developer-id.p12"
+            keychain="${RUNNER_TEMP}/twig-signing.keychain-db"
+            printf '%s' "${MAC_CSC_LINK}" | base64 --decode > "${p12}"
+            name=$(scripts/mac-signing-keychain.sh create "${p12}" "${keychain}")
+            rm -f "${p12}"
+            echo "CSC_NAME=${name}" >> "${GITHUB_ENV}"
+            echo "CSC_KEYCHAIN=${keychain}" >> "${GITHUB_ENV}"
+          fi
+          if [ -n "${APPLE_API_KEY_P8}" ]; then
+            key="${RUNNER_TEMP}/AuthKey.p8"
+            (umask 077; printf '%s\n' "${APPLE_API_KEY_P8}" > "${key}")
+            echo "APPLE_API_KEY_PATH=${key}" >> "${GITHUB_ENV}"
+          fi
+          if [ -z "${MAC_CSC_LINK}" ] && [ -z "${APPLE_API_KEY_P8}" ]; then
+            echo "::warning::macOS signing secrets are not set — the DMG gets only an ad-hoc signature and Gatekeeper will block the first launch."
+          fi
+
       - name: Package
         run: npm run ${{ matrix.script }}
         env:
-          # Optional until the Developer ID identity and App Store Connect API
-          # key are provisioned. The build config keeps ad-hoc signing when
-          # these secrets are absent.
-          CSC_LINK: ${{ matrix.os == 'macos-latest' && secrets.MAC_CSC_LINK || '' }}
-          CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
-          APPLE_API_KEY: ${{ matrix.os == 'macos-latest' && secrets.APPLE_API_KEY || '' }}
+          # Empty until the Developer ID identity and App Store Connect API key
+          # are provisioned: the build config then keeps ad-hoc signing, and
+          # fails when only some are set. CSC_NAME/CSC_KEYCHAIN come from the
+          # step above.
+          APPLE_API_KEY: ${{ env.APPLE_API_KEY_PATH }}
           APPLE_API_KEY_ID: ${{ matrix.os == 'macos-latest' && secrets.APPLE_API_KEY_ID || '' }}
           APPLE_API_ISSUER: ${{ matrix.os == 'macos-latest' && secrets.APPLE_API_ISSUER || '' }}
+
+      # A signed build must also pass Gatekeeper exactly as a downloaded copy
+      # would: Developer ID signature, notarization ticket stapled to the app.
+      - name: Verify macOS signature and notarization
+        if: matrix.os == 'macos-latest' && env.APPLE_API_KEY_PATH != ''
+        shell: bash
+        run: |
+          found=0
+          while IFS= read -r -d '' app; do
+            found=1
+            echo "== ${app}"
+            codesign --verify --deep --strict --verbose=2 "${app}"
+            codesign -dv --verbose=2 "${app}" 2>&1 | grep -E '^(Authority|TeamIdentifier|Runtime)'
+            xcrun stapler validate "${app}"
+            spctl --assess --type execute --verbose=2 "${app}"
+          done < <(find release -maxdepth 2 -name '*.app' -print0)
+          [ "${found}" = 1 ] || { echo "::error::no .app found under release/"; exit 1; }
+          # The downloaded DMG is assessed on its own when opened.
+          for dmg in release/*.dmg; do
+            echo "== ${dmg}"
+            codesign --verify --strict --verbose=2 "${dmg}"
+            xcrun stapler validate "${dmg}"
+            spctl --assess --type open --context context:primary-signature --verbose=2 "${dmg}"
+          done
+
+      - name: Remove macOS signing material
+        if: always() && matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          scripts/mac-signing-keychain.sh delete "${RUNNER_TEMP}/twig-signing.keychain-db"
+          rm -f "${RUNNER_TEMP}/AuthKey.p8" "${RUNNER_TEMP}/developer-id.p12"
 
       - name: Upload installers to the release
         shell: bash

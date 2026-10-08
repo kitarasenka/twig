@@ -23,6 +23,11 @@ module.exports = () => {
   if (macSigningConfigured) {
     mac.hardenedRuntime = true;
     mac.notarize = true;
+    // The app is notarized by electron-builder; the DMG around it is signed
+    // here and notarized + stapled by the hook, so the downloaded image passes
+    // Gatekeeper too.
+    build.dmg = { ...build.dmg, sign: true };
+    build.afterAllArtifactBuild = './scripts/notarize-dmg.mjs';
   } else {
     mac.identity = null;
     mac.hardenedRuntime = false;

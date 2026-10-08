@@ -6,7 +6,7 @@ history in the center, repository navigation on the left, commit details on the
 right, and a command console below — everything the app runs against Git is
 visible there, exactly as it was invoked.
 
-**Current version: 0.17.0.** Released 2026-10-07 — what appeared in each release
+**Current version: 0.17.1.** Released 2026-10-09 — what appeared in each release
 is listed in [CHANGELOG.md](CHANGELOG.md). This repository was split out of the private
 `nodes-managers` monorepo (`modules/git_desk`) with `git subtree split`; the
 M0…M6 history is preserved. `PROMPT.md` is the full specification and `CLAUDE.md`
@@ -222,15 +222,59 @@ fontconfig is newer than the one bundled with Electron. Set
 `TWIG_SYSTEM_FONTCONFIG=1` to skip that.
 
 The macOS release workflow supports Developer ID signing and notarization when
-its Apple credentials are configured. Add these GitHub Actions repository
-secrets: `MAC_CSC_LINK` (base64-encoded Developer ID Application `.p12`),
-`MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY` (base64-encoded App Store Connect
-`.p8`), `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER`. The build enables Hardened
-Runtime, signs the app, notarizes it, and staples Apple's ticket. Until those
+its Apple credentials are configured. The build then enables Hardened Runtime,
+signs the app, notarizes it, staples Apple's ticket, does the same for the DMG
+(`scripts/notarize-dmg.mjs` — a downloaded disk image is assessed on its own),
+and checks both with `codesign`, `stapler validate` and `spctl` before
+uploading. Until those
 secrets are configured, macOS builds keep the ad-hoc signature so Apple
 Silicon can run them; Gatekeeper still shows the "unidentified developer"
 prompt. Open such a build via right-click → Open, or allow it in System
 Settings → Privacy & Security, only if you trust its origin.
+
+Setting up signing (Apple Developer Program membership required):
+
+1. **Developer ID Application certificate** (Account Holder only). Without
+   Xcode: `openssl genrsa -out developer-id.key 2048`, then
+   `openssl req -new -key developer-id.key -out developer-id.csr -subj "/CN=<name>"`;
+   upload the CSR at developer.apple.com → Certificates → + → *Developer ID
+   Application* (G2 Sub-CA) and download the `.cer`. Bundle it with Apple's
+   intermediate (`https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer`)
+   into `twig-developer-id.p12`:
+   `openssl pkcs12 -export -inkey developer-id.key -in <cert.pem> -certfile <g2ca.pem> -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 -out twig-developer-id.p12`
+   (the legacy PBE keeps `security import` happy). Keep the key and the
+   `.p12` outside the repository.
+2. **App Store Connect API key** for notarization: App Store Connect → Users
+   and Access → Integrations → App Store Connect API → Team Keys → +, access
+   *Developer*. Download `AuthKey_<KEYID>.p8` (only once), note the Key ID and
+   the Issuer ID shown above the list.
+3. **Repository secrets** (the values never appear in the shell history):
+
+   ```sh
+   base64 -i twig-developer-id.p12 | gh secret set MAC_CSC_LINK
+   gh secret set MAC_CSC_KEY_PASSWORD            # prompts for the .p12 password
+   gh secret set APPLE_API_KEY < AuthKey_<KEYID>.p8
+   gh secret set APPLE_API_KEY_ID --body <KEYID>
+   gh secret set APPLE_API_ISSUER --body <issuer-uuid>
+   ```
+
+   `APPLE_API_KEY` holds the text of the `.p8` file; the workflow writes it to
+   a temporary file because `notarytool` takes a path. Set all five or none —
+   a partial set fails the build instead of shipping an unsigned DMG silently.
+
+The next `twig-v*` tag then produces signed, notarized DMGs. The workflow puts
+the identity into its own keychain with `scripts/mac-signing-keychain.sh` and
+hands electron-builder `CSC_NAME` + `CSC_KEYCHAIN`: electron-builder 26.0.12's
+own `CSC_LINK` import unlocks its keychain with the wrong password and fails.
+Locally the same works:
+
+```sh
+NAME=$(P12_PASSWORD=… scripts/mac-signing-keychain.sh create twig-developer-id.p12 /tmp/twig.keychain-db)
+CSC_NAME="$NAME" CSC_KEYCHAIN=/tmp/twig.keychain-db \
+  APPLE_API_KEY=$PWD/AuthKey_<KEYID>.p8 APPLE_API_KEY_ID=<KEYID> APPLE_API_ISSUER=<issuer> \
+  npm run pack:mac
+scripts/mac-signing-keychain.sh delete /tmp/twig.keychain-db
+```
 
 The landing page lives in `site/`. `npm run build:site` writes `site/dist/`,
 `npm run preview:site` serves it at `http://127.0.0.1:5190`. A GitHub Actions
