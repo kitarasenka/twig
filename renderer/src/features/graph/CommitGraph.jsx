@@ -58,7 +58,7 @@ export function relativeDate(value) {
   return format.format(Math.round(seconds / 86400), 'day');
 }
 
-const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, index, selected, member, head, stashes, stashX, onStashes, refs, refLines, mark, bisect, onSelect, onMenu, dayStart, age, drag, headBranch, visibility }) {
+const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, index, selected, member, head, stashes, stashX, onStashes, refs, refLines, mark, bisect, onSelect, onMenu, onCheckout, dayStart, age, drag, headBranch, visibility }) {
   // In age mode a row paints its own age onto every lane crossing it, so the
   // graph reads as one gradient down the page instead of per-branch colours.
   const stroke = age === null ? null : ageStrokeClass(age);
@@ -68,12 +68,14 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
     {...drag?.bind(endpoint)}
     className={`real-commit-row ${selected ? 'selected' : member ? 'multi-selected' : ''} ${dayStart ? 'new-day' : ''} ${mark ? `marked ${markClass(mark.color)}` : ''} ${drag?.className(endpoint) || ''} ${drag?.state?.source.oid === commit.oid ? 'drag-source-row' : ''} ${drag?.state?.target?.oid === commit.oid ? 'drag-target-row' : ''}`}
     style={{ top, height }} onClick={event => onSelect(commit.oid, { shift: event.shiftKey, toggle: event.metaKey || event.ctrlKey })}
+    onDoubleClick={() => onCheckout?.(refs || [])}
     onContextMenu={event => { event.preventDefault(); onMenu(commit.oid, event.clientX, event.clientY); }}>
     <span className="ref-cell">
       {visibility.branch && refLines.map((line, lineIndex) => <span className="ref-line" key={lineIndex}>
         {lineIndex === 0 && mark && <span className="mark-chip" title={mark.note || 'Marked'}><Bookmark aria-label={mark.note ? `Marked: ${mark.note}` : 'Marked'} /></span>}
         {lineIndex === 0 && head && <Check aria-label="HEAD" />}
-        {line.map(refIndex => refs[refIndex]).map(ref => <span key={ref.fullName} title={`${ref.fullName} · Drag or Alt+D, then Alt+Enter on a target`} tabIndex={0}
+        {line.map(refIndex => refs[refIndex]).map(ref => <span key={ref.fullName} title={`${ref.fullName}${ref.type === 'tag' ? '' : ' · Double-click to check out'} · Drag or Alt+D, then Alt+Enter on a target`} tabIndex={0}
+          onDoubleClick={event => { event.stopPropagation(); onCheckout?.([ref]); }}
           {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
           {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
       </span>)}</span>
@@ -97,7 +99,7 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
   </div>;
 });
 
-export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, bisectMarks = NO_BISECT_MARKS, onUncommitted, onStashes, active, commitColors = 'lanes', drag, headBranch }) {
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, onCheckout, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, bisectMarks = NO_BISECT_MARKS, onUncommitted, onStashes, active, commitColors = 'lanes', drag, headBranch }) {
   const selectionSet = selection || EMPTY_SELECTION;
   const scroller = useRef(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
@@ -371,7 +373,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
       <div className="virtual-commits" style={{ height: metrics.totalHeight(commits.length) }}>
         {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
           top={metrics.top(start + offset)} height={metrics.height(start + offset)} refLines={refLines.get(commit.oid) || EMPTY_LINES}
-          selected={selected === commit.oid} member={selectionSet.has(commit.oid)} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} age={now === null ? null : ageStop(commit.committedAt, now)}
+          selected={selected === commit.oid} member={selectionSet.has(commit.oid)} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} onCheckout={onCheckout} age={now === null ? null : ageStop(commit.committedAt, now)}
           mark={marks[commit.oid] || null} bisect={bisectMarks.get(commit.oid.toLowerCase()) || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch} visibility={visibility}
           dayStart={start + offset > 0 && commit.committedAt.slice(0, 10) !== commits[start + offset - 1].committedAt.slice(0, 10)} />)}
       </div>

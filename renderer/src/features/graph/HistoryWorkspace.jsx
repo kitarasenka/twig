@@ -31,6 +31,7 @@ import PatchDialog from '../ops/PatchDialog.jsx';
 import { exportOrder } from '../ops/patch-view.js';
 import { ConfirmDialog, MessageDialog, NameDialog } from '../ops/dialogs.jsx';
 import { buildCommitMenu, buildMultiCommitMenu } from '../ops/commit-menu.js';
+import { checkoutChoice } from '../ops/checkout-choice.js';
 import { buildRefMenu, buildSectionMenu } from '../refs/ref-menu.js';
 import { absolutePath, buildFileMenu } from '../diff/file-menu.js';
 import ImageDiff from '../diff/ImageDiff.jsx';
@@ -48,6 +49,9 @@ import { dropActions, endpointLabel, sameEndpoint } from '../../../../main/git/d
 import { buildUiContext } from './ui-context-report.js';
 
 const NOOP = () => {};
+// A reload reads back as many rows as were loaded, so the view keeps its place —
+// up to this many (eight pages); a history scrolled deeper than that is rare.
+const KEEP_ROWS = 2000;
 const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
 const NO_BISECT = { active: false, terms: { bad: 'bad', good: 'good' }, start: null, bad: null, goods: [],
   skipped: [], marked: [], expected: null, remaining: null, steps: null, done: false, firstBad: null };
@@ -70,7 +74,7 @@ function contextMenuProps(open, keydown) {
   };
 }
 
-function BranchTree({ refs, onSelect, onMenu, onRename, drag, headBranch }) {
+function BranchTree({ refs, onSelect, onCheckout, onMenu, onRename, drag, headBranch }) {
   const folders = new Map();
   const leaves = [];
   for (const ref of refs) {
@@ -82,7 +86,7 @@ function BranchTree({ refs, onSelect, onMenu, onRename, drag, headBranch }) {
       folders.get(folder).push({ ...ref, label: ref.label.slice(slash + 1) });
     }
   }
-  return <>{[...folders].map(([name, children]) => <details className="branch-folder" key={name} open><summary>{name}</summary><BranchTree refs={children} onSelect={onSelect} onMenu={onMenu} onRename={onRename} drag={drag} headBranch={headBranch} /></details>)}
+  return <>{[...folders].map(([name, children]) => <details className="branch-folder" key={name} open><summary>{name}</summary><BranchTree refs={children} onSelect={onSelect} onCheckout={onCheckout} onMenu={onMenu} onRename={onRename} drag={drag} headBranch={headBranch} /></details>)}
     {leaves.map(ref => {
       const bound = drag.bind(refEndpoint(ref));
       // F2 renames a local branch, the way it renames a file in a file manager.
@@ -91,7 +95,8 @@ function BranchTree({ refs, onSelect, onMenu, onRename, drag, headBranch }) {
         bound.onKeyDown?.(event);
       };
       return <button {...bound} {...contextMenuProps((x, y) => onMenu(ref, x, y), keydown)} className={`real-branch ${ref.type === 'local' && ref.name === headBranch ? 'current-branch' : ''} ${drag.className(refEndpoint(ref))}`} key={ref.fullName}
-      title={`${ref.fullName} · Drag or Alt+D, then Alt+Enter on a target · Right-click or Shift+F10 for actions${ref.type === 'local' ? ' · F2 to rename' : ''}`} onClick={() => onSelect(ref.target)}>
+      title={`${ref.fullName}${ref.type === 'tag' ? '' : ' · Double-click to check out'} · Drag or Alt+D, then Alt+Enter on a target · Right-click or Shift+F10 for actions${ref.type === 'local' ? ' · F2 to rename' : ''}`}
+      onClick={() => onSelect(ref.target)} onDoubleClick={() => onCheckout([ref])}>
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.label}</span>{(ref.ahead > 0 || ref.behind > 0) && <small>↑{ref.ahead} ↓{ref.behind}</small>}</button>; })}</>;
 }
 
@@ -260,8 +265,15 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   // commit they show has just been rewritten away — they report that, and the
   // graph simply stops highlighting a row. Our own actions still reload the
   // plain way, because after a checkout or a rebase the old selection is stale
-  // on purpose.
-  const reload = useCallback(({ keepView = false } = {}) => {
+  // on purpose. `select` is the commit to show once history is back — a
+  // checkout passes the commit it moved to, so the graph moves the selection
+  // there instead of to the newest commit.
+  //
+  // Either way the history stays where it is on screen: the new pages are
+  // published only once at least as many rows as before are in (an empty list
+  // for one frame collapses the scroller, and the browser would throw the view
+  // back to the top), and the selection scrolls only as far as it must.
+  const reload = useCallback(({ keepView = false, select = null } = {}) => {
     // Kept so `jump` can wait for it: a click that lands mid-reload (the
     // BugHunter banner's "Show test commit" right after a step, a sidebar
     // branch right after a checkout) would otherwise find history empty and
@@ -269,11 +281,12 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     const run = (async () => {
       lastReload.current = Date.now();
       const epoch = ++generation.current;
+      const shown = Math.min(dataRef.current.commits.length, KEEP_ROWS);
       // Reloading history must not throw the user out of the working tree
       // screen: staging refreshes history, and the screen lives in `selected`.
       busy.current = true; setLoading(true); setError('');
       if (!keepView) {
-        setSelected(current => (SCREENS.includes(current) || current === UNCOMMITTED ? current : null));
+        setSelected(current => select || (SCREENS.includes(current) || current === UNCOMMITTED ? current : null));
         setSelection([]); setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
       }
       try {
@@ -291,10 +304,13 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
         setMarks(markMap);
         layout.current = createLaneLayout(refs);
         dataRef.current = { commits: [], lanes: [], refs, nextSkip: 0, width: 1 };
-        setData(dataRef.current);
         busy.current = false;
-        await loadMore();
-        if (generation.current === epoch) lastReload.current = Date.now();
+        const missing = () => dataRef.current.commits.length < shown || (select && !dataRef.current.commits.some(commit => commit.oid === select));
+        let more = await loadMore();
+        while (more && generation.current === epoch && dataRef.current.nextSkip !== null && missing()) more = await loadMore();
+        if (generation.current !== epoch) return;
+        setData(dataRef.current); // a failed first page still shows the fresh refs
+        lastReload.current = Date.now();
       } catch {
         if (generation.current === epoch) { setError('Could not load repository references.'); busy.current = false; setLoading(false); }
       }
@@ -389,7 +405,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
    * failure: main answers with the operation state that followed, and a merge
    * that stopped on a conflict is reported as a conflict, not as an error.
    */
-  const perform = useCallback(async (run, success) => {
+  const perform = useCallback(async (run, success, { select = null } = {}) => {
     setWorking(true); setNote('');
     try {
       const result = await run();
@@ -406,7 +422,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
       else if (!state || state.kind === 'none') { setNote(result.message || 'The operation did not finish.'); onConsole(); }
       else setNote('');
       if (state && state.conflicts.length === 0) setConflict(null);
-      await reload();
+      await reload({ select: result.ok ? select : null });
       onRepositoryChanged?.();
       return result;
     } catch (failure) {
@@ -484,9 +500,9 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   }), [fireAutomation]);
 
   /** Wraps a history mutation with a pre-gate and a post-hook. */
-  const performGated = useCallback(async (pre, post, run, success) => {
+  const performGated = useCallback(async (pre, post, run, success, options) => {
     if (pre && !(await runAutomation(pre, {}))) return null;
-    const result = await perform(run, success);
+    const result = await perform(run, success, options);
     if (post && result?.ok !== false) void window.twig.runAutomation(repository.id, post, {}).then(() => setAutomationRefresh(value => value + 1)).catch(() => {});
     return result;
   }, [runAutomation, perform, repository.id]);
@@ -547,7 +563,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
       createBranch: () => setDialog({
         type: 'name', title: `Create a branch at ${short}`, label: 'Branch name', placeholder: 'feature/short-description',
         confirmLabel: 'Create branch', extra: 'Check it out straight away',
-        onConfirm: ({ name, checked }) => perform(() => window.twig.createBranch(repository.id, name, commit.oid, checked), `Branch ${name} created.`)
+        onConfirm: ({ name, checked }) => perform(() => window.twig.createBranch(repository.id, name, commit.oid, checked), `Branch ${name} created.`, { select: commit.oid })
       }),
       createTag: () => setDialog({
         type: 'name', title: `Create a tag at ${short}`, label: 'Tag name', placeholder: 'v1.0.0',
@@ -558,13 +574,14 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
         title: `Check out ${name}`, command: ['checkout', name, '--'],
         consequence: 'Your uncommitted changes stay in the working tree, and Git will refuse the checkout if they conflict with that branch.',
         confirmLabel: 'Check out',
-        run: () => performGated(null, 'post-checkout', () => window.twig.checkoutRef(repository.id, name, false), `Checked out ${name}.`)
+        run: () => performGated(null, 'post-checkout', () => window.twig.checkoutRef(repository.id, name, false), `Checked out ${name}.`,
+          { select: data.refs.find(ref => ref.type === 'local' && ref.name === name)?.target || null })
       }),
       checkoutCommit: () => confirmIfDirty({
         title: `Check out ${short}`, command: ['checkout', '--detach', commit.oid, '--'],
         consequence: 'HEAD will be detached: new commits will belong to no branch until you create one.',
         confirmLabel: 'Check out',
-        run: () => performGated(null, 'post-checkout', () => window.twig.checkoutRef(repository.id, commit.oid, true), `Checked out ${short} with a detached HEAD.`)
+        run: () => performGated(null, 'post-checkout', () => window.twig.checkoutRef(repository.id, commit.oid, true), `Checked out ${short} with a detached HEAD.`, { select: commit.oid })
       }),
       merge: (name, noFf) => performGated('pre-merge-commit', 'post-merge', () => window.twig.mergeRevision(repository.id, name, noFf), `Merged ${name} into ${target}.`),
       cherryPick: () => perform(() => window.twig.cherryPick(repository.id, commit.oid), `Cherry-picked ${short}.`),
@@ -618,7 +635,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
       checkoutRemote: ref => setDialog({
         type: 'name', title: `Check out ${ref.name}`, label: 'Local branch name',
         placeholder: ref.name.slice(ref.name.indexOf('/') + 1), confirmLabel: 'Create and check out',
-        onConfirm: ({ name }) => performGated(null, 'post-checkout', () => window.twig.createBranch(repository.id, name, ref.target, true), `Checked out ${name}.`)
+        onConfirm: ({ name }) => performGated(null, 'post-checkout', () => window.twig.createBranch(repository.id, name, ref.target, true), `Checked out ${name}.`, { select: ref.target })
       }),
       deleteRemoteBranch: ref => {
         const split = splitRemoteRef(ref.fullName, remotes.map(item => item.name));
@@ -652,6 +669,19 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     };
   }
 
+  // A double-click on a branch checks it out: in the sidebar, on a badge in the
+  // graph, or on a commit row whose branch is unambiguous. It goes through the
+  // same handlers as the menu item, so a dirty tree still asks first.
+  function checkoutOnDoubleClick(refs) {
+    const choice = checkoutChoice(refs, { headBranch, locals: data.refs });
+    if (choice.kind === 'none') { if (choice.reason) setNote(`${choice.reason}.`); return; }
+    if (working) return;
+    if (operation.kind !== 'none') { setNote(`Finish or abort the ${operation.kind} first.`); return; }
+    const handlers = commitHandlers({ oid: choice.target || choice.ref.target, parents: [], subject: '', body: '' });
+    if (choice.kind === 'branch') handlers.checkoutBranch(choice.name);
+    else handlers.checkoutRemote(choice.ref);
+  }
+
   function confirmIfDirty({ title, command, consequence, confirmLabel, run }) {
     if (!dirty) { run(); return; }
     setDialog({ type: 'confirm', title, command, consequence, confirmLabel, onConfirm: run });
@@ -677,7 +707,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
         title: `Check out ${item.name}`, command: ['checkout', '--detach', item.target, '--'],
         consequence: 'HEAD will be detached: new commits will belong to no branch until you create one.',
         confirmLabel: 'Check out',
-        run: () => performGated(null, 'post-checkout', () => window.twig.checkoutRef(repository.id, item.target, true), `Checked out ${item.name} with a detached HEAD.`)
+        run: () => performGated(null, 'post-checkout', () => window.twig.checkoutRef(repository.id, item.target, true), `Checked out ${item.name} with a detached HEAD.`, { select: item.target })
       }),
       rebaseOnto: item => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, item.target, null), `Rebased ${target} onto ${item.name}.`),
       // The same compare a drag-and-drop offers: the ref against HEAD, read-only.
@@ -689,7 +719,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
       createBranchFrom: item => setDialog({
         type: 'name', title: `Create a branch from ${item.name}`, label: 'Branch name', placeholder: 'feature/short-description',
         confirmLabel: 'Create branch', extra: 'Check it out straight away',
-        onConfirm: ({ name, checked }) => perform(() => window.twig.createBranch(repository.id, name, item.target, checked), `Branch ${name} created.`)
+        onConfirm: ({ name, checked }) => perform(() => window.twig.createBranch(repository.id, name, item.target, checked), `Branch ${name} created.`, { select: item.target })
       }),
       createTagAt: () => base.createTag(),
       createBranchAtHead: () => commitHandlers({ oid: headOid, parents: [] }).createBranch(),
@@ -1161,7 +1191,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
             <Workflow /><span>Automations</span></button>
         </nav>
         <div className="sidebar-sections">{[['LOCAL', 'local'], ['REMOTE', 'remote'], ['TAGS', 'tag']].map(([label, type]) => <details key={type} open><summary {...contextMenuProps((x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ section: type, label, x, y }); })}>{label}<span>{data.refs.filter(ref => ref.type === type).length}</span></summary>
-          <BranchTree refs={visibleRefs.filter(ref => ref.type === type).map(ref => ({ ...ref, label: ref.name }))} onSelect={jump} drag={drag} headBranch={headBranch}
+          <BranchTree refs={visibleRefs.filter(ref => ref.type === type).map(ref => ({ ...ref, label: ref.name }))} onSelect={jump} onCheckout={checkoutOnDoubleClick} drag={drag} headBranch={headBranch}
             onMenu={(ref, x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ ref, x, y }); }}
             onRename={ref => { if (operation.kind === 'none' && !working) refHandlers(ref).renameBranch(ref.name); }} />
           {!visibleRefs.some(ref => ref.type === type) && <p className="section-empty">No matching {label.toLowerCase()} refs</p>}
@@ -1214,13 +1244,13 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
           {search.loading ? <div className="loading-shell" aria-label="Searching history">{Array.from({ length: 6 }, (_, i) => <div className="skeleton" key={i} />)}</div>
             : search.error ? <p className="empty-inline">{search.error} <button onClick={onConsole}>Show output</button></p>
             : search.commits.length ? <CommitGraph commits={search.commits} lanes={search.lanes} laneCount={1} refMap={refMap} indexMap={searchIndexMap} selected={selected} head={repository.status?.branch?.oid}
-                onSelect={oid => choose(oid)} onMenu={openMenu} loadMore={NOOP} hasMore={false} loading={false} summary={null} stashes={[]} marks={marks} bisectMarks={bisectMarks}
+                onSelect={oid => choose(oid)} onMenu={openMenu} onCheckout={checkoutOnDoubleClick} loadMore={NOOP} hasMore={false} loading={false} summary={null} stashes={[]} marks={marks} bisectMarks={bisectMarks}
                 onUncommitted={NOOP} onStashes={NOOP} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />
               : <p className="empty-inline">{search.invalid || searchEmpty(search.query, search.mode)}</p>}
         </div>
         : loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
-            onSelect={choose} onMenu={openMenu} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
+            onSelect={choose} onMenu={openMenu} onCheckout={checkoutOnDoubleClick} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
             onUncommitted={() => choose(UNCOMMITTED)} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
       </div>
       {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}

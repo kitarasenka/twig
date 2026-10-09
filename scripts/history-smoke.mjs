@@ -517,6 +517,55 @@ try {
   // still shows the commit the user had selected before the outside commit.
   await openCommit.waitFor();
 
+  // Double-click checks a branch out, and the history stays where it is: the
+  // view does not jump to the top, the selection moves to the branch's commit.
+  const fixtureOid = async n => git(['log', '--format=%H', `--grep=^History fixture ${n}$`, 'main']);
+  await page.waitForTimeout(1500); // past the guard that skips a reload right after one
+  await git(['branch', 'smoke/deep', await fixtureOid(100)]);
+  await git(['branch', 'smoke/near', await fixtureOid(101)]);
+  const deepBranch = sidebar.locator('.real-branch[title^="refs/heads/smoke/deep"]');
+  await deepBranch.waitFor();
+  const rowHeight = await page.locator('.real-commit-row').first().evaluate(node => node.getBoundingClientRect().height);
+  await list.evaluate((node, top) => { node.scrollTop = top; }, rowHeight * 150);
+  await page.locator('.real-commit-row', { hasText: 'History fixture 100' }).first().waitFor();
+  const scrolledTo = await list.evaluate(node => node.scrollTop);
+  assert.ok(scrolledTo > rowHeight * 100, `the graph is scrolled down: ${scrolledTo}`);
+  const checkoutDialog = name => page.getByRole('dialog', { name: `Check out ${name}` });
+  const confirmCheckout = async name => {
+    // A dirty tree asks first; a clean one checks out straight away.
+    const dialog = checkoutDialog(name);
+    if (await dialog.isVisible().catch(() => false)) await dialog.getByRole('button', { name: 'Check out', exact: true }).click();
+  };
+  const headIs = async name => {
+    for (let i = 0; i < 100 && await git(['rev-parse', '--abbrev-ref', 'HEAD']) !== name; i++) await page.waitForTimeout(100);
+    assert.equal(await git(['rev-parse', '--abbrev-ref', 'HEAD']), name);
+  };
+  await deepBranch.dblclick();
+  await page.waitForTimeout(300); await confirmCheckout('smoke/deep');
+  await headIs('smoke/deep');
+  await page.locator('.real-commit-row.selected', { hasText: 'History fixture 100' }).waitFor();
+  await page.getByText('Checked out smoke/deep.').waitFor();
+  const afterSidebar = await list.evaluate(node => node.scrollTop);
+  assert.ok(Math.abs(afterSidebar - scrolledTo) <= rowHeight * 2, `checkout keeps the history in place: ${scrolledTo} -> ${afterSidebar}`);
+  assert.equal(await page.locator('.real-commit-row.selected').count(), 1, 'only the branch commit is selected');
+  // A badge in the graph checks out on a double-click too.
+  const nearBadge = page.locator('.real-commit-row .ref-badge', { hasText: 'smoke/near' });
+  await nearBadge.dblclick();
+  await page.waitForTimeout(300); await confirmCheckout('smoke/near');
+  await headIs('smoke/near');
+  await page.locator('.real-commit-row.selected', { hasText: 'History fixture 101' }).waitFor();
+  const afterBadge = await list.evaluate(node => node.scrollTop);
+  assert.ok(Math.abs(afterBadge - scrolledTo) <= rowHeight * 2, `badge checkout keeps the history in place: ${scrolledTo} -> ${afterBadge}`);
+  // The current branch is not checked out again; a tag never is.
+  await nearBadge.dblclick();
+  await page.getByText('smoke/near is already checked out.').waitFor();
+  // Back to main, by double-clicking it in the sidebar.
+  await sidebar.locator('.real-branch[title^="refs/heads/main"]').dblclick();
+  await page.waitForTimeout(300); await confirmCheckout('main');
+  await headIs('main');
+  await page.getByText('Checked out main.').waitFor();
+  await list.evaluate(node => { node.scrollTop = 0; });
+
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await page.getByLabel('Appearance').selectOption(theme); await page.keyboard.press('Escape');
