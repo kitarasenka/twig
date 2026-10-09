@@ -3,6 +3,7 @@ import { ExternalLink, FilePenLine, Github, Gitlab, ShieldAlert, ShieldCheck, Sh
 import Button from '../../ui/Button.jsx';
 import { AGE_STOPS, ageStop, ageTextClass } from '../graph/age-color.js';
 import { MARK_COLORS, MARK_LABELS } from '../graph/mark-color.js';
+import { authorInitials, authorTint } from '../graph/layout.js';
 import { forgeLabel, forgeLinks } from './forge-url.js';
 import { signatureView } from './signature-view.js';
 import FileStatus from '../diff/FileStatus.jsx';
@@ -52,6 +53,12 @@ function FileTree({ files, onFile, onFileMenu }) {
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** "9 Oct 2026, 14:32" in the machine's time zone; an unreadable date stays as Git wrote it. */
+function dateTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value || '') : date.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
 
 // The author card and message body start collapsed; the choice is remembered
 // like the theme so a commit opens the same way next time.
@@ -126,6 +133,11 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
       {!loading && !error && commit && <>
         {range && <p className="muted">Changes from {range.base.slice(0, 8)} to {range.oid.slice(0, 8)}</p>}
         <h2>{commit.subject || '(no subject)'}</h2>
+        {!range && <p className="commit-byline">
+          <span className={`author-dot author-tint-${authorTint(commit.author)}`} aria-hidden="true">{authorInitials(commit.author.name)}</span>
+          <span className="commit-byline-name" title={email}>{commit.author.name}</span>
+          <time dateTime={commit.author.date} title={commit.committedAt !== commit.author.date ? `Committed ${dateTime(commit.committedAt)}` : undefined}>{dateTime(commit.author.date)}</time>
+        </p>}
         {!range && signature?.signed && <SignatureLine signature={signature} />}
         {!range && <button type="button" className="text-button details-toggle" aria-expanded={showDetails}
           onClick={() => { const next = !showDetails; setShowDetails(next); saveShowDetails(next); }}>

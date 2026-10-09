@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { CommandLog } from '../main/command-log.js';
 import { runGit } from '../main/git/exec.js';
+import { expandRefTree } from './smoke-ref-tree.mjs';
 
 // Worktrees, submodules, commit signatures, patches, cherry-pick and revert of
 // a selection, and Git LFS — in a real Electron window against real
@@ -167,6 +168,7 @@ esac
 
   // --- Worktrees: open a branch in a new worktree from its menu. ---
   const sidebar = page.getByRole('complementary', { name: 'Repository navigation' });
+  await expandRefTree(page);
   await sidebar.locator('.real-branch', { hasText: /^side/ }).first().click({ button: 'right' });
   await page.getByRole('menu', { name: 'Actions for side' }).getByRole('menuitem', { name: /Open side in a new worktree/ }).click();
   const worktreeDialog = page.getByRole('dialog', { name: 'New worktree' });

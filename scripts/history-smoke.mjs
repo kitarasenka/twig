@@ -7,6 +7,7 @@ import { CommandLog } from '../main/command-log.js';
 import { runGit } from '../main/git/exec.js';
 import { loadHistoryPage } from '../main/git/history.js';
 import { loadRefs } from '../main/git/refs.js';
+import { expandRefTree } from './smoke-ref-tree.mjs';
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'twig-history-smoke-'));
 let app;
@@ -197,8 +198,22 @@ try {
   await assert.rejects(page.evaluate(() => window.twig.setEditor('/bin/sh')), /Invalid editor/);
   await assert.rejects(page.evaluate(() => window.twig.openInEditor('not-a-repository', 'hello.txt')), /Unknown repository/);
 
-  // Sidebar: every branch, tag and section header has its own context menu.
+  // Sidebar tree: closed by default, opened only down to the selected refs —
+  // the tip is selected, so its four refs show and are marked, and the
+  // feat/graph folder (nothing selected in it) stays closed.
   const sidebar = page.getByRole('complementary', { name: 'Repository navigation' });
+  await sidebar.locator('.real-branch.selected-ref', { hasText: 'fontconfig' }).waitFor();
+  assert.deepEqual((await sidebar.locator('.real-branch.selected-ref > span').allTextContents()).sort(), ['fontconfig', 'main', 'v-test', '2026-09'].sort());
+  assert.equal(await sidebar.locator('.real-branch', { hasText: 'curves' }).count(), 0, 'a folder with nothing selected stays closed');
+  // A folder opened by hand opens; closing it again hides the branch.
+  await sidebar.locator('summary', { hasText: /^feat$/ }).click();
+  await sidebar.locator('summary', { hasText: /^graph$/ }).click();
+  await sidebar.locator('.real-branch', { hasText: 'curves' }).waitFor();
+  await sidebar.locator('summary', { hasText: /^feat$/ }).click();
+  assert.equal(await sidebar.locator('.real-branch', { hasText: 'curves' }).count(), 0, 'closing a folder by hand hides what is in it');
+  await expandRefTree(page);
+
+  // Sidebar: every branch, tag and section header has its own context menu.
   const curves = sidebar.locator('.real-branch', { hasText: 'curves' });
   await curves.click({ button: 'right' });
   const branchActions = page.getByRole('menu', { name: 'Actions for feat/graph/curves' });
@@ -406,7 +421,7 @@ try {
   // the choice surviving a restart. Colour classes are the only honest witness
   // that the ramp reached the SVG at all.
   const laneClasses = () => page.evaluate(() =>
-    [...new Set([...document.querySelectorAll('.real-lane circle')].map(node => node.getAttribute('class')))].sort());
+    [...new Set([...document.querySelectorAll('.real-lane circle')].map(node => node.classList[0]))].sort());
   await list.evaluate(node => { node.scrollTop = 0; });
   assert.deepEqual(await laneClasses(), ['graph-age-0', 'graph-age-3']);
   assert.match(await page.evaluate(() => document.querySelector('.real-commit-row .date-cell').className), /age-text-0/);
@@ -524,12 +539,18 @@ try {
   await git(['branch', 'smoke/deep', await fixtureOid(100)]);
   await git(['branch', 'smoke/near', await fixtureOid(101)]);
   const deepBranch = sidebar.locator('.real-branch[title^="refs/heads/smoke/deep"]');
-  await deepBranch.waitFor();
+  // A new folder starts closed: smoke/deep is hidden until its commit is selected.
+  await sidebar.locator('summary', { hasText: /^smoke$/ }).waitFor();
+  assert.equal(await deepBranch.count(), 0, 'the new smoke/ folder starts closed');
   const rowHeight = await page.locator('.real-commit-row').first().evaluate(node => node.getBoundingClientRect().height);
   await list.evaluate((node, top) => { node.scrollTop = top; }, rowHeight * 150);
   await page.locator('.real-commit-row', { hasText: 'History fixture 100' }).first().waitFor();
   const scrolledTo = await list.evaluate(node => node.scrollTop);
   assert.ok(scrolledTo > rowHeight * 100, `the graph is scrolled down: ${scrolledTo}`);
+  // Selecting the branch's commit in the graph opens its folder and marks it.
+  await page.locator('.real-commit-row', { hasText: 'History fixture 100' }).first().click();
+  await sidebar.locator('.real-branch.selected-ref[title^="refs/heads/smoke/deep"]').waitFor();
+  assert.equal(await sidebar.locator('.real-branch.selected-ref').count(), 1, 'only the selected commit\'s ref is marked');
   const checkoutDialog = name => page.getByRole('dialog', { name: `Check out ${name}` });
   const confirmCheckout = async name => {
     // A dirty tree asks first; a clean one checks out straight away.

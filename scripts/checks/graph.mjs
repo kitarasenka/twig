@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { ROW_HEIGHT, createLaneLayout, createRowMetrics, segmentPath } from '../../renderer/src/features/graph/layout.js';
+import { readFileSync } from 'node:fs';
+import { AUTHOR_TINTS, ROW_HEIGHT, authorTint, createLaneLayout, createRowMetrics, segmentPath } from '../../renderer/src/features/graph/layout.js';
 import { BADGE_GAP, REF_LINE_HEIGHT, badgeWidth, extraHeight, packRefLines } from '../../renderer/src/features/graph/ref-lines.js';
 
 const c = (oid, ...parents) => ({ oid, parents });
@@ -80,4 +81,42 @@ assert.equal(packRefLines(widths, 10000, 9999)[0].length, 1);
 // A badge wider than the column gets its own line rather than vanishing.
 assert.deepEqual(packRefLines([500, 20], 40), [[0], [1]]);
 assert.deepEqual(packRefLines([], 140), [[]]);
-console.log(`Graph checks passed: merges, roots, page continuity, 100k linear commits (${Math.round(performance.now() - started)}ms), bounded visible rows, wrapped ref lines.`);
+
+// History rows are 28 px; the row metrics and the inline row height share it.
+assert.equal(ROW_HEIGHT, 28);
+
+// Author tints: stable, keyed by email regardless of case, by name without one,
+// in range, and not all the same for a handful of different people.
+assert.equal(authorTint({ name: 'Ann', email: 'Ann@Example.com' }), authorTint({ name: 'Annie', email: 'ann@example.com' }));
+assert.equal(authorTint({ name: 'Bob', email: '' }), authorTint({ name: 'bob' }));
+for (const author of [{}, null, undefined, { name: 'Ж' }]) {
+  const tint = authorTint(author);
+  assert.ok(Number.isInteger(tint) && tint >= 0 && tint < AUTHOR_TINTS);
+}
+assert.ok(new Set(['a@x', 'b@x', 'c@x', 'd@x', 'e@x', 'f@x', 'g@x', 'h@x'].map(email => authorTint({ email }))).size >= 3);
+// Every tint has its CSS rule, and the --text initials keep 4.5:1 on each
+// tint (22 % of a mark colour into --bg) in both themes.
+const historyCss = readFileSync(new URL('../../renderer/src/ui/history.css', import.meta.url), 'utf8');
+const tokensCss = readFileSync(new URL('../../renderer/src/ui/tokens.css', import.meta.url), 'utf8');
+const tintColors = [];
+for (let index = 0; index < AUTHOR_TINTS; index++) {
+  const rule = historyCss.match(new RegExp(`\\.author-tint-${index} \\{ --author-tint: var\\(--([\\w-]+)\\); \\}`));
+  assert.ok(rule, `history.css defines .author-tint-${index}`);
+  tintColors.push(rule[1]);
+}
+assert.match(historyCss, /\.real-lane circle\.author-tint \{ fill: color-mix\(in srgb, var\(--author-tint\) 22%, var\(--bg\)\); \}/);
+const channels = hex => hex.match(/\w\w/g).map(part => parseInt(part, 16));
+const luminance = rgb => {
+  const [r, g, b] = rgb.map(value => value / 255).map(value => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4));
+  return r * 0.2126 + g * 0.7152 + b * 0.0722;
+};
+for (const theme of ['dark', 'light']) {
+  const block = tokensCss.split(`:root[data-theme='${theme}'] {`)[1].split('}')[0];
+  const palette = Object.fromEntries([...block.matchAll(/--([\w-]+): #(\w{6});/g)].map(match => [match[1], channels(match[2])]));
+  for (const name of tintColors) {
+    const fill = palette[name].map((value, channel) => value * 0.22 + palette.bg[channel] * 0.78);
+    const [light, dark] = [luminance(fill), luminance(palette.text)].sort((a, b) => b - a);
+    assert.ok((light + 0.05) / (dark + 0.05) >= 4.5, `${theme}: --text initials on the ${name} author tint`);
+  }
+}
+console.log(`Graph checks passed: merges, roots, page continuity, 100k linear commits (${Math.round(performance.now() - started)}ms), bounded visible rows, wrapped ref lines, author tints.`);

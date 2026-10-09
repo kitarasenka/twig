@@ -1,4 +1,4 @@
-export const ROW_HEIGHT = 30;
+export const ROW_HEIGHT = 28;
 export const LANE_WIDTH = 18;
 
 function colorKey(value) {
@@ -57,6 +57,19 @@ export function authorInitials(name) {
   if (!parts.length) return '?';
   const raw = parts.length > 1 ? parts[0][0] + parts[1][0] : parts[0].slice(0, 2);
   return raw.toUpperCase();
+}
+
+/** How many node tints there are: one per mark colour, mixed faintly into --bg. */
+export const AUTHOR_TINTS = 6;
+
+/** A stable tint for a commit author, so one person's nodes share a faint fill
+ * down the graph. Keyed by email (case-insensitive), by name when it is empty;
+ * the initials inside the node still say who it is, the tint only groups. */
+export function authorTint(author) {
+  const key = String(author?.email || author?.name || '').trim().toLowerCase();
+  let hash = 0;
+  for (const character of key) hash = (hash * 31 + character.codePointAt(0)) | 0;
+  return (hash >>> 0) % AUTHOR_TINTS;
 }
 
 /** The node sits in the middle of its row, whatever that row's height is:

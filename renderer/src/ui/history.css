@@ -17,7 +17,7 @@
 .real-history-scroll { flex: 1; overflow: auto; min-height: 0; }
 .real-history-scroll:focus-visible, .diff-lines:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .virtual-commits { position: relative; min-width: var(--table-min-width); }
-.real-commit-row { position: absolute; width: 100%; height: var(--row-height); font-size: var(--text-sm); cursor: pointer; }
+.real-commit-row { position: absolute; width: 100%; font-size: var(--text-sm); cursor: pointer; }
 /* A row with more refs than fit on one line grows instead of hiding them
    behind a count: the badges wrap and the row gets the height back. */
 .real-commit-row .ref-cell { align-self: stretch; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; padding-block: var(--space-1); }
@@ -44,6 +44,15 @@
 .real-history.graph-clip-left.graph-clip-right .lane-cell { mask-image: linear-gradient(to right, transparent, var(--bg) 14px, var(--bg) calc(100% - 14px), transparent); }
 .real-lane path { fill: none; stroke-width: 2; }
 .real-lane circle { fill: var(--bg); stroke-width: 2.5; }
+/* Each author's nodes share a faint fill (authorTint in layout.js): a mark
+   colour mixed into --bg, light enough for the initials to stay --text. */
+.author-tint-0 { --author-tint: var(--mark-red); }
+.author-tint-1 { --author-tint: var(--mark-amber); }
+.author-tint-2 { --author-tint: var(--mark-green); }
+.author-tint-3 { --author-tint: var(--mark-blue); }
+.author-tint-4 { --author-tint: var(--mark-violet); }
+.author-tint-5 { --author-tint: var(--mark-slate); }
+.real-lane circle.author-tint { fill: color-mix(in srgb, var(--author-tint) 22%, var(--bg)); }
 .commit-initials { fill: var(--text); font: 600 8px var(--font-ui); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 /* A stash: parked work hanging off its base commit by a dashed link. */
 .stash-link { stroke: var(--muted); stroke-dasharray: 2.5 3; stroke-linecap: round; }
@@ -189,6 +198,12 @@
 .author-card div { min-width: 0; overflow-wrap: anywhere; }
 .details-toggle { display: block; margin: 0 0 var(--space-4); }
 /* Signature verdict under the subject: the icon is tinted, the words carry the meaning. */
+/* Who wrote the commit and when, under its subject: always visible, the
+   rest of the metadata stays behind Show details. */
+.commit-byline { display: flex; align-items: center; gap: var(--space-2); margin: calc(-1 * var(--space-2)) 0 var(--space-3); font-size: var(--text-xs); color: var(--muted); min-width: 0; }
+.commit-byline .author-dot { display: grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border); background: color-mix(in srgb, var(--author-tint, var(--mark-slate)) 22%, var(--bg)); color: var(--text); font: 600 8px var(--font-ui); }
+.commit-byline-name { color: var(--text); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-byline time { flex: none; white-space: nowrap; }
 .signature-line { display: grid; grid-template-columns: auto 1fr; column-gap: var(--space-2); align-items: start; margin: 0 0 var(--space-3); font-size: var(--text-sm); }
 .signature-line svg { width: 16px; height: 16px; grid-row: span 2; margin-top: 1px; }
 .signature-line span { grid-column: 2; color: var(--muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
@@ -404,3 +419,5 @@
   padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border); background: var(--surface-raised); font-size: var(--text-xs); }
 .image-regions button { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 24px; font-size: var(--text-xs); font-family: var(--font-mono); }
 .image-regions button[aria-pressed='true'] { background: var(--accent-bg); color: var(--accent); }
+/* The selected ref in the sidebar tree: the same accent bar as a selected screen. */
+.real-branch.selected-ref { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); font-weight: 600; }

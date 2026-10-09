@@ -33,6 +33,7 @@ import { ConfirmDialog, MessageDialog, NameDialog } from '../ops/dialogs.jsx';
 import { buildCommitMenu, buildMultiCommitMenu } from '../ops/commit-menu.js';
 import { checkoutChoice } from '../ops/checkout-choice.js';
 import { buildRefMenu, buildSectionMenu } from '../refs/ref-menu.js';
+import { folderKey, forgetRevealed, isOpen, revealedKeys, sectionKey, selectedRefNames } from '../refs/ref-tree-open.js';
 import { absolutePath, buildFileMenu } from '../diff/file-menu.js';
 import ImageDiff from '../diff/ImageDiff.jsx';
 import { imageType } from '../../../../main/git/image-types.js';
@@ -60,6 +61,7 @@ const SCREENS = ['worktree', 'branches', 'stashes', 'reflog', 'worktrees', 'subm
 /** Values of `selected` that are not a commit oid and so have no commit to read. */
 const isCommitSelection = value => Boolean(value) && !SCREENS.includes(value) && value !== UNCOMMITTED;
 /** Shift+F10 or the Menu key: the keyboard way to a context menu, as in the graph. */
+const NO_KEYS = new Set();
 const isMenuKey = event => event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
 /** Right-click and the menu keys on one element, opening at the pointer or under the element. */
 function contextMenuProps(open, keydown) {
@@ -74,7 +76,7 @@ function contextMenuProps(open, keydown) {
   };
 }
 
-function BranchTree({ refs, onSelect, onCheckout, onMenu, onRename, drag, headBranch }) {
+function BranchTree({ refs, type, path = '', tree, onSelect, onCheckout, onMenu, onRename, drag, headBranch }) {
   const folders = new Map();
   const leaves = [];
   for (const ref of refs) {
@@ -86,7 +88,13 @@ function BranchTree({ refs, onSelect, onCheckout, onMenu, onRename, drag, headBr
       folders.get(folder).push({ ...ref, label: ref.label.slice(slash + 1) });
     }
   }
-  return <>{[...folders].map(([name, children]) => <details className="branch-folder" key={name} open><summary>{name}</summary><BranchTree refs={children} onSelect={onSelect} onCheckout={onCheckout} onMenu={onMenu} onRename={onRename} drag={drag} headBranch={headBranch} /></details>)}
+  return <>{[...folders].map(([name, children]) => {
+    const key = folderKey(type, path + name);
+    const open = tree.isOpen(key);
+    // A closed folder renders nothing inside: a long remote list stays cheap.
+    return <details className="branch-folder" key={name} open={open}><summary onClick={event => { event.preventDefault(); tree.toggle(key, !open); }}>{name}</summary>
+      {open && <BranchTree refs={children} type={type} path={`${path}${name}/`} tree={tree} onSelect={onSelect} onCheckout={onCheckout} onMenu={onMenu} onRename={onRename} drag={drag} headBranch={headBranch} />}</details>;
+  })}
     {leaves.map(ref => {
       const bound = drag.bind(refEndpoint(ref));
       // F2 renames a local branch, the way it renames a file in a file manager.
@@ -94,9 +102,11 @@ function BranchTree({ refs, onSelect, onCheckout, onMenu, onRename, drag, headBr
         if (event.key === 'F2' && ref.type === 'local' && !event.altKey && !event.metaKey && !event.ctrlKey) { event.preventDefault(); onRename(ref); return; }
         bound.onKeyDown?.(event);
       };
-      return <button {...bound} {...contextMenuProps((x, y) => onMenu(ref, x, y), keydown)} className={`real-branch ${ref.type === 'local' && ref.name === headBranch ? 'current-branch' : ''} ${drag.className(refEndpoint(ref))}`} key={ref.fullName}
+      const picked = tree.selected.has(ref.fullName);
+      return <button {...bound} {...contextMenuProps((x, y) => onMenu(ref, x, y), keydown)} className={`real-branch ${ref.type === 'local' && ref.name === headBranch ? 'current-branch' : ''} ${picked ? 'selected-ref' : ''} ${drag.className(refEndpoint(ref))}`} key={ref.fullName}
+      aria-current={picked ? 'true' : undefined}
       title={`${ref.fullName}${ref.type === 'tag' ? '' : ' · Double-click to check out'} · Drag or Alt+D, then Alt+Enter on a target · Right-click or Shift+F10 for actions${ref.type === 'local' ? ' · F2 to rename' : ''}`}
-      onClick={() => onSelect(ref.target)} onDoubleClick={() => onCheckout([ref])}>
+      onClick={() => onSelect(ref)} onDoubleClick={() => onCheckout([ref])}>
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.label}</span>{(ref.ahead > 0 || ref.behind > 0) && <small>↑{ref.ahead} ↓{ref.behind}</small>}</button>; })}</>;
 }
 
@@ -159,6 +169,17 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_SIZE.defaultWidth);
   const [collapsed, setCollapsed] = useState(false);
   const [filter, setFilter] = useState('');
+  // The ref clicked in the sidebar or on a graph badge, so that only it — not
+  // every ref on its commit — is the selected one; and folders toggled by hand.
+  const [pickedRef, setPickedRef] = useState(null);
+  const [treeOpen, setTreeOpen] = useState(() => new Map());
+  // Folders the previous selection opened, kept while the person clicks
+  // around the sidebar: closing one would move the tree under the pointer
+  // (a double-click would land on another row). A selection made in the
+  // graph lets them close.
+  const [treeKept, setTreeKept] = useState(NO_KEYS);
+  const sectionsRef = useRef(null);
+  const pickRef = useCallback(ref => setPickedRef({ fullName: ref.fullName, target: ref.target }), []);
   const [search, setSearch] = useState(null);
   // Where the search looks: messages (and hashes) by default, or the author,
   // a changed path, or the code itself through Git's pickaxe (-S / -G).
@@ -960,6 +981,8 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     }
     setDetail(true); setDiff(null); setFileHistory(null); diffRequest.current++;
   }, [selected, selection]);
+  // A selection made in the graph lets the sidebar close what it kept open.
+  const selectInGraph = useCallback((oid, options) => { setTreeKept(NO_KEYS); choose(oid, options); }, [choose]);
 
   async function jump(oid) {
     const request = ++jumpRequest.current;
@@ -1154,6 +1177,33 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   // The sidebar filters refs by name only when the search is about names and
   // messages; an author or a code fragment says nothing about branch names.
   const visibleRefs = searchMode === 'message' ? data.refs.filter(ref => ref.name.toLowerCase().includes(filter.toLowerCase())) : data.refs;
+  // Sidebar tree: closed by default, opened down to the selected ref.
+  const selectedNames = useMemo(() => selectedRefNames(data.refs, isCommitSelection(selected) ? selected : null, pickedRef), [data.refs, selected, pickedRef]);
+  const selectedKey = selectedNames.join('\n');
+  const revealed = useMemo(() => revealedKeys(data.refs, selectedNames), [data.refs, selectedNames]);
+  const treeShown = useMemo(() => treeKept.size ? new Set([...revealed, ...treeKept]) : revealed, [revealed, treeKept]);
+  const filtering = searchMode === 'message' && filter.trim() !== '';
+  const tree = {
+    selected: new Set(selectedNames),
+    isOpen: key => isOpen(key, { manual: treeOpen, revealed: treeShown, filtering }),
+    toggle: (key, open) => setTreeOpen(current => new Map(current).set(key, open))
+  };
+  // A new selection opens its folders even if they were closed by hand, and
+  // scrolls the sidebar (only the sidebar) to show the ref.
+  useEffect(() => {
+    if (!selectedKey) return;
+    setTreeOpen(current => forgetRevealed(current, revealed));
+    const frame = requestAnimationFrame(() => {
+      const box = sectionsRef.current;
+      const item = box?.querySelector('.real-branch.selected-ref');
+      if (!item) return;
+      const top = item.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+      if (top < box.scrollTop) box.scrollTop = top;
+      else if (top + item.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top + item.offsetHeight - box.clientHeight;
+    });
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new selection moves the tree
+  }, [selectedKey]);
   const headRef = headBranch ? data.refs.find(ref => ref.type === 'local' && ref.name === headBranch) || null : null;
   const headInfo = { branch: headBranch, oid: headOid, detached: Boolean(repository.status?.branch?.detached) };
   const showDetail = detail && !conflict && !screen;
@@ -1190,12 +1240,17 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
           <button className={`real-branch ${screen === 'automations' ? 'selected' : ''}`} onClick={() => choose('automations')}>
             <Workflow /><span>Automations</span></button>
         </nav>
-        <div className="sidebar-sections">{[['LOCAL', 'local'], ['REMOTE', 'remote'], ['TAGS', 'tag']].map(([label, type]) => <details key={type} open><summary {...contextMenuProps((x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ section: type, label, x, y }); })}>{label}<span>{data.refs.filter(ref => ref.type === type).length}</span></summary>
-          <BranchTree refs={visibleRefs.filter(ref => ref.type === type).map(ref => ({ ...ref, label: ref.name }))} onSelect={jump} onCheckout={checkoutOnDoubleClick} drag={drag} headBranch={headBranch}
-            onMenu={(ref, x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ ref, x, y }); }}
-            onRename={ref => { if (operation.kind === 'none' && !working) refHandlers(ref).renameBranch(ref.name); }} />
-          {!visibleRefs.some(ref => ref.type === type) && <p className="section-empty">No matching {label.toLowerCase()} refs</p>}
-        </details>)}</div><div className="sidebar-footer"><span {...(headRef ? { tabIndex: 0, title: `${headRef.name} · Right-click or Shift+F10 for actions`,
+        <div className="sidebar-sections" ref={sectionsRef}>{[['LOCAL', 'local'], ['REMOTE', 'remote'], ['TAGS', 'tag']].map(([label, type]) => {
+          const open = tree.isOpen(sectionKey(type));
+          return <details key={type} open={open}><summary onClick={event => { event.preventDefault(); tree.toggle(sectionKey(type), !open); }}
+            {...contextMenuProps((x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ section: type, label, x, y }); })}>{label}<span>{data.refs.filter(ref => ref.type === type).length}</span></summary>
+            {open && <BranchTree refs={visibleRefs.filter(ref => ref.type === type).map(ref => ({ ...ref, label: ref.name }))} type={type} tree={tree}
+              onSelect={ref => { setTreeKept(treeShown); pickRef(ref); void jump(ref.target); }} onCheckout={checkoutOnDoubleClick} drag={drag} headBranch={headBranch}
+              onMenu={(ref, x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ ref, x, y }); }}
+              onRename={ref => { if (operation.kind === 'none' && !working) refHandlers(ref).renameBranch(ref.name); }} />}
+            {open && !visibleRefs.some(ref => ref.type === type) && <p className="section-empty">No matching {label.toLowerCase()} refs</p>}
+          </details>;
+        })}</div><div className="sidebar-footer"><span {...(headRef ? { tabIndex: 0, title: `${headRef.name} · Right-click or Shift+F10 for actions`,
           ...contextMenuProps((x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ ref: headRef, x, y }); }) } : {})}><strong>{repository.status?.branch?.name || 'Detached HEAD'}</strong>
           {headRef && <small className="sidebar-upstream">{headRef.upstream
             ? <>→ {headRef.upstream}{headRef.ahead || headRef.behind ? ` · ${[headRef.ahead && `${headRef.ahead} to push`, headRef.behind && `${headRef.behind} to pull`].filter(Boolean).join(', ')}` : ' · in sync'}</>
@@ -1244,13 +1299,13 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
           {search.loading ? <div className="loading-shell" aria-label="Searching history">{Array.from({ length: 6 }, (_, i) => <div className="skeleton" key={i} />)}</div>
             : search.error ? <p className="empty-inline">{search.error} <button onClick={onConsole}>Show output</button></p>
             : search.commits.length ? <CommitGraph commits={search.commits} lanes={search.lanes} laneCount={1} refMap={refMap} indexMap={searchIndexMap} selected={selected} head={repository.status?.branch?.oid}
-                onSelect={oid => choose(oid)} onMenu={openMenu} onCheckout={checkoutOnDoubleClick} loadMore={NOOP} hasMore={false} loading={false} summary={null} stashes={[]} marks={marks} bisectMarks={bisectMarks}
+                onSelect={oid => selectInGraph(oid)} onMenu={openMenu} onCheckout={checkoutOnDoubleClick} onPickRef={pickRef} loadMore={NOOP} hasMore={false} loading={false} summary={null} stashes={[]} marks={marks} bisectMarks={bisectMarks}
                 onUncommitted={NOOP} onStashes={NOOP} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />
               : <p className="empty-inline">{search.invalid || searchEmpty(search.query, search.mode)}</p>}
         </div>
         : loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
-            onSelect={choose} onMenu={openMenu} onCheckout={checkoutOnDoubleClick} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
+            onSelect={selectInGraph} onMenu={openMenu} onCheckout={checkoutOnDoubleClick} onPickRef={pickRef} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
             onUncommitted={() => choose(UNCOMMITTED)} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
       </div>
       {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}
