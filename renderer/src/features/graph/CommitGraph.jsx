@@ -5,7 +5,7 @@ import { HEAD_WIDTH, MARK_WIDTH, badgeWidth, extraHeight, packRefLines } from '.
 import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
 import { markClass } from './mark-color.js';
 import { bisectClass } from './bisect-marks.js';
-import { HISTORY_COLUMNS, TOGGLABLE_COLUMNS, dragColumnWidth, nudgeColumnWidth, readColumnWidths, writeColumnWidths, readColumnVisibility, writeColumnVisibility } from './column-widths.js';
+import { GRAPH_AUTO_MIN, HISTORY_COLUMNS, TOGGLABLE_COLUMNS, clampColumnWidth, clampGraphScroll, dragColumnWidth, graphFloor, nudgeColumnWidth, readColumnWidths, revealGraphX, writeColumnWidths, readColumnVisibility, writeColumnVisibility } from './column-widths.js';
 import { refEndpoint, rowEndpoint } from './useGitDrag.js';
 import { summaryChips } from '../worktree/worktree-summary.js';
 import Menu from '../../ui/Menu.jsx';
@@ -77,7 +77,7 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
           {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
           {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
       </span>)}</span>
-    <span className="lane-cell">
+    <span className="lane-cell"><span className="lane-track">
       <svg className="real-lane" aria-hidden="true" height={height}>
         {stashes && <path className="stash-link" d={`M${laneX} ${height / 2}H${stashX}`} />}
         {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment, height)} />)}
@@ -90,7 +90,7 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
         aria-label={`Open ${stashes.length === 1 ? 'the stash' : 'stashes'} based on this commit`}
         onClick={event => { event.stopPropagation(); onStashes(); }}>
         <Archive />{stashes.length > 1 && <span>{stashes.length}</span>}</button>}
-    </span>
+    </span></span>
     <span className="commit-subject" title={`${bisect ? `${bisect.title}\n` : ''}${commit.subject}\n${commit.body}`}>{bisect && <BisectChip mark={bisect} />}<span>{commit.subject || '(no subject)'}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
     <span className="author-col" title={visibility.author ? commit.author.email : undefined}>{visibility.author && commit.author.name}</span>
     <span className={`date-cell ${age === null ? '' : ageTextClass(age)}`} title={visibility.date ? commit.committedAt : undefined}>{visibility.date && relativeDate(commit.committedAt)}</span>
@@ -108,6 +108,8 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   const [resizing, setResizing] = useState(null);
   const colResize = useRef(null);
   const columnsRef = useRef(null);
+  const graphView = useRef({ content: 0, width: 0 });
+  const [graphScroll, setGraphScroll] = useState(0);
   const [fontsReady, setFontsReady] = useState(false);
   const KEY_STEP = 12;
   // Badge widths are measured with the very font the badges are drawn in, so
@@ -172,9 +174,41 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   const stashLane = stashesByBase.size ? 1 : 0;
   const stashX = 12 + laneCount * LANE_WIDTH;
   // The graph column fits the lanes by default; a drag pins it to a fixed width.
-  const autoGraphWidth = Math.max(72, (laneCount + stashLane) * LANE_WIDTH + 24);
-  const graphWidth = Number.isFinite(columns.graph) ? columns.graph : autoGraphWidth;
+  // Narrower than its lanes, the column clips them and scrolls sideways by
+  // itself (`graphOffset`), so the lanes never spill over the message column.
+  const autoGraphWidth = Math.max(GRAPH_AUTO_MIN, (laneCount + stashLane) * LANE_WIDTH + 24);
+  const minGraphWidth = graphFloor(autoGraphWidth);
+  const graphWidth = Number.isFinite(columns.graph) ? clampColumnWidth('graph', columns.graph, minGraphWidth) : autoGraphWidth;
+  const graphOffset = clampGraphScroll(graphScroll, autoGraphWidth, graphWidth);
+  const graphOverflow = autoGraphWidth - graphWidth;
+  graphView.current = { content: autoGraphWidth, width: graphWidth };
   const columnWidth = key => (key === 'graph' ? graphWidth : columns[key]);
+  const columnFloor = key => (key === 'graph' ? minGraphWidth : HISTORY_COLUMNS[key].min);
+  /** Shift the graph sideways by `delta` px; false when it is already at that edge. */
+  function scrollGraph(delta) {
+    const { content, width } = graphView.current;
+    const current = clampGraphScroll(graphScroll, content, width);
+    const next = clampGraphScroll(current + delta, content, width);
+    if (next === current) return false;
+    setGraphScroll(next);
+    return true;
+  }
+  const scrollGraphRef = useRef(scrollGraph);
+  scrollGraphRef.current = scrollGraph;
+  useEffect(() => {
+    // A sideways wheel or trackpad swipe over the graph moves the lanes, not the
+    // table; at either edge it falls through to the table again. Listened to
+    // natively: React's wheel listener is passive and cannot preventDefault.
+    const node = scroller.current;
+    const wheel = event => {
+      if (!event.target.closest?.('.lane-cell')) return;
+      const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? node.clientWidth : 1;
+      const sideways = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.shiftKey ? event.deltaY : 0;
+      if (sideways && scrollGraphRef.current(sideways * scale)) event.preventDefault();
+    };
+    node.addEventListener('wheel', wheel, { passive: false });
+    return () => node.removeEventListener('wheel', wheel);
+  }, []);
   function beginColResize(key, event) {
     if (event.button !== undefined && event.button !== 0) return;
     event.preventDefault();
@@ -185,7 +219,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   function moveColResize(event) {
     const drag = colResize.current;
     if (!drag || event.pointerId !== drag.id) return;
-    const width = dragColumnWidth(drag.key, drag.width, event.clientX - drag.x);
+    const width = dragColumnWidth(drag.key, drag.width, event.clientX - drag.x, columnFloor(drag.key));
     setColumns(prev => (prev[drag.key] === width ? prev : { ...prev, [drag.key]: width }));
   }
   function endColResize() {
@@ -196,8 +230,8 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   }
   function keyColResize(key, event) {
     let next;
-    if (event.key === 'ArrowLeft') next = nudgeColumnWidth(key, columnWidth(key), -KEY_STEP);
-    else if (event.key === 'ArrowRight') next = nudgeColumnWidth(key, columnWidth(key), KEY_STEP);
+    if (event.key === 'ArrowLeft') next = nudgeColumnWidth(key, columnWidth(key), -KEY_STEP, columnFloor(key));
+    else if (event.key === 'ArrowRight') next = nudgeColumnWidth(key, columnWidth(key), KEY_STEP, columnFloor(key));
     else if (event.key === 'Home' || event.key === 'Enter') next = HISTORY_COLUMNS[key].defaultWidth;
     else return;
     event.preventDefault();
@@ -209,7 +243,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   const columnHandle = key => <span role="separator" tabIndex={0} aria-orientation="vertical"
     className={`col-resize ${resizing === key ? 'active' : ''}`}
     aria-label={`Resize ${HISTORY_COLUMNS[key].label} column`} title="Drag to resize · double-click to reset"
-    aria-valuenow={columnWidth(key)} aria-valuemin={HISTORY_COLUMNS[key].min} aria-valuemax={HISTORY_COLUMNS[key].max}
+    aria-valuenow={columnWidth(key)} aria-valuemin={columnFloor(key)} aria-valuemax={HISTORY_COLUMNS[key].max}
     onPointerDown={event => beginColResize(key, event)} onPointerMove={moveColResize} onPointerUp={endColResize}
     onPointerCancel={endColResize} onLostPointerCapture={endColResize}
     onDoubleClick={() => resetColResize(key)} onKeyDown={event => keyColResize(key, event)} />;
@@ -254,7 +288,10 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
     if (top < node.scrollTop) node.scrollTop = top;
     else if (bottom > node.scrollTop + node.clientHeight) node.scrollTop = bottom - node.clientHeight;
     setViewport({ top: node.scrollTop, height: node.clientHeight || 600 });
-  }, [selected, indexMap, metrics]);
+    // A clipped graph brings the selected commit's dot into view as well.
+    const lane = lanes[index]?.lane;
+    if (lane !== undefined) setGraphScroll(prev => revealGraphX(clampGraphScroll(prev, autoGraphWidth, graphWidth), 12 + lane * LANE_WIDTH, graphWidth, autoGraphWidth));
+  }, [selected, indexMap, metrics, lanes, autoGraphWidth, graphWidth]);
   const { start, end } = metrics.range(commits.length, viewport.top, viewport.height);
   const focused = focusIndex >= start && focusIndex < end ? commits[focusIndex]?.oid : null;
   function keyboard(event) {
@@ -273,6 +310,11 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
       onMenu(commit.oid, row ? row.left + 24 : 24, row ? row.bottom : 24);
       return;
     }
+    // Left and right move a clipped graph sideways, two lanes at a time.
+    if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !event.altKey && !event.metaKey && !event.ctrlKey) {
+      if (scrollGraph((event.key === 'ArrowLeft' ? -2 : 2) * LANE_WIDTH)) event.preventDefault();
+      return;
+    }
     let index = focusIndex;
     if (event.key === 'ArrowDown') index++;
     else if (event.key === 'ArrowUp') index--;
@@ -289,8 +331,10 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   // One clock reading per render, shared by every visible row: age is a property
   // of the moment the graph is drawn, not of each row on its own.
   const now = commitColors === 'age' ? Date.now() : null;
-  return <div className={`history real-history ${resizing ? 'col-resizing' : ''}`} data-colors={commitColors} style={{
-    '--graph-width': `${graphWidth}px`,
+  const graphClip = graphOverflow > 0
+    ? `${graphOffset > 0 ? 'graph-clip-left' : ''} ${graphOffset < graphOverflow ? 'graph-clip-right' : ''}` : '';
+  return <div className={`history real-history ${resizing ? 'col-resizing' : ''} ${graphClip}`} data-colors={commitColors} style={{
+    '--graph-width': `${graphWidth}px`, '--graph-content': `${autoGraphWidth}px`, '--graph-scroll': `${graphOffset}px`,
     '--col-branch': `${visibleWidth('branch')}px`, '--col-message': `${columns.message}px`,
     '--col-author': `${visibleWidth('author')}px`, '--col-date': `${visibleWidth('date')}px`,
   }}>

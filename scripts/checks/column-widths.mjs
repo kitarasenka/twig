@@ -3,6 +3,7 @@ import {
   HISTORY_COLUMNS, HISTORY_COLUMN_KEYS, HISTORY_COLUMNS_KEY,
   clampColumnWidth, defaultColumnWidths, normalizeColumnWidths,
   readColumnWidths, writeColumnWidths, dragColumnWidth, nudgeColumnWidth,
+  MIN_SHARE, GRAPH_AUTO_MIN, graphFloor, clampGraphScroll, revealGraphX,
 } from '../../renderer/src/features/graph/column-widths.js';
 
 // The five columns are present; every numeric default sits in its range, and
@@ -14,6 +15,35 @@ for (const key of HISTORY_COLUMN_KEYS) {
   if (size.defaultWidth === null) continue;
   assert.ok(size.min <= size.defaultWidth && size.defaultWidth <= size.max, key);
 }
+
+// Every column's minimum is a tenth of its maximum.
+assert.equal(MIN_SHARE, 0.1);
+for (const key of HISTORY_COLUMN_KEYS) {
+  assert.equal(HISTORY_COLUMNS[key].min, Math.round(HISTORY_COLUMNS[key].max * 0.1), key);
+}
+
+// The graph's floor never exceeds what its lanes need: narrowing a small graph
+// must not make it jump wider. A wide graph stops at its minimum.
+assert.equal(graphFloor(400), HISTORY_COLUMNS.graph.min);
+assert.equal(graphFloor(10), Math.min(HISTORY_COLUMNS.graph.min, GRAPH_AUTO_MIN));
+for (const lanes of [GRAPH_AUTO_MIN, 100, 400]) assert.ok(graphFloor(lanes) <= lanes, `${lanes}`);
+assert.equal(dragColumnWidth('graph', 400, -9000, graphFloor(400)), HISTORY_COLUMNS.graph.min);
+assert.equal(nudgeColumnWidth('graph', 100, -12, graphFloor(100)), 88);
+// A narrow graph pinned earlier survives a read until the lanes are known.
+assert.equal(normalizeColumnWidths({ graph: HISTORY_COLUMNS.graph.min }).graph, HISTORY_COLUMNS.graph.min);
+assert.equal(normalizeColumnWidths({ graph: 20 }).graph, graphFloor(0));
+
+// Sideways scroll of a clipped graph stays inside what is hidden.
+assert.equal(clampGraphScroll(50, 300, 200), 50);
+assert.equal(clampGraphScroll(500, 300, 200), 100);
+assert.equal(clampGraphScroll(-5, 300, 200), 0);
+assert.equal(clampGraphScroll(40, 200, 300), 0, 'no overflow, no scroll');
+assert.equal(clampGraphScroll(Number.NaN, 300, 200), 0);
+// Revealing a dot scrolls just enough to show it with a margin, and no further.
+assert.equal(revealGraphX(0, 100, 200, 400), 0, 'already visible');
+assert.equal(revealGraphX(0, 250, 200, 400), 64);
+assert.equal(revealGraphX(150, 30, 200, 400), 16);
+assert.equal(revealGraphX(0, 390, 200, 400), 200, 'kept inside the overflow');
 
 // Clamp holds both ends, rounds to whole pixels, and rejects unknown columns.
 assert.equal(clampColumnWidth('branch', 10), HISTORY_COLUMNS.branch.min);

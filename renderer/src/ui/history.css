@@ -31,9 +31,17 @@
 .real-commit-row.new-day.selected { box-shadow: inset 0 0 0 1px var(--accent), inset 2px 0 var(--accent); }
 .real-commit-row .ref-line > svg { color: var(--accent); }
 .real-commit-row .date-cell, .real-commit-row .author-col { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lane-cell { position: relative; align-self: stretch; width: var(--graph-width); height: 100%; }
-.lane-cell .real-lane { position: absolute; inset: 0; }
-.real-lane { width: var(--graph-width); height: 100%; overflow: visible; }
+/* The lanes are drawn at their full width (--graph-content) inside a cell that
+   clips them: a graph column narrower than its lanes scrolls sideways
+   (--graph-scroll) instead of drawing over the message column. */
+.lane-cell { position: relative; align-self: stretch; width: var(--graph-width); height: 100%; overflow: hidden; }
+.lane-track { position: absolute; inset-block: 0; left: 0; width: var(--graph-content); transform: translateX(calc(-1 * var(--graph-scroll, 0px))); }
+.lane-track .real-lane { position: absolute; inset: 0; }
+.real-lane { width: var(--graph-content); height: 100%; }
+/* A soft edge says there are lanes past it. */
+.real-history.graph-clip-left .lane-cell { mask-image: linear-gradient(to right, transparent, var(--bg) 14px); }
+.real-history.graph-clip-right .lane-cell { mask-image: linear-gradient(to left, transparent, var(--bg) 14px); }
+.real-history.graph-clip-left.graph-clip-right .lane-cell { mask-image: linear-gradient(to right, transparent, var(--bg) 14px, var(--bg) calc(100% - 14px), transparent); }
 .real-lane path { fill: none; stroke-width: 2; }
 .real-lane circle { fill: var(--bg); stroke-width: 2.5; }
 .commit-initials { fill: var(--text); font: 600 8px var(--font-ui); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
