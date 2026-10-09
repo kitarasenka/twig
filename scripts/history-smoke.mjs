@@ -289,6 +289,19 @@ try {
   await page.getByRole('heading', { name: 'Root fixture', exact: true }).waitFor();
   await page.locator('.real-branch[title^="refs/heads/main"]').click();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
+  // A ref in the sidebar jumps to its commit even when that commit is already
+  // the selected one and the graph has been scrolled away from it.
+  const selectedInView = () => list.evaluate(node => {
+    const row = node.querySelector('.real-commit-row.selected');
+    if (!row) return false;
+    const a = row.getBoundingClientRect(), b = node.getBoundingClientRect();
+    return a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
+  });
+  await list.evaluate(node => { node.scrollTop = 3000; });
+  await page.waitForFunction(() => !document.querySelector('.real-commit-row.selected'));
+  await page.locator('.real-branch[title^="refs/heads/main"]').click();
+  await page.waitForFunction(() => document.querySelector('.real-commit-row.selected'));
+  assert.ok(await selectedInView(), 'clicking the selected commit\'s branch scrolls back to it');
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 920));
   await list.focus(); await page.keyboard.press('ArrowDown');
   await page.getByRole('heading', { name: 'History fixture 254', exact: true }).waitFor();

@@ -32,6 +32,8 @@ export async function resolveLoginPath() {
   const seen = new Set();
   return [...fromShell.split(':'), ...current.split(':')]
     .map(entry => entry.trim())
-    .filter(entry => entry && !seen.has(entry) && seen.add(entry))
+    // Only absolute entries: an empty or relative one ("." from a dotfile) is
+    // looked up in the step's working directory — the repository.
+    .filter(entry => entry.startsWith('/') && !seen.has(entry) && seen.add(entry))
     .join(':');
 }

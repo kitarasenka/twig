@@ -163,7 +163,7 @@ function storeStub() {
   let value = { auto: false };
   return { get: () => ({ ...value }), save: async next => { value = { auto: next.auto === true }; return { ...value }; } };
 }
-async function flow({ kind, bytes, targetExtra = {}, version = '0.14.0', runTool }) {
+async function flow({ kind, bytes, targetExtra = {}, version = '0.14.0', runTool, signatureRequirement }) {
   const name = assetName(version, { kind, arch: kind === 'mac' ? 'arm64' : 'x64' });
   const url = `https://github.com/kitarasenka/twig/releases/download/twig-v${version}/${name}`;
   const { fetchImpl } = network({
@@ -179,6 +179,7 @@ async function flow({ kind, bytes, targetExtra = {}, version = '0.14.0', runTool
     directory: path.join(tmp, `${kind}-scratch`), downloadsDir: path.join(tmp, `${kind}-downloads`),
     store: storeStub(), log, fetchImpl, pid: 4242,
     runTool: runTool || (async () => { throw new Error('no tools expected'); }),
+    ...(signatureRequirement ? { signatureRequirement } : {}),
     spawnDetached: (executable, args, env) => calls.spawned.push({ executable, args, env }),
     quit: () => { calls.quit++; },
     openPath: async file => { calls.opened.push(file); return ''; },
@@ -338,9 +339,19 @@ if (process.platform === 'darwin') {
     assert.match((await updater.download()).error, /version 0\.14\.0, not 0\.14\.1/);
     assert.equal(await exists(path.join(applications, '.twig-update.app')), false);
   }
-  // The real thing.
+  // Signed, but not by 🌱 Twig's developer (here: ad-hoc): refused by the default requirement.
   {
-    const { updater, calls } = await flow({ kind: 'mac', bytes: image, targetExtra: { appPath }, runTool });
+    const { updater } = await flow({ kind: 'mac', bytes: image, targetExtra: { appPath }, runTool });
+    await updater.check();
+    const state = await updater.download();
+    assert.equal(state.status, 'available');
+    assert.match(state.error, /signed by 🌱 Twig’s developer failed/);
+    assert.equal(await exists(path.join(applications, '.twig-update.app')), false, 'nothing staged');
+    assert.equal(plistVersion(), '0.13.0');
+  }
+  // The real thing — the fixture is ad-hoc signed, so the test asks only for the bundle id.
+  {
+    const { updater, calls } = await flow({ kind: 'mac', bytes: image, targetExtra: { appPath }, runTool, signatureRequirement: 'identifier "app.nodex.twig"' });
     await updater.check();
     const ready = await updater.download();
     assert.equal(ready.status, 'ready', ready.error);

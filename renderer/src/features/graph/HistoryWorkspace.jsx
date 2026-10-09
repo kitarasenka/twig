@@ -229,6 +229,9 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   useEffect(() => { if (!drag.state) setDropMenu(null); }, [drag.state]);
   const diffRequest = useRef(0);
   const jumpRequest = useRef(0);
+  // A jump asks the graph to show its commit even when it is already the
+  // selected one (scrolled away from) — a change of selection alone would not.
+  const [reveal, setReveal] = useState(null);
   const selectionAnchor = useRef(null);
   const indexMap = useMemo(() => new Map(data.commits.map((commit, index) => [commit.oid, index])), [data.commits]);
   const selectionSet = useMemo(() => new Set(selection), [selection]);
@@ -258,8 +261,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     return result;
   }, [data.refs]);
 
-  const loadMore = useCallback(async () => {
-    if (busy.current || dataRef.current.nextSkip === null) return false;
+  const readPage = useCallback(async () => {
     busy.current = true; setLoading(true);
     const epoch = generation.current;
     try {
@@ -278,6 +280,17 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
       return false;
     } finally { if (epoch === generation.current) { busy.current = false; setLoading(false); } }
   }, [repository.id]);
+  // The page being read, so that a jump arriving while the graph's own scroll
+  // is loading one waits for it instead of giving up.
+  const paging = useRef(null);
+  const loadMore = useCallback(() => {
+    if (paging.current) return paging.current;
+    if (busy.current || dataRef.current.nextSkip === null) return Promise.resolve(false);
+    const run = readPage();
+    paging.current = run;
+    void run.finally(() => { if (paging.current === run) paging.current = null; });
+    return run;
+  }, [readPage]);
 
   // `keepView: true` is for refreshes the user did not ask for (the git-directory
   // watcher, regaining focus): they must not close what is open on screen. The
@@ -993,7 +1006,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
       if (!await loadMore() || jumpRequest.current !== request) return;
     }
     if (jumpRequest.current !== request) return;
-    if (dataRef.current.commits.some(commit => commit.oid === oid)) choose(oid);
+    if (dataRef.current.commits.some(commit => commit.oid === oid)) { choose(oid); setReveal(previous => ({ oid, seq: (previous?.seq || 0) + 1 })); }
     else setError('This commit is not in the loaded repository history. Refresh to update it.');
   }
   async function openFile(file) {
@@ -1306,7 +1319,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
         : loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
             onSelect={selectInGraph} onMenu={openMenu} onCheckout={checkoutOnDoubleClick} onPickRef={pickRef} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
-            onUncommitted={() => choose(UNCOMMITTED)} onStashes={() => choose('stashes')} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
+            onUncommitted={() => choose(UNCOMMITTED)} onStashes={() => choose('stashes')} reveal={reveal} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
       </div>
       {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}
         onResolved={state => { setConflict(null); setOperation(state); setNote(`${conflict} marked resolved.`); void reload(); onRepositoryChanged?.(); }} />}

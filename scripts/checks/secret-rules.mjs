@@ -8,8 +8,21 @@ const samples = {
   'github-token': 'TOKEN=ghp_16C7e42F292c6912E7710c838347Ae178B4a',
   'slack-token': 'xoxb-2345678901-2345678901234-AbCdEfGhIjKlMnOpQrStUvWx',
   'google-api-key': `AIza${'B'.repeat(35)}`,
-  'private-key': '-----BEGIN OPENSSH PRIVATE KEY-----'
+  'private-key': '-----BEGIN OPENSSH PRIVATE KEY-----',
+  // Built from parts so the repository itself holds no token-shaped string.
+  'github-fine-grained-token': `${'github'}_pat_${'A1b2'.repeat(15)}`,
+  'gitlab-token': `${'glpat'}-${'x1Y2'.repeat(5)}`,
+  'stripe-key': `${'sk'}_live_${'Z9y8'.repeat(6)}`,
+  'anthropic-key': `${'sk'}-ant-api03-${'q'.repeat(30)}`,
+  'openai-key': `${'sk'}-proj-${'a'.repeat(24)}${'T3Blbk'}FJ${'b'.repeat(24)}`,
+  'slack-webhook': `https://hooks.${'slack'}.com/services/T0ABC1234/B0DEF5678/${'c'.repeat(24)}`,
+  'telegram-bot-token': `123456789:AA${'d'.repeat(33)}`,
+  'npm-token': `${'npm'}_${'e'.repeat(36)}`,
+  'url-password': 'remote = https://deploy:hunter2pass@git.example.com/x.git'
 };
+assert.equal(scanText('-----BEGIN ENCRYPTED PRIVATE KEY-----', 'k.pem')[0]?.rule, 'private-key');
+assert.equal(scanText('-----BEGIN PGP PRIVATE KEY BLOCK-----', 'k.asc')[0]?.rule, 'private-key');
+assert.deepEqual(scanText('ssh://git@github.com/a/b.git', 'a.txt'), [], 'a bare SSH user is not a password');
 for (const [rule, line] of Object.entries(samples)) {
   const findings = scanText(line, 'secrets.txt');
   assert.equal(findings.length, 1, `${rule}: one finding`);

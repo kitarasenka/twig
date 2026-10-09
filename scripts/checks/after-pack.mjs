@@ -3,13 +3,33 @@ import { copyFile, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import afterPack, { launcherScript } from '../after-pack.mjs';
+import afterPack, { fusesFor, launcherScript } from '../after-pack.mjs';
 
 const tmp = await mkdtemp(path.join(os.tmpdir(), 'twig-after-pack-'));
+// Every fuse flip, with what the binary file held at that moment: on Linux it
+// must still be the Electron binary, not the launcher that replaces it.
+const flips = [];
 const context = (platform, dir) => ({
   electronPlatformName: platform, appOutDir: dir,
-  packager: { executableName: 'twig', appInfo: { productFilename: '🌱 Twig' } }
+  packager: {
+    executableName: 'twig', appInfo: { productFilename: '🌱 Twig' },
+    generateFuseConfig: async fuses => ({ ...fuses }),
+    addElectronFuses: async (ctx, config) => {
+      const binary = platform === 'darwin' ? null : await readFile(path.join(ctx.appOutDir, 'twig'), 'utf8').catch(() => null);
+      flips.push({ platform, config, binary });
+    }
+  }
 });
+
+// The fuses: RunAsNode is what the MCP bridge and askpass need; the rest closed.
+for (const platform of ['darwin', 'win32', 'linux']) {
+  const fuses = fusesFor(platform);
+  assert.equal(fuses.runAsNode, true);
+  assert.equal(fuses.enableNodeOptionsEnvironmentVariable, false);
+  assert.equal(fuses.enableNodeCliInspectArguments, false);
+  assert.equal(fuses.onlyLoadAppFromAsar, true);
+  assert.equal(fuses.enableEmbeddedAsarIntegrityValidation, platform === 'darwin');
+}
 
 async function stagePack(name) {
   const dir = path.join(tmp, name);
@@ -23,6 +43,9 @@ async function stagePack(name) {
 // AppRun and the .desktop entry exec the file by name and nothing else.
 const linux = await stagePack('linux');
 await afterPack(context('linux', linux));
+assert.equal(flips.length, 1);
+assert.equal(flips[0].binary, 'ELF-not-really', 'Linux fuses are flipped on the Electron binary, before the launcher takes its name');
+assert.deepEqual(flips[0].config, fusesFor('linux'));
 assert.equal(await readFile(path.join(linux, 'twig.bin'), 'utf8'), 'ELF-not-really');
 const launcher = await readFile(path.join(linux, 'twig'), 'utf8');
 assert.match(launcher, /^#!\/bin\/bash\n/);
@@ -54,12 +77,14 @@ execFileSync('bash', ['-n', path.join(linux, 'twig')]);
 await afterPack(context('linux', linux));
 assert.equal(await readFile(path.join(linux, 'twig.bin'), 'utf8'), 'ELF-not-really');
 assert.equal(await readFile(path.join(linux, 'twig'), 'utf8'), launcher);
+assert.equal(flips.length, 1, 'a second run flips nothing — the binary is already wrapped');
 
-// Windows is packed exactly as before — no launcher swap, no signing.
+// Windows: fuses only — no launcher swap, no signing.
 {
   const dir = await stagePack('win32');
   await afterPack(context('win32', dir));
   assert.equal(await readFile(path.join(dir, 'twig'), 'utf8'), 'ELF-not-really');
+  assert.deepEqual(flips.at(-1).config, fusesFor('win32'));
   await assert.rejects(stat(path.join(dir, 'twig.bin')));
   await assert.rejects(stat(path.join(dir, 'etc/fonts/fonts.conf')));
 }

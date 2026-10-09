@@ -51,7 +51,7 @@ export default function TrustPrompt({ repo, onTrust, onClose }) {
         <span className="muted" role="status">{approvedCommands.length} command{approvedCommands.length === 1 ? '' : 's'} will be permitted</span>
         <Button onClick={onClose}>Not now</Button>
         <Button className="primary" reason={enabledIds.size === 0 ? 'Enable at least one pipeline first' : undefined}
-          onClick={() => { onClose(); onTrust({ enabledRepoPipelineIds: [...enabledIds], approvedCommands }); }}>
+          onClick={() => { onClose(); onTrust({ enabledRepoPipelineIds: [...enabledIds], approvedCommands, digest: repo.digest }); }}>
           Enable {enabledIds.size || ''} pipeline{enabledIds.size === 1 ? '' : 's'}
         </Button>
       </div>

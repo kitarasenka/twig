@@ -1,0 +1,15 @@
+# Security and version updates for the npm dependencies and the pinned
+# GitHub Actions (they are pinned by commit SHA; Dependabot moves the SHA).
+# Electron is pinned exactly on purpose (see CLAUDE.md): its PRs are reviewed
+# by hand, never merged blindly.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

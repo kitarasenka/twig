@@ -32,9 +32,17 @@ export const DEFAULT_EDITOR = Object.freeze({ preset: 'system', customPath: null
  * `open -t`, which always means "the default text editor".
  */
 const LAUNCHABLE = new Set([
-  // Windows
-  'exe', 'com', 'bat', 'cmd', 'msi', 'msp', 'ps1', 'psm1', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'scr',
-  'lnk', 'url', 'hta', 'cpl', 'msc', 'jar', 'reg', 'pif', 'appref-ms', 'application', 'gadget', 'scf', 'inf',
+  // Windows — the types Outlook blocks as executable, plus script hosts that
+  // ship with or are commonly installed on it (`py` runs through py.exe).
+  'exe', 'com', 'bat', 'cmd', 'msi', 'msp', 'mst', 'msix', 'msixbundle', 'appx', 'appxbundle', 'appinstaller',
+  'ps1', 'ps1xml', 'ps2', 'ps2xml', 'psc1', 'psc2', 'psd1', 'psm1', 'pssc', 'cdxml',
+  'vb', 'vbs', 'vbe', 'vbp', 'js', 'jse', 'wsf', 'wsc', 'wsh', 'scr', 'sct', 'ws',
+  'lnk', 'url', 'website', 'hta', 'htt', 'cpl', 'msc', 'msh', 'msh1', 'msh2', 'mshxml', 'msh1xml', 'msh2xml',
+  'jar', 'jnlp', 'reg', 'pif', 'appref-ms', 'application', 'gadget', 'scf', 'inf', 'ins', 'isp', 'its',
+  'chm', 'hlp', 'mcf', 'mde', 'mdb', 'accde', 'ade', 'adp', 'crt', 'cer', 'der', 'xbap', 'xll', 'xnk',
+  'settingcontent-ms', 'library-ms', 'searchconnector-ms', 'diagcab', 'diagcfg', 'diagpkg', 'theme', 'themepack',
+  'iso', 'img', 'vhd', 'vhdx', 'udl', 'grp', 'shb', 'shs', 'fxp', 'prf', 'prg', 'pst', 'sys', 'drv', 'ocx', 'dll',
+  'py', 'pyw', 'pyz', 'pyzw', 'pyc', 'rb', 'rbw', 'pl', 'php', 'tcl', 'lua',
   // Linux and friends
   'desktop', 'appimage', 'sh', 'bash', 'zsh', 'run', 'bin', 'deb', 'rpm', 'flatpakref', 'snap',
   // macOS bundles, in case one is opened from another platform's checkout

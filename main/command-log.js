@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs';
 import { appendFile, mkdir, rename, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
+import { redactCredentials } from './git/redact.js';
 
 const MAX_ENTRIES = 2000;
 // One Git command can print megabytes — a history page, a blame, a diff of a
@@ -85,9 +86,19 @@ export class CommandLog {
     return () => this.#listeners.delete(listener);
   }
 
-  async start(entry) { await this.#record({ type: 'start', entry }); }
-  async output(id, stream, chunk) { await this.#record({ type: 'output', id, stream, chunk }); }
-  async finish(id, result) { await this.#record({ type: 'finish', id, result }); }
+  // Credentials inside URLs never reach the journal, the console or its file:
+  // `git remote -v`, a fetch error or a typed `ls-remote https://token@…` would
+  // otherwise store the token in plain text.
+  async start(entry) {
+    await this.#record({ type: 'start', entry: { ...entry, argv: entry.argv.map(redactCredentials) } });
+  }
+  async output(id, stream, chunk) { await this.#record({ type: 'output', id, stream, chunk: redactCredentials(chunk) }); }
+  async finish(id, result) {
+    const clean = { ...result };
+    for (const stream of ['stdout', 'stderr']) if (typeof result[stream] === 'string') clean[stream] = redactCredentials(result[stream]);
+    if (Array.isArray(result.argv)) clean.argv = result.argv.map(redactCredentials);
+    await this.#record({ type: 'finish', id, result: clean });
+  }
 
   #queue(step) {
     this.#pending = this.#pending.then(step);

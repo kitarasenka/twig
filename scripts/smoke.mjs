@@ -126,7 +126,7 @@ try {
   await page.getByRole('textbox', { name: 'Search command log' }).waitFor();
   // It opens on "My": the startup Git check is 🌱 Twig's own command, so it is
   // in Full History only.
-  const versionCheck = page.getByText(/git --no-pager -c color.ui=false -c log.showSignature=false --version/);
+  const versionCheck = page.getByText(/git --no-pager -c color.ui=false -c log.showSignature=false -c core.fsmonitor=false --version/);
   assert.equal(await page.getByRole('button', { name: 'My', exact: true }).getAttribute('aria-pressed'), 'true', 'the console opens on My');
   assert.equal(await versionCheck.count(), 0, 'the startup check is not one of the user actions');
   await page.getByRole('button', { name: 'Full History', exact: true }).click();

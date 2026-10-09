@@ -10,6 +10,8 @@ const PARSE_ERROR = -32700;
 const INVALID_REQUEST = -32600;
 const METHOD_NOT_FOUND = -32601;
 const INVALID_PARAMS = -32602;
+// Messages in one JSON-RPC batch; MCP clients send one request at a time.
+const MAX_BATCH = 32;
 
 const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
 const rpcResult = (id, result) => ({ jsonrpc: '2.0', id, result });
@@ -97,7 +99,14 @@ export function createMcpSession({ version, tools, onCall = () => {} }) {
     async handle(message) {
       if (Array.isArray(message)) {
         if (!message.length) return rpcError(null, INVALID_REQUEST, 'Empty batch');
-        const responses = (await Promise.all(message.map(dispatch))).filter(Boolean);
+        if (message.length > MAX_BATCH) return rpcError(null, INVALID_REQUEST, `A batch holds at most ${MAX_BATCH} messages`);
+        // One at a time: every call may start Git processes, and a batch run all
+        // at once could start thousands and stall the main process.
+        const responses = [];
+        for (const item of message) {
+          const response = await dispatch(item);
+          if (response) responses.push(response);
+        }
         return responses.length ? responses : null;
       }
       return dispatch(message);

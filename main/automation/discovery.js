@@ -12,9 +12,35 @@ export function digestBytes(text) {
   return createHash('sha256').update(text ?? '', 'utf8').digest('hex');
 }
 
+const SCRIPT_DIGEST_BYTES = 4 * 1024 * 1024;
+
 /**
- * Reads `.twig/hooks.json` from the working tree. Returns the raw text (for the
- * digest), the normalised config and any parse error. Never executes anything.
+ * Trust must cover what will run, not only the JSON that names it: a `script`
+ * action runs a file of the repository, and editing that file after approval
+ * would otherwise run new code without a new prompt. Each script's bytes join
+ * the digest (a missing or huge file by a marker). Without script actions the
+ * digest is the JSON's alone, so approvals made before this stay valid.
+ */
+async function configDigest(cwd, text, config) {
+  const scripts = [...new Set(config.pipelines.flatMap(pipeline => pipeline.actions)
+    .filter(action => action.type === 'script' && action.path.trim()).map(action => action.path.trim()))].sort();
+  if (!scripts.length) return digestBytes(text);
+  const hash = createHash('sha256').update(text, 'utf8');
+  for (const script of scripts) {
+    let content;
+    try {
+      const bytes = await readFile(path.resolve(cwd, script));
+      content = bytes.length > SCRIPT_DIGEST_BYTES ? `large:${bytes.length}` : createHash('sha256').update(bytes).digest('hex');
+    } catch { content = 'missing'; }
+    hash.update(`\0${script}\0${content}`, 'utf8');
+  }
+  return hash.digest('hex');
+}
+
+/**
+ * Reads `.twig/hooks.json` from the working tree. Returns the raw text, the
+ * digest trust is bound to (the JSON plus every script it runs), the normalised
+ * config and any parse error. Never executes anything.
  * @param {string} cwd repository working directory
  */
 export async function readRepoConfig(cwd) {
@@ -23,7 +49,7 @@ export async function readRepoConfig(cwd) {
     const text = await readFile(file, 'utf8');
     try {
       const config = normalizeConfig(JSON.parse(text), 'repo');
-      return { present: true, text, digest: digestBytes(text), config, error: null };
+      return { present: true, text, digest: await configDigest(cwd, text, config), config, error: null };
     } catch {
       return { present: true, text, digest: digestBytes(text), config: null, error: 'This repository’s .twig/hooks.json is not valid JSON.' };
     }

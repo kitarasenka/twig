@@ -17,6 +17,103 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Аудит безопасности по 818 скиллам Anthropic-Cybersecurity-Skills и исправления
+(2026-10-09, вне вех; по поручению пользователя). Отчёт и таблица по всем
+скиллам — `artifacts/security/cyber-skills-{report.md,results.tsv}` (не
+коммитятся: в них подробности дыр). Исправлено:
+- **Консоль**: `FORBIDDEN_OPTIONS` ловит и **сокращения** длинных опций (git их
+  принимает: `--upload-pa=`, `--open-files-in-pag=` исполняли команду), короткие
+  кластеры (`grep -O<cmd>`, `-iO…`), с белым списком точных имён (`--text`);
+  опция действует по подкомандам (`--filters` у cat-file, `--contents` у
+  blame, `--no-index` у diff); `--textconv` теперь запрещён и у `cat-file`;
+  `var -l` запрещён; после `--` — пути.
+- **Журнал**: `main/git/redact.js` (`redactCredentials`) — `CommandLog`
+  вычищает `https://token@`/`user:pass@` из argv, вывода и finish; им же
+  пользуются `gitReason` и причина фонового fetch (старый регэксп пропускал
+  пароль со `/`).
+- **Поиск программ в папке репозитория**: `main/process-env.js`
+  (`hardenProcessEnv`, вызывается первым в `main/index.js`): Windows —
+  `NoDefaultCurrentDirectoryInExePath=1` (иначе `git.exe` из корня репозитория
+  запускался вместо Git); POSIX — из `PATH`/`LD_LIBRARY_PATH`/`DYLD_*` уходят
+  пустые и относительные элементы. То же в Linux-лаунчере (`absolute_only`) и
+  в login-PATH автоматизаций. electron-builder 26.0.12 → **26.17.0**
+  (GHSA-7g7r-gx96-252g, AppRun с хвостовым `:` в `LD_LIBRARY_PATH`).
+- **Чужой `.git/config`**: `BASE_ARGS` (экспорт `exec.js`, его же печатает
+  Undo) добавляет `-c core.fsmonitor=false`. «Open repository» сначала
+  читает имена локальных ключей (`main/git/config-risk.js`, `--name-only`,
+  код 0) и значения только опасных: fsmonitor, sshCommand, gitProxy, pager,
+  diff.external/textconv/command, filter.*.clean/smudge/process (кроме
+  `git-lfs …`), credential helper, gpg.program, include/includeIf, uploadpack
+  hook — и показывает нативное «Open anyway». Хуки и `core.hooksPath` не
+  в списке: они срабатывают на действие человека, как в терминале. Не
+  спрашивают обычные значения (`harmless`): подпись `gpg`/`gpg2`/`gpgsm`/
+  `ssh-keygen`/`op-ssh-sign` голым именем или абсолютным путём **вне**
+  репозитория (сверка с обоими путями корня — `/var` и `/private/var`),
+  встроенные credential helpers (`osxkeychain`, `manager`, `store`, …),
+  `core.sshCommand` = `ssh` с `-i/-F/-p/-l` и безвредными `-o` (не
+  ProxyCommand). Первый вариант без этого ловил `gpg.ssh.program = ssh-keygen`
+  — увидел пользователь, на нём же висел `tools-smoke` (нативное окно).
+  Смоуки, чьи фикстуры пишут в локальный конфиг что-то из `RISKY`,
+  повиснут на этом окне.
+- **Windows «System default»**: денайлист `LAUNCHABLE` расширен до списка
+  Outlook-блокируемых типов плюс `py/pyw/rb/pl/php/lua`.
+- **Конфликт-редактор**: `conflictFile()` — не `.git`, не симлинк, realpath
+  внутри дерева и `ls-files --unmerged` не пуст; и для чтения, и для записи.
+- **Апдейтер**: `codesign --verify … -R '=anchor apple generic and identifier
+  "app.nodex.twig" and certificate leaf[subject.OU] = "7KUBZGRSSZ"'`
+  (`MAC_SIGNATURE_REQUIREMENT`, опция `signatureRequirement` для теста) —
+  ad-hoc или чужая подпись отклоняется до снятия карантина; проверено на
+  установленной подписанной копии (проходит) и чужом Team ID (код 3).
+- **Fuses** (`fusesFor` в `scripts/after-pack.mjs`, переворачиваются в
+  afterPack: на Linux до переименования бинаря, electron-builder сделал бы это
+  по имени лаунчера): RunAsNode on (мост MCP, askpass), NODE_OPTIONS и
+  `--inspect` off, OnlyLoadAppFromAsar on, ASAR integrity — только macOS.
+  Живьём: `--mac dir --arm64` — fuses прочитаны, подпись валидна, RunAsNode
+  работает, NODE_OPTIONS игнорируется, упакованное окно рендерит демо.
+  Playwright `_electron` к такому бинарю не подключится (он идёт через
+  `--inspect`) — только через `--remote-debugging-port` и CDP. DevTools в меню
+  только из исходников. Прод-CSP без `ws://127.0.0.1:5188` (его добавляет
+  dev-плагин в `vite.config.js`).
+- **MCP**: `quotePath` экранирует невидимые символы (Cf/Zl/Zp, Unicode tags) как
+  `\uXXXX`; в `INSTRUCTIONS` — содержимое репозитория это данные, не
+  инструкции; batch JSON-RPC последовательно, ≤ 32.
+- **Автоматизации**: digest доверия `.twig/hooks.json` включает sha256 каждого
+  файла `script`-действий (без них — прежний digest, старые одобрения живы);
+  `automation:trust` сверяет digest, который видел человек; регэксп
+  `validateMessage` — в `vm` с таймаутом 1 с. Secret-scan: github_pat_, glpat-,
+  sk_live_, sk-ant-, OpenAI, Slack webhook, Telegram, npm, пароль в URL,
+  ENCRYPTED/PGP private key (тестовые токены собираются склейкой — push
+  protection включён).
+- **CI**: release.yml — по умолчанию `contents: read`, сборка с `npm ci` только
+  read и отдаёт установщики artifact'ом, `publish` (без кода проекта) и
+  `create-release` — write; `persist-credentials: false`; все actions (и в
+  site/cla) закреплены по SHA; `.p12` под `umask 077`; релиз без подписи
+  macOS падает (апдейтер его всё равно не примет). `.github/dependabot.yml`
+  (npm + actions), `.gitignore` — `*.p12 *.p8 *.pem *.keychain-db .env*`.
+
+Не сделано (решение пользователя): Electron 41.7.1 — все исправленные 41.x
+(≥ 41.8.0) требуют Node ≥ 22.12, а проект держит Node 20; 7 advisory про
+popups/webview/iframe/protocol handlers, которые Twig блокирует. Подпись
+обновлений Windows/Linux (Authenticode или свой ed25519-манифест — нужен ключ
+и секрет). Защита веток/тегов в GitHub (rulesets). Привязка MCP-сессии к
+своему репозиторию, ACL named pipe на Windows, PowerShell-кавычки в
+подсказках MCP. Проверки: новая `scripts/checks/hardening.mjs` (в `npm test`,
+настоящий Git), дополнены `read-only-command`, `secret-rules`, `updater`,
+`after-pack`, `git-exec`, `smoke.mjs` (строка `--version`). Версия не менялась.
+
+Переход к ветке/тегу из сайдбара снова работает (2026-10-09, вне вех; по
+запросу пользователя). Граф прокручивался только при **смене** выбора: клик по
+ветке, чей коммит уже выбран (например, `main` на вершине после прокрутки
+вниз), ничего не делал. Теперь `jump` (сайдбар, Go to commit, родитель,
+Show in history, BugHunter) шлёт `CommitGraph` запрос `reveal { oid, seq }`:
+коммит вне экрана встаёт в середину, видимый не двигается; обычный выбор
+(стрелки, клик) по-прежнему прокручивает минимально. Заодно `jump` больше не
+сдаётся молча, если прокрутка графа уже грузит страницу: `loadMore` отдаёт
+идущий запрос (`paging`). Проверка: `history-smoke.mjs` — граф прокручен от
+выбранной вершины, клик по `main` в сайдбаре возвращает к ней (без правки
+падает). `graph-scroll-smoke.mjs` нестабилен и до правки («graph narrowed to
+its minimum»). Версия не менялась.
+
 Дерево веток слева свёрнуто по умолчанию (2026-10-09, вне вех; по запросу
 пользователя). Разделы LOCAL/REMOTE/TAGS и все папки закрыты; раскрыт только
 путь до **выбранной** ссылки, как бы глубоко она ни лежала, а сама она

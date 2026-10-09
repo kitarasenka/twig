@@ -1,4 +1,4 @@
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { lstat, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runGit } from './exec.js';
 import { validateFile } from './commit.js';
@@ -26,6 +26,28 @@ function resolveInside(cwd, file) {
   const absolute = path.resolve(cwd, validateFile(file));
   const relative = path.relative(cwd, absolute);
   if (relative.startsWith('..') || path.isAbsolute(relative)) throw new TypeError('Invalid file path');
+  if (relative.split(path.sep)[0].toLowerCase() === '.git') throw new TypeError('Invalid file path');
+  return absolute;
+}
+
+/**
+ * The conflicted file the editor may read and write: inside the working tree
+ * (not under `.git`, not through a symbolic link on the way or at the end),
+ * and one Git itself lists as unmerged. A lexical check alone would let a
+ * write land in `.git/hooks` or, through a tracked link, outside the tree.
+ */
+async function conflictFile(cwd, log, file) {
+  const absolute = resolveInside(cwd, file);
+  const root = await realpath(cwd);
+  const info = await lstat(absolute);
+  if (info.isSymbolicLink() || !info.isFile()) throw new Error('This conflict is not a regular file. Take a whole side instead.');
+  const inside = path.relative(root, await realpath(absolute));
+  if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) throw new TypeError('Invalid file path');
+  const unmerged = await runGit({
+    argv: ['ls-files', '--unmerged', '-z', '--', `:(literal)${validateFile(file)}`], cwd, log,
+    operation: 'Read conflict state'
+  });
+  if (unmerged.code !== 0 || !unmerged.stdout) throw new Error('This file is no longer in conflict.');
   return absolute;
 }
 
@@ -52,7 +74,7 @@ async function readStage(cwd, log, stage, file) {
  * @returns {Promise<{ binary: boolean, merged: ?string, ours: ?string, base: ?string, theirs: ?string, mtimeMs: number, size: number }>}
  */
 export async function loadConflict({ cwd, log, path: file }) {
-  const absolute = resolveInside(cwd, file);
+  const absolute = await conflictFile(cwd, log, file);
   const info = await stat(absolute);
   if (info.size > MAX_BYTES) throw new Error('This file is too large to open in the conflict editor.');
   const buffer = await readFile(absolute);
@@ -79,7 +101,7 @@ export async function loadConflict({ cwd, log, path: file }) {
  */
 export async function saveResolution({ cwd, log, path: file, content, mtimeMs, size }) {
   if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > MAX_BYTES) throw new TypeError('Invalid resolved content');
-  const absolute = resolveInside(cwd, file);
+  const absolute = await conflictFile(cwd, log, file);
   const info = await stat(absolute);
   if (info.mtimeMs !== mtimeMs || info.size !== size) {
     throw new Error('This file changed on disk while the editor was open. Reopen it to see the current version.');

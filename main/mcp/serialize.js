@@ -40,9 +40,24 @@ const LETTERS = Object.freeze({ untracked: '?' });
 /** One status letter, as `git status --short` prints it. */
 export const statusLetter = letter => (typeof letter === 'string' && /^[MADRCTUXB?]$/.test(letter) ? letter : LETTERS[letter] || 'M');
 
-/** A path as one token: quoted like JSON only when it could be misread — control characters, quotes, edge spaces, an arrow. */
+// Characters a person never sees but a model reads: zero-width, bidi controls,
+// Unicode tags (U+E0000…), line/paragraph separators. A file name built from
+// them could carry text to the agent that 🌱 Twig's window does not show.
+const INVISIBLE = /[\p{Cf}\p{Zl}\p{Zp}]/gu;
+const escapeUnits = char => [...char].flatMap(c => {
+  const units = [];
+  for (let i = 0; i < c.length; i++) units.push(`\\u${c.charCodeAt(i).toString(16).padStart(4, '0')}`);
+  return units;
+}).join('');
+
+/**
+ * A path as one token: quoted like JSON only when it could be misread — control
+ * or invisible characters, quotes, edge spaces, an arrow. Invisible characters
+ * are written as `\uXXXX` escapes (JSON leaves them raw).
+ */
 export function quotePath(path) {
-  return /[\p{Cc}"\\]|^\s|\s$| -> /u.test(path) ? JSON.stringify(path) : path;
+  if (!/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}"\\]|^\s|\s$| -> /u.test(path)) return path;
+  return JSON.stringify(path).replace(INVISIBLE, escapeUnits);
 }
 
 /**

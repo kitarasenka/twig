@@ -69,6 +69,11 @@ export function registerAutomationsIpc(getWindow, entryUrl, { repositories, jour
     if (!trust || typeof trust !== 'object') throw new TypeError('Invalid trust request');
     const repoConfig = await readRepoConfig(repo.path);
     if (!repoConfig.config) throw new TypeError('This repository has no automations to enable.');
+    // Bind the approval to what the person reviewed, not to whatever the file
+    // (or a script it runs) holds by the time they click.
+    if (trust.digest !== repoConfig.digest) {
+      throw new Error('This repository’s automations changed since you opened the review. Review them again.');
+    }
     const commands = new Set(commandsIn(repoConfig.config));
     const approvedCommands = (Array.isArray(trust.approvedCommands) ? trust.approvedCommands : []).map(String).filter(command => commands.has(command));
     const ids = new Set(repoConfig.config.pipelines.map(pipeline => pipeline.id));

@@ -17,6 +17,11 @@ import { runGit } from './git/exec.js';
 import { createRepositoryService } from './git/repository.js';
 import { SANDBOX_DIRNAME, SANDBOX_MARKER_FILE, SANDBOX_REMOTE_DIRNAME } from './git/sandbox.js';
 import { UndoService } from './undo.js';
+import { hardenProcessEnv } from './process-env.js';
+
+// Before anything is spawned: no program or library lookup in the working
+// directory, which is always someone's repository.
+hardenProcessEnv(process.env, process.platform);
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const iconPath = path.join(root, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -74,7 +79,8 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
     { role: 'fileMenu' }, { role: 'editMenu' },
-    { label: 'View', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' },
+    // Developer tools only when running from source, never in an installed copy.
+    { label: 'View', submenu: [{ role: 'reload' }, ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' }]),
       { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
     { role: 'windowMenu' }
   ]));

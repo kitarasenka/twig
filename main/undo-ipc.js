@@ -1,5 +1,6 @@
 import { dialog, ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
+import { BASE_ARGS } from './git/exec.js';
 
 export function registerUndoIpc(getWindow, entryUrl, { repositories, undo }) {
   const register = (channel, count, action) => ipcMain.handle(channel, (event, ...args) => {
@@ -12,7 +13,7 @@ export function registerUndoIpc(getWindow, entryUrl, { repositories, undo }) {
   });
   register('undo:state', 1, cwd => undo.inspect(cwd));
   register('undo:move', 2, (cwd, direction) => undo.move(cwd, direction, async (plan, direction) => {
-    const command = plan.commands.map(argv => ['git', '--no-pager', '-c', 'color.ui=false', '-c', 'log.showSignature=false', ...argv].map(value => JSON.stringify(value)).join(' ')).join('\n');
+    const command = plan.commands.map(argv => ['git', ...BASE_ARGS, ...argv].map(value => JSON.stringify(value)).join(' ')).join('\n');
     const result = await dialog.showMessageBox(getWindow(), { type: 'warning', title: `${direction === 'undo' ? 'Undo' : 'Redo'} Git action`,
       message: plan.explanation, detail: `${command}\n\nRepository: ${cwd}`, buttons: ['Cancel', 'Run these commands'], defaultId: 0, cancelId: 0 });
     return result.response === 1;

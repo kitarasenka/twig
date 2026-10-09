@@ -67,13 +67,43 @@ export const READ_ONLY = new Set([
 ]);
 
 // Options that read or write an arbitrary file, or run an external program
-// configured in the repo. Rejected in any position, in any subcommand.
+// configured in the repo. Rejected in any position. The value lists the
+// subcommands an option is refused in (`null` — all of them).
 // A bare `-c` / `-C` before the subcommand is caught earlier as argv[0]; after
 // a subcommand `-c` (combined diff) and `-C` (detect copies) are read-only.
-const FORBIDDEN_FLAGS = new Set([
-  '-o', '--output', '--output-directory', '--ext-diff', '--open-files-in-pager',
-  '--exec', '--upload-pack', '--receive-pack'
+//
+// Git accepts any unambiguous prefix of a long option (`--upload-pa` is
+// `--upload-pack`), so a long token is refused when it is a prefix of one of
+// these too — unless it is itself a real option of its own (`--text`).
+const FORBIDDEN_OPTIONS = new Map([
+  ['--output', null], ['--output-directory', null], ['--ext-diff', null],
+  ['--open-files-in-pager', null], ['--exec', null], ['--upload-pack', null],
+  ['--receive-pack', null], ['--textconv', null],
+  ['--filters', new Set(['cat-file'])],
+  ['--contents', new Set(['blame', 'annotate'])],
+  ['--no-index', new Set(['diff'])]
 ]);
+const EXACT_OPTIONS = new Set(['--text']);
+// Short spellings of the same: `-o` was always refused, `grep -O<pager>` is
+// `--open-files-in-pager`, and short options cluster (`-iO<pager>`).
+const FORBIDDEN_SHORT = new Map([['o', null], ['O', new Set(['grep'])]]);
+
+function forbiddenOption(sub, token) {
+  const applies = scope => scope === null || scope.has(sub);
+  if (token.startsWith('--')) {
+    const name = bareName(token);
+    if (name.length < 3 || EXACT_OPTIONS.has(name)) return null;
+    for (const [option, scope] of FORBIDDEN_OPTIONS) {
+      if (applies(scope) && option.startsWith(name)) return option;
+    }
+    return null;
+  }
+  if (token === '-o') return '-o';
+  for (const [letter, scope] of FORBIDDEN_SHORT) {
+    if (letter !== 'o' && applies(scope) && token.slice(1).includes(letter)) return `-${letter}`;
+  }
+  return null;
+}
 
 // Second words that turn a subcommand whose default form is harmless into a
 // mutation or an external call. `git remote add …`, `git reflog delete`, …
@@ -116,12 +146,16 @@ export function checkReadOnly(argv) {
 
   const rest = argv.slice(1);
   for (const token of rest) {
-    const name = bareName(token);
-    if (name === '--textconv' && sub === 'cat-file') continue;
-    if (name === '--textconv') return { ok: false, reason: '--textconv can run an external filter and is not allowed.' };
-    if (FORBIDDEN_FLAGS.has(name)) {
-      return { ok: false, reason: `${name} is not allowed here — it can read or write a file or run an external program.` };
+    if (token === '--') break;
+    if (!isOption(token)) continue;
+    const option = forbiddenOption(sub, token);
+    if (option) {
+      return { ok: false, reason: `${option} is not allowed here — it can read or write a file or run an external program.` };
     }
+  }
+  // `git var -l` prints the whole config, credentials in URLs and headers included.
+  if (sub === 'var' && rest.some(token => token === '-l')) {
+    return { ok: false, reason: '"git var -l" prints the whole configuration and is not allowed here.' };
   }
 
   const subverbs = MUTATING_SUBVERBS[sub];

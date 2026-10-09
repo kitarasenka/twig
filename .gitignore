@@ -5,3 +5,10 @@ artifacts/
 .claude/
 .DS_Store
 !package-lock.json
+# Signing keys and secrets live outside the repository (~/twig-signing/).
+*.p12
+*.p8
+*.pem
+*.keychain-db
+.env
+.env.*

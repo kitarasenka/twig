@@ -23,7 +23,9 @@ const allowed = [
   'reflog', 'reflog show main', 'rev-parse HEAD', 'rev-list --count HEAD',
   'merge-base main dev', 'describe --tags', 'blame -- README.md', 'shortlog -sn',
   'for-each-ref --format=%(refname)', 'show-ref', 'ls-files', 'ls-tree -r HEAD',
-  'grep -n TODO', 'symbolic-ref HEAD', 'cat-file -p HEAD', 'cat-file --textconv HEAD:a'
+  'grep -n TODO', 'symbolic-ref HEAD', 'cat-file -p HEAD', 'grep -io todo -- src',
+  'diff --text HEAD~1', 'log --no-ext-diff -p', 'rev-list --filter=blob:none --objects HEAD',
+  'grep --no-open-files-in-pager x', 'var GIT_EDITOR', 'log --exclude=refs/stash --all', 'log -- --output'
 ];
 for (const command of allowed) {
   assert.deepEqual(checkReadOnly(tokenize(command)), { ok: true }, `must allow: ${command}`);
@@ -46,7 +48,13 @@ const rejected = [
   'notacommand', 'log --output=/tmp/x', 'log --output /tmp/x', 'log -o /tmp/x',
   'log --ext-diff', 'grep --open-files-in-pager TODO', 'show --textconv HEAD',
   'fetch --upload-pack=/bin/sh origin', '-c core.pager=sh log', '-C /etc status',
-  '--exec-path=/tmp log', '--git-dir=/tmp/x log', ''
+  '--exec-path=/tmp log', '--git-dir=/tmp/x log', '',
+  // Git takes unambiguous prefixes of long options and clustered short ones:
+  // each of these ran a shell command before the prefix rule.
+  'grep -Otouch x', 'grep -iOtouch x', 'grep --open-files-in-pag=touch x', 'grep --open=touch x',
+  'ls-remote --upload-pa=touch .', 'ls-remote --upload=touch .', 'log --outp=/tmp/x', 'log --ext-d',
+  'cat-file --textconv HEAD:a', 'cat-file --filters HEAD:a', 'cat-file --filt HEAD:a', 'show --textc HEAD',
+  'blame --contents /etc/hosts -- a', 'blame --cont /etc/hosts -- a', 'diff --no-index /etc/hosts a', 'var -l'
 ];
 for (const command of rejected) {
   const argv = command === '' ? [] : tokenize(command);

@@ -1,4 +1,5 @@
 import { runGit } from './exec.js';
+import { redactCredentials } from './redact.js';
 import { validateOid } from './commit.js';
 import { coAuthorArgv, missingCoAuthors } from './co-author-trailer.js';
 
@@ -55,7 +56,7 @@ export const buildStashPopArgv = () => ['stash', 'pop'];
 
 /** The last lines Git or its hook printed on failure, without credentials in URLs, at most 1000 characters. */
 export function gitReason(result) {
-  const text = `${result.stderr || ''}\n${result.stdout || ''}`.replace(/(\w+:\/\/)[^/@\s]+@/g, '$1');
+  const text = redactCredentials(`${result.stderr || ''}\n${result.stdout || ''}`);
   const lines = text.split('\n').map(line => line.trimEnd()).filter(line => line.trim());
   return lines.slice(-12).join('\n').slice(-1000);
 }

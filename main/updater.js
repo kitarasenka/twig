@@ -40,6 +40,12 @@ const MAX_REDIRECTS = 5;
 const IDLE_TIMEOUT_MS = 60_000;
 const FIRST_AUTO_CHECK_MS = 5_000;
 const AUTO_CHECK_EVERY_MS = 24 * 60 * 60 * 1000;
+// Who must have signed a new macOS version: an Apple-issued Developer ID
+// certificate of 🌱 Twig's team, for this bundle id. `codesign --verify` alone
+// only says "some valid signature" — an ad-hoc one passes it — and the
+// quarantine flag is cleared right after, so Gatekeeper never looks either.
+export const MAC_SIGNATURE_REQUIREMENT = 'anchor apple generic and identifier "app.nodex.twig"'
+  + ' and certificate leaf[subject.OU] = "7KUBZGRSSZ"';
 const MAC_STAGED = '.twig-update.app';
 const MAC_PREVIOUS = '.twig-previous.app';
 const APPIMAGE_STAGED = '.twig-update.AppImage';
@@ -162,12 +168,14 @@ async function startsWith(file, bytes, offset = 0) {
  *   openPath: (file: string) => Promise<string>,
  *   onState?: (state: object) => void,
  *   fetchImpl?: typeof fetch,
- *   pid?: number
+ *   pid?: number,
+ *   signatureRequirement?: string   codesign requirement the new macOS bundle must meet
  * }} options
  */
 export function createUpdater({
   currentVersion, target, directory, downloadsDir, store, log, runTool, spawnDetached, quit, openPath,
-  onState = () => {}, fetchImpl = globalThis.fetch, pid = process.pid
+  onState = () => {}, fetchImpl = globalThis.fetch, pid = process.pid,
+  signatureRequirement = MAC_SIGNATURE_REQUIREMENT
 }) {
   const userAgent = `Twig/${currentVersion}`;
   const installable = target.kind !== 'unsupported';
@@ -254,7 +262,8 @@ export function createUpdater({
       const version = (await tool(['plutil', '-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', plist], 'Update: read the bundle version')).trim();
       if (id !== BUNDLE_ID) throw new UpdateError(`The disk image holds ${id || 'an unknown app'}, not 🌱 Twig.`);
       if (version !== state.latest) throw new UpdateError(`The disk image holds version ${version}, not ${state.latest}.`);
-      await tool(['codesign', '--verify', '--deep', '--strict', staged], 'Update: verify the new version’s signature');
+      await tool(['codesign', '--verify', '--deep', '--strict', '-R', `=${signatureRequirement}`, staged],
+        'Update: verify the new version is signed by 🌱 Twig’s developer');
       // Nothing should carry the flag (this process wrote the files), but an
       // app that did would stop at the "downloaded from the internet" question.
       await runTool(['xattr', '-dr', 'com.apple.quarantine', staged], 'Update: clear the download flag');

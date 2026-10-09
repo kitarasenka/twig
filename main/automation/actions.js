@@ -1,9 +1,12 @@
 import path from 'node:path';
+import vm from 'node:vm';
 import { runStep } from './exec.js';
 import { parseCommand, isBareExecutable } from '../../renderer/src/features/automations/command-parse.js';
 import { matchesGlob } from '../../renderer/src/features/automations/condition-eval.js';
 import { checkMessage } from '../../renderer/src/features/automations/message-rules.js';
 import { scanText } from '../../renderer/src/features/automations/secret-rules.js';
+
+const MESSAGE_RULE_TIMEOUT_MS = 1000;
 
 /**
  * Runs one action and returns a step result:
@@ -40,8 +43,16 @@ export async function runAction({ action, context, cwd, log, env, signal, timeou
       return { status: 'passed', detail: 'The version is bumped with the commit; the choice is made in the commit panel or the agent’s proposal.' };
 
     case 'validateMessage': {
-      const { ok, detail } = checkMessage(action.rule, context.commitMessage ?? '');
-      return { status: ok ? 'passed' : 'failed', detail: ok ? null : detail };
+      // A rule's regex runs in the main process; a catastrophic pattern must
+      // fail the step, not freeze 🌱 Twig (same guard as MCP's search).
+      let verdict;
+      try {
+        verdict = vm.runInNewContext('check(rule, message)', { check: checkMessage, rule: action.rule, message: context.commitMessage ?? '' },
+          { timeout: MESSAGE_RULE_TIMEOUT_MS });
+      } catch {
+        return { status: 'failed', detail: 'The message pattern took too long to check. Simplify the regular expression.' };
+      }
+      return { status: verdict.ok ? 'passed' : 'failed', detail: verdict.ok ? null : verdict.detail };
     }
 
     case 'checkBranch': {

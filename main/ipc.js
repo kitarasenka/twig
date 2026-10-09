@@ -16,6 +16,7 @@ import { registerFilesIpc } from './files-ipc.js';
 import { registerFetchIpc } from './fetch-ipc.js';
 import { registerRepoToolsIpc } from './repo-tools-ipc.js';
 import { createTokenRegistry } from './token-registry.js';
+import { findRiskyConfig } from './git/config-risk.js';
 import { createRepositoryWatcher } from './repo-watch.js';
 import { registerUpdateIpc } from './update-ipc.js';
 import { registerMcpIpc } from './mcp-ipc.js';
@@ -80,7 +81,21 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
     const window = getWindow();
     const choice = await dialog.showOpenDialog(window, { title: 'Open Git repository', properties: ['openDirectory'] });
     if (choice.canceled || !choice.filePaths[0]) return repositories.snapshot();
-    return repositories.add(choice.filePaths[0]);
+    const directory = choice.filePaths[0];
+    // Before the first `git status`: a folder whose own Git config runs
+    // programs on a read is opened only after the person says so.
+    const risky = await findRiskyConfig(directory, journal);
+    if (risky.length) {
+      const answer = await dialog.showMessageBox(window, {
+        type: 'warning', buttons: ['Cancel', 'Open anyway'], defaultId: 0, cancelId: 0, noLink: true,
+        message: 'This repository’s Git settings run programs',
+        detail: `${risky.map(({ key, value }) => `${key} = ${value.length > 200 ? `${value.slice(0, 200)}…` : value}`).join('\n')}\n\n`
+          + 'Git runs these while 🌱 Twig only reads the repository — on opening it and on every refresh. '
+          + 'Open it only if you trust where this folder came from. A fresh clone never carries these settings.'
+      });
+      if (answer.response !== 1) return repositories.snapshot();
+    }
+    return repositories.add(directory);
   });
   ipcMain.handle('repositories:select', async (event, ...args) => {
     if (!validSender(event, getWindow, entryUrl, args, 1) || typeof args[0] !== 'string' || args[0].length > 4096) throw new Error('Invalid repository request');

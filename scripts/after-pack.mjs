@@ -21,6 +21,25 @@ here="$(dirname "$(readlink -f "$0")")"
 # every start. Whatever the launching shell had is not meant for us.
 unset NODE_OPTIONS
 
+# An empty or relative entry in a search path means "the current directory".
+# Older AppImage runtimes exported LD_LIBRARY_PATH with a trailing ":"
+# (GHSA-7g7r-gx96-252g): a library planted in the folder 🌱 Twig or git runs in
+# would load. Keep absolute entries only.
+absolute_only() {
+  local kept="" entry
+  local IFS=":"
+  for entry in $1; do
+    case "$entry" in /*) kept="\${kept:+$kept:}$entry" ;; esac
+  done
+  printf '%s' "$kept"
+}
+if [ -n "\${LD_LIBRARY_PATH+set}" ]; then
+  LD_LIBRARY_PATH="$(absolute_only "$LD_LIBRARY_PATH")"
+  if [ -n "$LD_LIBRARY_PATH" ]; then export LD_LIBRARY_PATH; else unset LD_LIBRARY_PATH; fi
+fi
+PATH="$(absolute_only "$PATH")"
+export PATH
+
 # Use the bundled fontconfig (own cache directory) unless the user opts out:
 # caches written by a newer host fontconfig leave Electron's older bundled one
 # with zero fonts, and Chromium aborts on the first text it draws.
@@ -49,18 +68,50 @@ async function adHocSignMac(context) {
   await execFileAsync('codesign', ['--force', '--deep', '--sign', '-', appPath]);
 }
 
+// Electron fuses — switches compiled into the binary, flipped before signing.
+// - RunAsNode stays on: the MCP bridge, askpass and the rebase editors run as
+//   `🌱 Twig` with ELECTRON_RUN_AS_NODE=1 (main/mcp/endpoint.js, main/git/exec.js).
+// - NODE_OPTIONS and --inspect/--inspect-brk are off: nothing in 🌱 Twig uses
+//   them, and with them any local process could inject code into the signed app.
+// - The app loads only from app.asar, and on macOS that archive's hash (which
+//   electron-builder writes into Info.plist) is checked at start. Windows and
+//   Linux packages carry no such hash here, so validation stays off there.
+export function fusesFor(platform) {
+  return {
+    runAsNode: true,
+    enableNodeOptionsEnvironmentVariable: false,
+    enableNodeCliInspectArguments: false,
+    onlyLoadAppFromAsar: true,
+    enableEmbeddedAsarIntegrityValidation: platform === 'darwin'
+  };
+}
+
+// Flipped here rather than through `electronFuses` in the build config: on
+// Linux the binary is renamed below, and electron-builder flips fuses *after*
+// this hook by file name — it would find the launcher script there instead.
+async function flipFuses(context) {
+  const { packager } = context;
+  const config = await packager.generateFuseConfig(fusesFor(context.electronPlatformName));
+  await packager.addElectronFuses(context, config);
+}
+
 export default async function afterPack(context) {
   if (context.electronPlatformName === 'darwin') {
+    await flipFuses(context);
     await adHocSignMac(context);
     return;
   }
-  if (context.electronPlatformName !== 'linux') return;
+  if (context.electronPlatformName !== 'linux') {
+    await flipFuses(context);
+    return;
+  }
   const { appOutDir } = context;
   const name = context.packager.executableName;
   const launcher = path.join(appOutDir, name);
   const binary = path.join(appOutDir, `${name}.bin`);
   if (await exists(binary)) return; // already wrapped (hook ran twice on this dir)
 
+  await flipFuses(context);
   await rename(launcher, binary);
   await mkdir(path.join(appOutDir, 'etc/fonts'), { recursive: true });
   await copyFile(fontsConfig, path.join(appOutDir, 'etc/fonts/fonts.conf'));

@@ -4,6 +4,7 @@ import { loadRefs } from './refs.js';
 import { validateRefName } from './refs-ops.js';
 import { loadRemotes, validateRemoteName, validateRepositoryUrl } from './remotes.js';
 import { BACKGROUND_FETCH_ARGV } from '../background-fetch.js';
+import { redactCredentials } from './redact.js';
 
 /**
  * Network operations. Each one takes an AbortSignal because the brief
@@ -114,7 +115,7 @@ export async function backgroundFetch({ cwd, log, signal = null }) {
   if (result.cancelled) return { ok: false, cancelled: true, message: null };
   if (result.code !== 0) {
     // The reason is shown in Settings, so a credential inside a URL is cut out of it.
-    const reason = result.stderr.split('\n').map(line => line.replace(/^(fatal|error): /, '').replace(/(\w+:\/\/)[^/@\s]+@/g, '$1').trim()).find(Boolean);
+    const reason = redactCredentials(result.stderr).split('\n').map(line => line.replace(/^(fatal|error): /, '').trim()).find(Boolean);
     return { ok: false, cancelled: false, message: reason ? `Fetch failed: ${reason}` : 'Fetch failed. Show output in the console.' };
   }
   return { ok: true, cancelled: false, message: null };

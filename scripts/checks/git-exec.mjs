@@ -14,7 +14,7 @@ try {
   await log.load();
   const version = await runGit({ argv: ['--version'], cwd: directory, log, operation: 'Test Git availability' });
   assert.equal(version.code, 0);
-  assert.deepEqual(version.argv.slice(0, 5), ['--no-pager', '-c', 'color.ui=false', '-c', 'log.showSignature=false']);
+  assert.deepEqual(version.argv.slice(0, 7), ['--no-pager', '-c', 'color.ui=false', '-c', 'log.showSignature=false', '-c', 'core.fsmonitor=false']);
   assert.match(version.stdout, /^git version /);
   assert.equal(version.cwd, directory);
   assert.match(version.startedAt, /^\d{4}-\d{2}-\d{2}T/);

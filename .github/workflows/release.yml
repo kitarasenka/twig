@@ -16,8 +16,12 @@ on:
   push:
     tags: ['twig-v*']
 
+# Nothing writes by default. Only the two jobs that touch the release get
+# `contents: write`; the build job runs `npm ci` (install scripts of every
+# dependency) and so holds a read-only token, and hands the installers to the
+# upload job as artifacts.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -26,10 +30,14 @@ concurrency:
 jobs:
   create-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
@@ -68,18 +76,26 @@ jobs:
         include:
           - os: macos-latest
             script: 'pack:mac'
-            assets: 'release/*.dmg'
+            assets: |
+              release/*.dmg
           - os: windows-latest
             script: 'pack:win'
-            assets: 'release/Twig-*-windows-x64.exe'
+            assets: |
+              release/Twig-*-windows-x64.exe
           - os: ubuntu-latest
             script: 'pack:linux'
-            assets: 'release/*.deb release/*.AppImage'
+            assets: |
+              release/*.deb
+              release/*.AppImage
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: npm
@@ -102,7 +118,7 @@ jobs:
           if [ -n "${MAC_CSC_LINK}" ]; then
             p12="${RUNNER_TEMP}/developer-id.p12"
             keychain="${RUNNER_TEMP}/twig-signing.keychain-db"
-            printf '%s' "${MAC_CSC_LINK}" | base64 --decode > "${p12}"
+            (umask 077; printf '%s' "${MAC_CSC_LINK}" | base64 --decode > "${p12}")
             name=$(scripts/mac-signing-keychain.sh create "${p12}" "${keychain}")
             rm -f "${p12}"
             echo "CSC_NAME=${name}" >> "${GITHUB_ENV}"
@@ -113,8 +129,12 @@ jobs:
             (umask 077; printf '%s\n' "${APPLE_API_KEY_P8}" > "${key}")
             echo "APPLE_API_KEY_PATH=${key}" >> "${GITHUB_ENV}"
           fi
-          if [ -z "${MAC_CSC_LINK}" ] && [ -z "${APPLE_API_KEY_P8}" ]; then
-            echo "::warning::macOS signing secrets are not set — the DMG gets only an ad-hoc signature and Gatekeeper will block the first launch."
+          # An unsigned release is not published: Gatekeeper would block its
+          # first launch, and 🌱 Twig's updater refuses any macOS bundle not
+          # signed by its developer (main/updater.js), so nobody could update to it.
+          if [ -z "${MAC_CSC_LINK}" ] || [ -z "${APPLE_API_KEY_P8}" ]; then
+            echo "::error::macOS signing secrets are not set — a release must be signed and notarized."
+            exit 1
           fi
 
       - name: Package
@@ -159,16 +179,33 @@ jobs:
           scripts/mac-signing-keychain.sh delete "${RUNNER_TEMP}/twig-signing.keychain-db"
           rm -f "${RUNNER_TEMP}/AuthKey.p8" "${RUNNER_TEMP}/developer-id.p12"
 
-      - name: Upload installers to the release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber ${{ matrix.assets }}
+      - name: Hand the installers to the upload job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: ${{ matrix.assets }}
+          if-no-files-found: error
+          retention-days: 3
 
+  # Runs no project code and installs nothing: the only job besides
+  # create-release that can write to the repository.
   publish:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: installers
+
+      - name: Upload installers to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber installers/*
+
       - name: Undraft the release
         env:
           GH_TOKEN: ${{ github.token }}

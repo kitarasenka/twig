@@ -100,7 +100,7 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
   </div>;
 });
 
-export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, onCheckout, onPickRef, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, bisectMarks = NO_BISECT_MARKS, onUncommitted, onStashes, active, commitColors = 'lanes', drag, headBranch }) {
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, onCheckout, onPickRef, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, bisectMarks = NO_BISECT_MARKS, onUncommitted, onStashes, reveal = null, active, commitColors = 'lanes', drag, headBranch }) {
   const selectionSet = selection || EMPTY_SELECTION;
   const scroller = useRef(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
@@ -280,6 +280,23 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
+  // A jump (a ref in the sidebar, Go to commit, a parent) brings its commit to
+  // the middle when it is off screen, even if it was selected already. Runs
+  // before the selection's own minimal scroll, which then has nothing to do.
+  const revealed = useRef(0);
+  useLayoutEffect(() => {
+    if (!reveal || reveal.seq === revealed.current || reveal.oid !== selected) return;
+    const index = indexMap.get(reveal.oid);
+    if (index === undefined) return;
+    revealed.current = reveal.seq;
+    const node = scroller.current;
+    const top = metrics.top(index);
+    const height = metrics.height(index);
+    if (top < node.scrollTop || top + height > node.scrollTop + node.clientHeight) {
+      node.scrollTop = Math.max(0, top - Math.max(0, node.clientHeight - height) / 2);
+      setViewport({ top: node.scrollTop, height: node.clientHeight || 600 });
+    }
+  }, [reveal, selected, indexMap, metrics]);
   useLayoutEffect(() => {
     const index = indexMap.get(selected);
     if (index === undefined || previousSelection.current === selected) return;

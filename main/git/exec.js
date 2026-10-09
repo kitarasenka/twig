@@ -7,7 +7,10 @@ const askpass = fileURLToPath(new URL('./askpass.cjs', import.meta.url));
 // the signature program's output into stdout, in the middle of the NUL-separated
 // records the parsers read. An explicit `--show-signature` typed in the console
 // still wins over it.
-const baseArgs = ['--no-pager', '-c', 'color.ui=false', '-c', 'log.showSignature=false'];
+// `core.fsmonitor` names a program `git status` runs on every read — and 🌱 Twig
+// reads on its own (on open, on every refresh). A repository's config must not
+// turn that into running someone's command, so Git's own scan is used instead.
+export const BASE_ARGS = ['--no-pager', '-c', 'color.ui=false', '-c', 'log.showSignature=false', '-c', 'core.fsmonitor=false'];
 
 function validArguments(argv) {
   return Array.isArray(argv) && argv.length > 0 && argv.every(argument => typeof argument === 'string');
@@ -44,7 +47,7 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
   const startedAt = new Date().toISOString();
   const started = performance.now();
   const id = randomUUID();
-  const command = [...baseArgs, ...argv];
+  const command = [...BASE_ARGS, ...argv];
   const label = stdin === null ? operation : `${operation} · ${Buffer.byteLength(stdin, 'utf8')} bytes on stdin`;
   await log.start({ id, argv: command, cwd, operation: label, startedAt });
   return new Promise((resolve) => {
