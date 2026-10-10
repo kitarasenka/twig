@@ -147,6 +147,8 @@ esac
   await expect('Undo completed.', 'Undo of the whole run');
   assert.match((await app.evaluate(() => globalThis.twigShownBoxes))[0], new RegExp(`"reset" "--hard" "${mainTip}"`), 'the confirmation named the exact reset');
   assert.equal(await git(['rev-parse', 'HEAD']), mainTip, 'one Undo takes the whole run back');
+  // The graph re-reads history after the Undo; its rows are used only once it has.
+  await page.waitForFunction(() => [...document.querySelectorAll('[role="option"]')].filter(item => item.textContent.includes('Side one')).length === 1);
 
   // --- Patches: export a commit, then apply it back as a commit. ---
   const patchFile = path.join(root, 'side one.patch');

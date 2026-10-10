@@ -1,5 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { readJsonFile, writeFileAtomic } from './json-file.js';
 
 const normalize = value => ({ enabled: value?.enabled === true, allowCommits: value?.allowCommits === true });
 
@@ -17,9 +18,7 @@ export class McpStore {
 
   async load() {
     await mkdir(path.dirname(this.#file), { recursive: true });
-    try {
-      this.#state = normalize(JSON.parse(await readFile(this.#file, 'utf8')));
-    } catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; }
+    this.#state = normalize(await readJsonFile(this.#file));
     return this.get();
   }
 
@@ -27,9 +26,7 @@ export class McpStore {
 
   async save(value) {
     const next = normalize(value);
-    const temporary = `${this.#file}.next`;
-    await writeFile(temporary, JSON.stringify(next, null, 2), 'utf8');
-    await rename(temporary, this.#file);
+    await writeFileAtomic(this.#file, JSON.stringify(next, null, 2));
     this.#state = next;
     return this.get();
   }

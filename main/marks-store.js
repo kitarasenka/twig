@@ -1,5 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { readJsonFile, writeFileAtomic } from './json-file.js';
 
 /**
  * Atomic JSON store for local commit marks, one file for every repository:
@@ -16,10 +17,8 @@ export class MarksStore {
 
   async load() {
     await mkdir(path.dirname(this.#file), { recursive: true });
-    try {
-      const value = JSON.parse(await readFile(this.#file, 'utf8'));
-      if (value && typeof value === 'object' && !Array.isArray(value)) this.#state = value;
-    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    const value = await readJsonFile(this.#file);
+    if (value && typeof value === 'object' && !Array.isArray(value)) this.#state = value;
   }
 
   list(repoId) { return { ...this.#state[repoId] }; }
@@ -28,9 +27,7 @@ export class MarksStore {
     const next = this.#pending.then(async () => {
       const state = JSON.parse(JSON.stringify(this.#state));
       const repoId = mutate(state);
-      const temporary = `${this.#file}.next`;
-      await writeFile(temporary, JSON.stringify(state, null, 2), 'utf8');
-      await rename(temporary, this.#file);
+      await writeFileAtomic(this.#file, JSON.stringify(state, null, 2));
       this.#state = state;
       return this.list(repoId);
     });

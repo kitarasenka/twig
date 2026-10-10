@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlignLeft, Archive, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow, Wrench } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
@@ -12,21 +12,13 @@ import WorktreePanel from '../worktree/WorktreePanel.jsx';
 import { conflictCount, summarizeStatus } from '../worktree/worktree-summary.js';
 import { discardDialog } from '../worktree/discard-dialog.js';
 import { SEARCH_MODE_OPTIONS, searchEmpty, searchSummary } from './search-modes.js';
-import ConflictEditor from '../conflicts/ConflictEditor.jsx';
 import OperationBanner from '../ops/OperationBanner.jsx';
 import BisectBanner from '../ops/BisectBanner.jsx';
 import RefsScreen, { UpstreamDialog } from '../refs/RefsScreen.jsx';
 import { pushRefCommand, splitRemoteRef } from '../refs/remote-ref.js';
 import StashScreen from '../stash/StashScreen.jsx';
-import ReflogScreen from '../reflog/ReflogScreen.jsx';
-import WorktreesScreen from '../tools/WorktreesScreen.jsx';
-import SubmodulesScreen from '../tools/SubmodulesScreen.jsx';
-import MaintenanceScreen from '../tools/MaintenanceScreen.jsx';
-import WorktreeDialog from '../tools/WorktreeDialog.jsx';
-import AutomationsScreen from '../automations/AutomationsScreen.jsx';
 import ExecutionPanel from '../automations/ExecutionPanel.jsx';
 import { eventLabel, eventPhase } from '../automations/event-labels.js';
-import RebaseDialog from '../rebase/RebaseDialog.jsx';
 import PatchDialog from '../ops/PatchDialog.jsx';
 import { exportOrder } from '../ops/patch-view.js';
 import { ConfirmDialog, MessageDialog, NameDialog } from '../ops/dialogs.jsx';
@@ -43,16 +35,33 @@ import { createLaneLayout } from './layout.js';
 import { bisectMarkMap } from './bisect-marks.js';
 import useGitDrag, { refEndpoint } from './useGitDrag.js';
 import DropDialog from './DropDialog.jsx';
-import BlameView from '../blame/BlameView.jsx';
-import BlameDetail from '../blame/BlameDetail.jsx';
 import DiffLines from '../diff/DiffLines.jsx';
 import { dropActions, endpointLabel, sameEndpoint } from '../../../../main/git/drop-plan.js';
 import { buildUiContext } from './ui-context-report.js';
+import lazyScreen from '../../ui/lazy-screen.jsx';
+
+// Opened rarely: loaded the first time they are shown, not with the window.
+const ConflictEditor = lazyScreen(() => import('../conflicts/ConflictEditor.jsx'));
+const ReflogScreen = lazyScreen(() => import('../reflog/ReflogScreen.jsx'));
+const WorktreesScreen = lazyScreen(() => import('../tools/WorktreesScreen.jsx'));
+const SubmodulesScreen = lazyScreen(() => import('../tools/SubmodulesScreen.jsx'));
+const MaintenanceScreen = lazyScreen(() => import('../tools/MaintenanceScreen.jsx'));
+const WorktreeDialog = lazyScreen(() => import('../tools/WorktreeDialog.jsx'));
+const AutomationsScreen = lazyScreen(() => import('../automations/AutomationsScreen.jsx'));
+const RebaseDialog = lazyScreen(() => import('../rebase/RebaseDialog.jsx'));
+const BlameView = lazyScreen(() => import('../blame/BlameView.jsx'));
+const BlameDetail = lazyScreen(() => import('../blame/BlameDetail.jsx'));
 
 const NOOP = () => {};
+const NO_STASHES = [];
 // A reload reads back as many rows as were loaded, so the view keeps its place —
 // up to this many (eight pages); a history scrolled deeper than that is rare.
 const KEEP_ROWS = 2000;
+/** Commits per history page the graph asks for while scrolling. */
+const PAGE_SIZE = 250;
+/** A jump to a commit far down, and a reload restoring the rows that were shown,
+ * read bigger pages: main streams the history, so a page costs what it holds. */
+const JUMP_PAGE_SIZE = 2000;
 const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
 const NO_BISECT = { active: false, terms: { bad: 'bad', good: 'good' }, start: null, bad: null, goods: [],
   skipped: [], marked: [], expected: null, remaining: null, steps: null, done: false, firstBad: null };
@@ -146,8 +155,8 @@ function FileHistory({ data, selected, onSelect, onClose, onConsole }) {
   </section>;
 }
 
-export default function HistoryWorkspace({ repository, active, mod, platform, editor, filterRef, onConsole, onRepositoryChanged, onOpenWorkspace, onWorkspace, referencesRevision = 0, commitColors = 'lanes', toolbarSlot, toolbarBusyReason }) {
-  const [data, setData] = useState({ commits: [], lanes: [], refs: [], nextSkip: 0, width: 1 });
+function HistoryWorkspace({ repository, active, mod, platform, editor, filterRef, onConsole, onRepositoryChanged, onOpenWorkspace, onWorkspace, referencesRevision = 0, commitColors = 'lanes', toolbarSlot, toolbarBusyReason }) {
+  const [data, setData] = useState(() => ({ commits: [], lanes: [], refs: [], nextSkip: 0, width: 1, oids: new Set() }));
   const dataRef = useRef(data);
   const layout = useRef(createLaneLayout());
   const generation = useRef(0);
@@ -155,7 +164,14 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   // When history last reloaded, so a disk change 🌱 Twig caused itself does not
   // bounce straight back as an "external change" reload.
   const lastReload = useRef(0);
+  // When the newest finished reload started reading the refs: a change on disk
+  // before that is already on screen, one after it is not.
+  const lastRefsRead = useRef(0);
   const reloading = useRef(null);
+  // How many rows the reload in progress is restoring. A reload that replaces
+  // it mid-way keeps that goal: otherwise two overlapping refreshes would
+  // shrink the view to whatever the first had read back so far.
+  const restoreTarget = useRef(0);
   const refreshBusy = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -261,34 +277,49 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     return result;
   }, [data.refs]);
 
-  const readPage = useCallback(async () => {
+  // Reads the next page into `target`: `dataRef` while the graph scrolls, a
+  // reload's own buffer while it restores. The oids already read are kept with
+  // the pages rather than rebuilt from every loaded commit on every page (that
+  // was O(history) per page). `false` when a newer generation took over.
+  const fetchPage = useCallback(async (target, lanes, limit, epoch) => {
+    const page = await window.twig.getHistoryPage(repository.id, target.current.nextSkip, limit);
+    if (epoch !== generation.current) return false;
+    const previous = target.current;
+    if (page.commits.some(commit => previous.oids.has(commit.oid))) throw new Error('History changed while loading. Refresh to reload it.');
+    for (const commit of page.commits) previous.oids.add(commit.oid);
+    const laid = lanes.current.append(page.commits);
+    target.current = { ...previous, commits: previous.commits.concat(page.commits), lanes: previous.lanes.concat(laid), nextSkip: page.nextSkip, width: lanes.current.width };
+    return true;
+  }, [repository.id]);
+  const readPage = useCallback(async (limit = PAGE_SIZE) => {
     busy.current = true; setLoading(true);
     const epoch = generation.current;
     try {
-      const page = await window.twig.getHistoryPage(repository.id, dataRef.current.nextSkip, 250);
-      if (epoch !== generation.current) return false;
-      const previous = dataRef.current;
-      const known = new Set(previous.commits.map(commit => commit.oid));
-      if (page.commits.some(commit => known.has(commit.oid))) throw new Error('History changed while loading. Refresh to reload it.');
-      const lanes = layout.current.append(page.commits);
-      dataRef.current = { ...previous, commits: [...previous.commits, ...page.commits], lanes: [...previous.lanes, ...lanes], nextSkip: page.nextSkip, width: layout.current.width };
+      if (!await fetchPage(dataRef, layout, limit, epoch)) return false;
       setData(dataRef.current);
-      setSelected(value => value || page.commits[0]?.oid || null);
+      setSelected(value => value || dataRef.current.commits[0]?.oid || null);
       return true;
     } catch (failure) {
       if (epoch === generation.current) setError(failure.message || 'Could not load history.');
       return false;
     } finally { if (epoch === generation.current) { busy.current = false; setLoading(false); } }
-  }, [repository.id]);
+  }, [fetchPage]);
   // The page being read, so that a jump arriving while the graph's own scroll
-  // is loading one waits for it instead of giving up.
+  // is loading one waits for it instead of giving up. It is shared only within
+  // its own generation: a page a reload has made stale answers `false`, and a
+  // reload that waited on it published an empty history and never cleared
+  // `loading` (the graph stuck on its skeleton with Refresh disabled).
   const paging = useRef(null);
-  const loadMore = useCallback(() => {
-    if (paging.current) return paging.current;
+  // `limit` only when a caller asks for more at once; the graph's button and
+  // scroll call it with an event or nothing.
+  const loadMore = useCallback(limit => {
+    const pending = paging.current;
+    if (pending && pending.epoch === generation.current) return pending.run;
     if (busy.current || dataRef.current.nextSkip === null) return Promise.resolve(false);
-    const run = readPage();
-    paging.current = run;
-    void run.finally(() => { if (paging.current === run) paging.current = null; });
+    const run = readPage(Number.isInteger(limit) ? limit : PAGE_SIZE);
+    const entry = { run, epoch: generation.current };
+    paging.current = entry;
+    void run.finally(() => { if (paging.current === entry) paging.current = null; });
     return run;
   }, [readPage]);
 
@@ -303,10 +334,12 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   // checkout passes the commit it moved to, so the graph moves the selection
   // there instead of to the newest commit.
   //
-  // Either way the history stays where it is on screen: the new pages are
-  // published only once at least as many rows as before are in (an empty list
-  // for one frame collapses the scroller, and the browser would throw the view
-  // back to the top), and the selection scrolls only as far as it must.
+  // Either way the history stays where it is on screen: the new pages are read
+  // into a buffer of the reload's own and replace the old ones in one step,
+  // once at least as many rows as before are in. Until then the rows on screen
+  // stay the ones the menus and clicks act on — the old data was cleared up
+  // front, and a right-click during a reload opened nothing — and a list that
+  // shrank to its first page for a moment no longer throws the view upwards.
   const reload = useCallback(({ keepView = false, select = null } = {}) => {
     // Kept so `jump` can wait for it: a click that lands mid-reload (the
     // BugHunter banner's "Show test commit" right after a step, a sidebar
@@ -315,14 +348,18 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     const run = (async () => {
       lastReload.current = Date.now();
       const epoch = ++generation.current;
-      const shown = Math.min(dataRef.current.commits.length, KEEP_ROWS);
+      const shown = Math.min(Math.max(dataRef.current.commits.length, restoreTarget.current), KEEP_ROWS);
+      restoreTarget.current = shown;
       // Reloading history must not throw the user out of the working tree
       // screen: staging refreshes history, and the screen lives in `selected`.
+      // `busy` stays up until the swap: the graph's own scroll must not append
+      // a page of the new history to the old rows.
       busy.current = true; setLoading(true); setError('');
       if (!keepView) {
         setSelected(current => select || (SCREENS.includes(current) || current === UNCOMMITTED ? current : null));
         setSelection([]); setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
       }
+      const readAt = Date.now();
       try {
         const [refs, stashList, remoteList, markMap, lfsStatus] = await Promise.all([
           window.twig.getRefs(repository.id),
@@ -332,27 +369,43 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
           window.twig.getLfsStatus(repository.id).catch(() => null)
         ]);
         if (generation.current !== epoch) return;
+        lastRefsRead.current = readAt;
         setLfs(lfsStatus);
         setStashes(stashList);
         setRemotes(remoteList);
         setMarks(markMap);
-        layout.current = createLaneLayout(refs);
-        dataRef.current = { commits: [], lanes: [], refs, nextSkip: 0, width: 1 };
-        busy.current = false;
-        const missing = () => dataRef.current.commits.length < shown || (select && !dataRef.current.commits.some(commit => commit.oid === select));
-        let more = await loadMore();
-        while (more && generation.current === epoch && dataRef.current.nextSkip !== null && missing()) more = await loadMore();
+        const buffer = { current: { commits: [], lanes: [], refs, nextSkip: 0, width: 1, oids: new Set() } };
+        const lanes = { current: createLaneLayout(refs) };
+        const missing = () => buffer.current.commits.length < shown || (select && !buffer.current.oids.has(select));
+        let failure = null;
+        // As many rows as were shown in as few pages as main allows, then (for a
+        // commit further down) big pages until it is in.
+        const size = () => {
+          const left = shown - buffer.current.commits.length;
+          return left > 0 ? Math.min(JUMP_PAGE_SIZE, Math.max(PAGE_SIZE, left)) : select ? JUMP_PAGE_SIZE : PAGE_SIZE;
+        };
+        do {
+          try { if (!await fetchPage(buffer, lanes, size(), epoch)) return; }
+          catch (error) { failure = error; break; }
+        } while (buffer.current.nextSkip !== null && missing());
         if (generation.current !== epoch) return;
-        setData(dataRef.current); // a failed first page still shows the fresh refs
+        dataRef.current = buffer.current; // a failed first page still shows the fresh refs
+        layout.current = lanes.current;
+        setData(dataRef.current);
+        setSelected(value => value || dataRef.current.commits[0]?.oid || null);
+        if (failure) setError(failure.message || 'Could not load history.');
         lastReload.current = Date.now();
       } catch {
-        if (generation.current === epoch) { setError('Could not load repository references.'); busy.current = false; setLoading(false); }
+        if (generation.current === epoch) setError('Could not load repository references.');
+      } finally {
+        // Whatever the pages did, the reload that is still current ends the loading state.
+        if (generation.current === epoch) { busy.current = false; setLoading(false); restoreTarget.current = 0; }
       }
     })();
     reloading.current = run;
     void run.finally(() => { if (reloading.current === run) reloading.current = null; });
     return run;
-  }, [repository.id, loadMore]);
+  }, [repository.id, fetchPage]);
   const refreshOperation = useCallback(async () => {
     setOperationReady(false);
     let verified = true;
@@ -375,27 +428,42 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     [working, dropRunning, execution, conflict, drag.state]);
   // Pick up work done to this repository from outside 🌱 Twig — a commit,
   // checkout, fetch, merge or stash run in a terminal. `main` watches the git
-  // directory and sends an event; regaining focus after a real absence is a
-  // backstop for changes the watch cannot see (a bare `git add`, an unsupported
-  // platform). Both just reload, debounced, and skipped while an operation of
-  // ours is mid-flight or finished within the last second.
+  // directory and sends an event with the time of the change; regaining focus
+  // after a real absence is a backstop for changes the watch cannot see (a
+  // bare `git add`, an unsupported platform).
+  //
+  // A change is never dropped: while an operation or a reload of ours runs it
+  // waits, and afterwards it reloads unless a reload already read the refs
+  // after it — which is how the echo of our own actions is told apart. (Every
+  // change within a second of a reload used to be dropped as such an echo, a
+  // terminal commit or a fetch landing just then included.)
   useEffect(() => {
     if (!active) return undefined;
     let timer = null;
     let alive = true;
     let blurredAt = 0;
+    let wanted = null; // the newest outside change (a time) or 'focus', waiting for a reload
     const run = () => {
       timer = null;
-      if (!alive || refreshBusy.current || Date.now() - lastReload.current < 1200) return;
+      if (!alive || wanted === null) return;
+      if (refreshBusy.current || reloading.current) { schedule(); return; }
+      const seen = wanted === 'focus' ? Date.now() - lastReload.current < 1200 : wanted < lastRefsRead.current;
+      wanted = null;
+      if (seen) return;
       void reload({ keepView: true });
       void refreshOperation();
       onRepositoryChanged?.();
     };
-    const schedule = () => { if (timer) clearTimeout(timer); timer = setTimeout(run, 350); };
+    function schedule() { if (timer) clearTimeout(timer); timer = setTimeout(run, 350); }
     const onBlur = () => { blurredAt = Date.now(); };
-    const onFocus = () => { if (Date.now() - blurredAt > 1500) schedule(); };
+    const onFocus = () => { if (Date.now() - blurredAt > 1500) { if (wanted === null) wanted = 'focus'; schedule(); } };
     const unsubscribe = window.twig.onRepositoryChange
-      ? window.twig.onRepositoryChange(update => { if (update.cwd === repository.path || update.cwd === repository.id) schedule(); })
+      ? window.twig.onRepositoryChange(update => {
+        if (update.cwd !== repository.path && update.cwd !== repository.id) return;
+        const at = typeof update.changedAt === 'number' ? update.changedAt : Date.now();
+        wanted = typeof wanted === 'number' ? Math.max(wanted, at) : at;
+        schedule();
+      })
       : () => {};
     window.addEventListener('blur', onBlur);
     window.addEventListener('focus', onFocus);
@@ -452,11 +520,12 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
       // Git does with divergent work. The banner below says so in full, so
       // there is no note to add and no reason to throw the console open; that
       // is reserved for a command that genuinely could not run.
-      if (result.ok) setNote(success);
-      else if (!state || state.kind === 'none') { setNote(result.message || 'The operation did not finish.'); onConsole(); }
-      else setNote('');
+      if (!result.ok && (!state || state.kind === 'none')) { setNote(result.message || 'The operation did not finish.'); onConsole(); }
       if (state && state.conflicts.length === 0) setConflict(null);
       await reload({ select: result.ok ? select : null });
+      // Success is reported once the graph shows it: "Branch deleted" next to
+      // a badge that is still there read as a failure for a moment.
+      if (result.ok) setNote(success);
       onRepositoryChanged?.();
       return result;
     } catch (failure) {
@@ -496,9 +565,10 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     try {
       const result = await window.twig.runBisect(repository.id, step, oid);
       setBisect(result.bisect);
-      if (result.ok) setNote(step === 'start' ? '🌱 BugHunter (bisect) started.' : step === 'reset' ? 'BugHunter ended.' : `Revision marked ${step}.`);
-      else { setNote(result.message || 'BugHunter did not finish.'); onConsole(); }
+      if (!result.ok) { setNote(result.message || 'BugHunter did not finish.'); onConsole(); }
       await reload();
+      // As with every action: the note once the graph shows the new test commit.
+      if (result.ok) setNote(step === 'start' ? '🌱 BugHunter (bisect) started.' : step === 'reset' ? 'BugHunter ended.' : `Revision marked ${step}.`);
       onRepositoryChanged?.();
     } catch (failure) {
       setNote(failure.message || 'BugHunter failed.');
@@ -1000,14 +1070,20 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
   async function jump(oid) {
     const request = ++jumpRequest.current;
     setError('');
-    if (reloading.current) await reloading.current.catch(() => {});
-    if (jumpRequest.current !== request) return;
-    while (!dataRef.current.commits.some(commit => commit.oid === oid) && dataRef.current.nextSkip !== null) {
-      if (!await loadMore() || jumpRequest.current !== request) return;
+    // A reload that starts mid-jump (the watcher, a regained focus) replaces
+    // the pages being read: wait for it and go on from its pages instead of
+    // silently giving up.
+    for (;;) {
+      if (reloading.current) await reloading.current.catch(() => {});
+      if (jumpRequest.current !== request) return;
+      if (dataRef.current.oids.has(oid)) { choose(oid); setReveal(previous => ({ oid, seq: (previous?.seq || 0) + 1 })); return; }
+      if (dataRef.current.nextSkip === null) break;
+      const epoch = generation.current;
+      const more = await loadMore(JUMP_PAGE_SIZE);
+      if (jumpRequest.current !== request) return;
+      if (!more && generation.current === epoch && !reloading.current) break;
     }
-    if (jumpRequest.current !== request) return;
-    if (dataRef.current.commits.some(commit => commit.oid === oid)) { choose(oid); setReveal(previous => ({ oid, seq: (previous?.seq || 0) + 1 })); }
-    else setError('This commit is not in the loaded repository history. Refresh to update it.');
+    setError('This commit is not in the loaded repository history. Refresh to update it.');
   }
   async function openFile(file) {
     const request = ++diffRequest.current;
@@ -1227,6 +1303,19 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
     diff: diff && { file: diff.file, oid: diff.oid, section: diff.section }, fileHistory: fileHistory && { path: fileHistory.path },
     blame: blame && { path: blame.path, oid: blame.oid }, conflict, screen, uncommitted })) : null;
   useEffect(() => { if (uiReport) window.twig?.reportUiContext?.(JSON.parse(uiReport)); }, [uiReport]);
+  // The graph's rows are memoized: each handler they get keeps its identity for
+  // the life of the tab and calls the current implementation. Fresh functions on
+  // every render re-rendered every visible row of every tab on each refresh.
+  const latest = useRef(null);
+  latest.current = { openMenu, checkoutOnDoubleClick, choose, selectInGraph };
+  const rowHandlers = useMemo(() => ({
+    select: (oid, options) => latest.current.selectInGraph(oid, options),
+    selectOne: oid => latest.current.selectInGraph(oid),
+    menu: (oid, x, y) => latest.current.openMenu(oid, x, y),
+    checkout: refs => latest.current.checkoutOnDoubleClick(refs),
+    uncommitted: () => latest.current.choose(UNCOMMITTED),
+    stashes: () => latest.current.choose('stashes')
+  }), []);
   return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${fileHistory || blame ? fileHistoryWidth : width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
     {active && toolbarSlot && createPortal(
       <Button className="tool bughunter-tool" icon={Bug} reason={hunterReason}
@@ -1312,14 +1401,14 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
           {search.loading ? <div className="loading-shell" aria-label="Searching history">{Array.from({ length: 6 }, (_, i) => <div className="skeleton" key={i} />)}</div>
             : search.error ? <p className="empty-inline">{search.error} <button onClick={onConsole}>Show output</button></p>
             : search.commits.length ? <CommitGraph commits={search.commits} lanes={search.lanes} laneCount={1} refMap={refMap} indexMap={searchIndexMap} selected={selected} head={repository.status?.branch?.oid}
-                onSelect={oid => selectInGraph(oid)} onMenu={openMenu} onCheckout={checkoutOnDoubleClick} onPickRef={pickRef} loadMore={NOOP} hasMore={false} loading={false} summary={null} stashes={[]} marks={marks} bisectMarks={bisectMarks}
+                onSelect={rowHandlers.selectOne} onMenu={rowHandlers.menu} onCheckout={rowHandlers.checkout} onPickRef={pickRef} loadMore={NOOP} hasMore={false} loading={false} summary={null} stashes={NO_STASHES} marks={marks} bisectMarks={bisectMarks}
                 onUncommitted={NOOP} onStashes={NOOP} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />
               : <p className="empty-inline">{search.invalid || searchEmpty(search.query, search.mode)}</p>}
         </div>
         : loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
-            onSelect={selectInGraph} onMenu={openMenu} onCheckout={checkoutOnDoubleClick} onPickRef={pickRef} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
-            onUncommitted={() => choose(UNCOMMITTED)} onStashes={() => choose('stashes')} reveal={reveal} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
+            onSelect={rowHandlers.select} onMenu={rowHandlers.menu} onCheckout={rowHandlers.checkout} onPickRef={pickRef} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
+            onUncommitted={rowHandlers.uncommitted} onStashes={rowHandlers.stashes} reveal={reveal} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
       </div>
       {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}
         onResolved={state => { setConflict(null); setOperation(state); setNote(`${conflict} marked resolved.`); void reload(); onRepositoryChanged?.(); }} />}
@@ -1329,7 +1418,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} />}
       {!conflict && screen === 'reflog' && <ReflogScreen repository={repository} refs={data.refs} headBranch={headBranch} operation={operation} busy={working}
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} onJump={oid => void jump(oid)} />}
-      {!conflict && screen === 'worktree' && <WorktreeScreen repository={repository} operation={operation} onConsole={onConsole} onChanged={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }}
+      {!conflict && screen === 'worktree' && <WorktreeScreen repository={repository} operation={operation} onConsole={onConsole} onChanged={({ history = false } = {}) => { if (history) void reload(); void refreshOperation(); onRepositoryChanged?.(); }}
         runAutomation={runAutomation} onBack={() => choose(data.commits[0]?.oid || null)} />}
       {!conflict && screen === 'worktrees' && <WorktreesScreen repository={repository} busy={working} refreshKey={toolsRefresh}
         onBack={() => choose(data.commits[0]?.oid || null)} onNew={branch => openWorktreeDialog(branch)} onOpen={folder => openTab(() => window.twig.openWorktree(repository.id, folder))}
@@ -1438,3 +1527,7 @@ export default function HistoryWorkspace({ repository, active, mod, platform, ed
       onRunAgain={rerunGate} />}
   </div>;
 }
+
+// A tab re-renders when its own props or state change, not with every journal
+// event or refresh of another tab that re-renders the window around it.
+export default memo(HistoryWorkspace);

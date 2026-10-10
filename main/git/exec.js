@@ -17,6 +17,23 @@ function validArguments(argv) {
 }
 
 /**
+ * The environment every Git process gets. `env` adds variables for one run;
+ * the fixed safety variables after it cannot be overridden.
+ *
+ * No optional locks: `git status` (which 🌱 Twig runs on every refresh, focus
+ * and action) otherwise takes `index.lock` to rewrite the index whenever files
+ * were touched, and a `git add` or `git commit` the person runs in a terminal
+ * at that moment fails with "index.lock: File exists". Commands that change
+ * the index still take the lock they need.
+ */
+function gitEnvironment(env) {
+  return {
+    ...process.env, GIT_OPTIONAL_LOCKS: '0', ...env, ELECTRON_RUN_AS_NODE: '1', GIT_TERMINAL_PROMPT: '0',
+    GIT_ASKPASS: `"${process.execPath}" "${askpass}"`
+  };
+}
+
+/**
  * Run a system Git command and mirror every lifecycle event into the command log.
  *
  * `stdin` feeds a patch to `git apply` without ever writing it to disk. Its
@@ -49,7 +66,9 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
   const id = randomUUID();
   const command = [...BASE_ARGS, ...argv];
   const label = stdin === null ? operation : `${operation} · ${Buffer.byteLength(stdin, 'utf8')} bytes on stdin`;
-  await log.start({ id, argv: command, cwd, operation: label, startedAt });
+  // The entry exists in memory as soon as this returns; Git does not wait for
+  // the journal's file write to start.
+  void log.start({ id, argv: command, cwd, operation: label, startedAt });
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
@@ -76,13 +95,7 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
     };
     let child;
     try {
-      child = spawn('git', command, {
-        cwd, shell: false, windowsHide: true,
-        env: {
-          ...process.env, ...env, ELECTRON_RUN_AS_NODE: '1', GIT_TERMINAL_PROMPT: '0',
-          GIT_ASKPASS: `"${process.execPath}" "${askpass}"`
-        }
-      });
+      child = spawn('git', command, { cwd, shell: false, windowsHide: true, env: gitEnvironment(env) });
     } catch (error) {
       stderr = error.message;
       void log.output(id, 'stderr', stderr).finally(() => void finish(-1));
@@ -130,4 +143,65 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
     });
     child.once('close', (code) => { void finish(code ?? -1); });
   });
+}
+
+/**
+ * A long Git read handed over as it arrives, for readers that consume it a
+ * piece at a time: the history graph reads one `git log` as far as it has
+ * scrolled. `pause` stops reading (the pipe fills and Git waits), `resume`
+ * goes on, `stop` ends it — journaled as cancelled by 🌱 Twig with `note`, not
+ * as a failure. Journaled like `runGit` otherwise: the same entry, its output
+ * kept to the journal's cap.
+ * @param {{ argv: string[], cwd: string, log: import('../command-log.js').CommandLog, operation?: string,
+ *   onData: (text: string) => void, onEnd: (end: { code: number, stderr: string, cancelled: boolean }) => void }} options
+ */
+export function streamGit({ argv, cwd, log, operation = 'Git command', onData, onEnd }) {
+  if (!validArguments(argv) || typeof cwd !== 'string' || !cwd || typeof onData !== 'function' || typeof onEnd !== 'function') {
+    throw new TypeError('Invalid Git command');
+  }
+  const startedAt = new Date().toISOString();
+  const started = performance.now();
+  const id = randomUUID();
+  const command = [...BASE_ARGS, ...argv];
+  void log.start({ id, argv: command, cwd, operation, startedAt });
+  let stderr = '';
+  let stopped = null;
+  let settled = false;
+  const finish = code => {
+    if (settled) return;
+    settled = true;
+    const cancelled = stopped !== null;
+    const end = { code: cancelled ? -1 : code, stderr, cancelled };
+    // No `stdout` here: the journal keeps what streamed, and holding the whole
+    // history as one string is what reading it in pieces avoids.
+    void log.finish(id, { argv: command, cwd, code: end.code, stderr, cancelled, ms: Math.round(performance.now() - started), startedAt });
+    onEnd(end);
+  };
+  let child;
+  try {
+    child = spawn('git', command, { cwd, shell: false, windowsHide: true, env: gitEnvironment(null) });
+  } catch (error) {
+    stderr = error.message;
+    void log.output(id, 'stderr', stderr);
+    queueMicrotask(() => finish(-1));
+    return { pause() {}, resume() {}, stop() {} };
+  }
+  child.stdin.end();
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', text => { void log.output(id, 'stdout', text); onData(text); });
+  child.stderr.on('data', text => { stderr += text; void log.output(id, 'stderr', text); });
+  child.once('error', error => { stderr += error.message; void log.output(id, 'stderr', error.message); finish(-1); });
+  child.once('close', code => finish(code ?? -1));
+  return {
+    pause: () => { if (!settled) child.stdout.pause(); },
+    resume: () => { if (!settled) child.stdout.resume(); },
+    stop(note = 'Stopped by 🌱 Twig.\n') {
+      if (settled || stopped !== null) return;
+      stopped = note;
+      stderr += note;
+      void log.output(id, 'stderr', note);
+      child.kill();
+    }
+  };
 }

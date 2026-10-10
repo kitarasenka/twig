@@ -6,6 +6,12 @@ import { runGit } from './exec.js';
 import { parseStatusV2 } from './status-parser.js';
 import { loadOperationState } from './operation-state.js';
 
+// Past this size a changed file is fingerprinted by its metadata instead of
+// read: size, inode, and modification and change times to the nanosecond. A
+// write moves the change time, and only the kernel sets it, so an edit is still
+// seen — without reading a 300 MB dataset twice around every staged line.
+const READ_LIMIT = 1024 * 1024;
+
 export async function captureState({ cwd, log }) {
   const read = async argv => {
     const result = await runGit({ cwd, log, argv, operation: 'Background: Undo safety check' });
@@ -41,8 +47,11 @@ export async function captureState({ cwd, log }) {
     const parent = path.relative(root, await realpath(path.dirname(file)));
     if (parent.startsWith('..') || path.isAbsolute(parent)) throw new Error('Cannot verify files through an external directory link.');
     if (info.isSymbolicLink()) hash.update(await readlink(file));
-    else if (info.isFile()) {
+    else if (info.isFile() && info.size <= READ_LIMIT) {
       for await (const chunk of createReadStream(file, { flags: constants.O_RDONLY | (constants.O_NOFOLLOW || 0) })) hash.update(chunk);
+    } else if (info.isFile()) {
+      const exact = await lstat(file, { bigint: true });
+      hash.update(`large:${exact.mode}:${exact.size}:${exact.ino}:${exact.mtimeNs}:${exact.ctimeNs}`);
     } else hash.update(`${info.mode}:${info.mtimeMs}:${info.size}`);
   }
   const [stashOid = '', stashMessage = ''] = stash.replace(/\0$/, '').split('\0');

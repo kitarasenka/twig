@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, session, shell } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { registerIpc } from './ipc.js';
@@ -22,6 +22,18 @@ import { hardenProcessEnv } from './process-env.js';
 // Before anything is spawned: no program or library lookup in the working
 // directory, which is always someone's repository.
 hardenProcessEnv(process.env, process.platform);
+
+// Run from source (`npm run dev`, `npm start`), 🌱 Twig would share the
+// installed copy's userData — its repositories, marks, Undo chains, journal and
+// MCP socket — and both would rewrite the same files. A run from source keeps
+// its own folder unless one is given on the command line (the smoke runs do).
+if (!app.isPackaged && !app.commandLine.hasSwitch('user-data-dir')) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'twig-dev'));
+}
+// One process per userData folder: a second launch brings the open window
+// forward instead of starting a second writer of the same files.
+const primary = app.requestSingleInstanceLock();
+if (!primary) app.quit();
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const iconPath = path.join(root, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -66,6 +78,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (!primary) return;
   if (process.platform === 'darwin') app.dock.setIcon(iconPath);
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
@@ -108,9 +121,24 @@ app.whenReady().then(async () => {
   const fetchSettings = new FetchStore(app.getPath('userData'));
   const updateSettings = new UpdateStore(app.getPath('userData'), { defaultAuto: app.isPackaged });
   const mcpSettings = new McpStore(app.getPath('userData'));
-  const [, , automationPath] = await Promise.all([automations.load(), automationRuns.load(), resolveLoginPath(), editor.load(), fetchSettings.load(), updateSettings.load(), mcpSettings.load()]);
+  // The login shell's PATH (for automations and the external editor) took
+  // ~0.6 s to answer and the window waited for it. It is asked now and awaited
+  // where it is used; it never rejects.
+  const automationPath = resolveLoginPath();
+  await Promise.all([automations.load(), automationRuns.load(), editor.load(), fetchSettings.load(), updateSettings.load(), mcpSettings.load()]);
   registerIpc(() => window, entryUrl, { journal, repositories, git, undo, marks, automations, automationRuns, automationPath, editor, fetchSettings, updateSettings, mcpSettings });
   await createWindow();
-}).catch((error) => { console.error('🌱 Twig failed to start:', error.message); app.exit(1); });
+}).catch((error) => {
+  console.error('🌱 Twig failed to start:', error.message);
+  // A launch from the Dock or the Start menu has no terminal: say it in a window.
+  dialog.showErrorBox('🌱 Twig could not start', `${error.message}\n\nSettings folder: ${app.getPath('userData')}`);
+  app.exit(1);
+});
+app.on('second-instance', () => {
+  if (!window) { if (app.isReady()) void createWindow(); return; }
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+});
 app.on('activate', () => { if (!window) void createWindow(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

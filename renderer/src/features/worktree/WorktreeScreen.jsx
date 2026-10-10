@@ -98,14 +98,18 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
     }
   }, [repository.id]);
 
-  async function guard(action, after, reopen = true) {
+  // `history`: the action made a commit. Everything else here changes only the
+  // index or the files, which no commit or ref shows, so the graph behind this
+  // screen is not re-read for it (one staged line used to run some forty git
+  // processes, most of them to read the same history again).
+  async function guard(action, after, reopen = true, history = false) {
     setBusy(true);
     setNotice('');
     try {
       await action();
       await refresh();
       if (reopen && open) await openDiff(open.path, open.staged);
-      onChanged?.();
+      onChanged?.({ history });
       if (after) setNotice(after);
       setError('');
     } catch (failure) {
@@ -236,7 +240,7 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
         void runAutomation('post-commit', {});
         if (amendMode) void runAutomation('post-rewrite', {});
       }
-    }, amendMode ? 'Amended the last commit.' : 'Commit created.', false);
+    }, amendMode ? 'Amended the last commit.' : 'Commit created.', false, true);
   }
 
   const subject = message.split('\n')[0];

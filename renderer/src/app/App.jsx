@@ -4,22 +4,27 @@ import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
 import { Console } from './Console.jsx';
 import { pickFailedEntry } from './console-focus.js';
+import { CONSOLE_FLUSH_MS, applyConsoleUpdates } from './console-entries.js';
+import { keepUnchangedRepositories } from './workspace-identity.js';
 import { readClosedTabs, startRepositoryId, writeClosedTabs } from './closed-tabs.js';
 import { fetchExplanation, fetchStatusLine, intervalLabel, pullTitle } from './background-fetch-view.js';
 import { autoCheckExplanation, installVerb, percent, toolbarUpdate, updateStatusLine } from './update-view.js';
 import HistoryWorkspace from '../features/graph/HistoryWorkspace.jsx';
-import GitProfile from '../features/settings/GitProfile.jsx';
-import Repositories from '../features/settings/Repositories.jsx';
-import CloneRepository from '../features/settings/CloneRepository.jsx';
-import Remotes from '../features/settings/Remotes.jsx';
-import SshSettings from '../features/settings/SshSettings.jsx';
-import McpSettings from '../features/settings/McpSettings.jsx';
 import { mcpSummary, mcpToolTitle } from '../features/settings/mcp-view.js';
 import useDiffPrefs from '../features/diff/useDiffPrefs.js';
 import ExecutionPanel from '../features/automations/ExecutionPanel.jsx';
-import CommitProposalDialog from '../features/proposal/CommitProposalDialog.jsx';
 import { outcomeNote } from '../features/proposal/proposal-view.js';
 import { AGE_STOPS, ageTextClass } from '../features/graph/age-color.js';
+import lazyScreen from '../ui/lazy-screen.jsx';
+
+// Opened rarely: loaded the first time they are shown, not with the window.
+const GitProfile = lazyScreen(() => import('../features/settings/GitProfile.jsx'));
+const Repositories = lazyScreen(() => import('../features/settings/Repositories.jsx'));
+const CloneRepository = lazyScreen(() => import('../features/settings/CloneRepository.jsx'));
+const Remotes = lazyScreen(() => import('../features/settings/Remotes.jsx'));
+const SshSettings = lazyScreen(() => import('../features/settings/SshSettings.jsx'));
+const McpSettings = lazyScreen(() => import('../features/settings/McpSettings.jsx'));
+const CommitProposalDialog = lazyScreen(() => import('../features/proposal/CommitProposalDialog.jsx'));
 
 const unavailable = 'Connect a repository to use this action';
 function initialTheme() {
@@ -31,17 +36,6 @@ function initialTheme() {
 function initialCommitColors() {
   try { return localStorage.getItem('twig:commit-colors') === 'lanes' ? 'lanes' : 'age'; }
   catch { return 'age'; }
-}
-
-function applyConsoleUpdate(entries, update) {
-  if (update.type === 'start') return [...entries, { ...update.entry, stdout: '', stderr: '', state: 'running', code: null, ms: null }].slice(-2000);
-  if (update.type === 'output') return entries.map(entry => entry.id === update.id
-    ? { ...entry, [update.stream]: entry[update.stream] + update.chunk }
-    : entry);
-  if (update.type === 'finish') return entries.map(entry => entry.id === update.id
-    ? { ...entry, ...update.result, state: 'finished' }
-    : entry);
-  return entries;
 }
 
 export default function App() {
@@ -75,18 +69,37 @@ export default function App() {
   const [fetchStatus, setFetchStatus] = useState(null);
   const [fetchError, setFetchError] = useState('');
   const [diffPrefs, setDiffPrefs] = useDiffPrefs();
-  const [workspace, setWorkspace] = useState(null);
+  const [workspace, setWorkspaceState] = useState(null);
+  // A repository that did not change keeps its object, so its tab (a memoized
+  // HistoryWorkspace) does not re-render because another one was refreshed.
+  const setWorkspace = useCallback(next => setWorkspaceState(previous => keepUnchangedRepositories(previous, next)), []);
   const [entries, setEntries] = useState([]);
   const [consoleFocus, setConsoleFocus] = useState(null);
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
+  // Journal events gather for a moment and reach the screen together: one
+  // refresh is dozens of git processes, three or more events each, and every
+  // event used to re-render the whole window.
+  const pendingConsole = useRef([]);
+  const consoleTimer = useRef(0);
+  const flushConsole = useCallback(() => {
+    clearTimeout(consoleTimer.current);
+    consoleTimer.current = 0;
+    const batch = pendingConsole.current;
+    if (!batch.length) return;
+    pendingConsole.current = [];
+    entriesRef.current = applyConsoleUpdates(entriesRef.current, batch);
+    setEntries(entriesRef.current);
+  }, []);
   // Opening the console is not enough when something failed: point at the entry
   // that actually failed, so the reader does not hunt for it in the journal.
+  // Events still gathering are applied first: the failure may be among them.
   const showConsole = useCallback(() => {
+    flushConsole();
     setConsoleOpen(true);
     const failed = pickFailedEntry(entriesRef.current);
     setConsoleFocus(failed ? { id: failed.id } : null);
-  }, []);
+  }, [flushConsole]);
   const [startupError, setStartupError] = useState('');
   const [divergence, setDivergence] = useState({ ahead: 0, behind: 0, upstream: null });
   const [stashCount, setStashCount] = useState(null);
@@ -100,6 +113,28 @@ export default function App() {
   const [undoState, setUndoState] = useState({ undo: false, redo: false, undoReason: 'No application actions to undo.', redoReason: 'No next action.' });
   const [undoMoving, setUndoMoving] = useState(false);
   const repositoryFilters = useRef(new Map());
+  // Tabs that have been open on screen. A tab's history loads when it is first
+  // shown, not at launch: every connected repository used to read its whole
+  // first page, refs, remotes and selected commit at startup (91 git processes
+  // for 8 repositories), closed tabs included.
+  const [visited, setVisited] = useState(() => new Set());
+  useEffect(() => {
+    if (!active.startsWith('repository:')) return;
+    const id = active.slice(11);
+    setVisited(current => (current.has(id) ? current : new Set(current).add(id)));
+  }, [active]);
+  // One ref callback per repository for the life of the window: a new arrow on
+  // every render would detach and re-attach the search box each time and
+  // defeat the memoized tab.
+  const filterRefs = useRef(new Map());
+  const filterRefFor = id => {
+    let ref = filterRefs.current.get(id);
+    if (!ref) {
+      ref = node => { if (node) repositoryFilters.current.set(id, node); else repositoryFilters.current.delete(id); };
+      filterRefs.current.set(id, ref);
+    }
+    return ref;
+  };
   const tabsRef = useRef(null);
   const selectionRequest = useRef(0);
   const divergenceRequest = useRef(0);
@@ -117,7 +152,9 @@ export default function App() {
     Promise.all([window.twig.getAppInfo(), window.twig.getWorkspace(), window.twig.getConsoleEntries()])
       .then(([appInfo, initialWorkspace, initialEntries]) => {
         if (!alive) return;
-        setInfo(appInfo); setWorkspace(initialWorkspace); setEntries(initialEntries);
+        setInfo(appInfo); setWorkspace(initialWorkspace);
+        entriesRef.current = applyConsoleUpdates(initialEntries, pendingConsole.current.splice(0));
+        setEntries(entriesRef.current);
         // A tab closed last time stays closed: start on the remembered one only
         // while its tab is open.
         let closed = new Set();
@@ -134,9 +171,13 @@ export default function App() {
     window.twig.getBackgroundFetch().then(value => { if (alive) setFetchSettings(value); }).catch(() => {});
     window.twig.getUpdateState().then(value => { if (alive) setUpdate(value); }).catch(() => {});
     const unsubscribeUpdate = window.twig.onUpdateState(value => { if (alive) setUpdate(value); });
-    const unsubscribe = window.twig.onConsoleUpdate((update) => { if (alive) setEntries(current => applyConsoleUpdate(current, update)); });
-    return () => { alive = false; unsubscribe(); unsubscribeUpdate(); };
-  }, []);
+    const unsubscribe = window.twig.onConsoleUpdate((update) => {
+      if (!alive) return;
+      pendingConsole.current.push(update);
+      if (!consoleTimer.current) consoleTimer.current = setTimeout(flushConsole, CONSOLE_FLUSH_MS);
+    });
+    return () => { alive = false; unsubscribe(); unsubscribeUpdate(); clearTimeout(consoleTimer.current); };
+  }, [flushConsole, setWorkspace]);
   // "Other application…" opens a native picker in main; cancelling it leaves
   // the previous choice in place, which is what comes back.
   const chooseEditor = useCallback(async (preset) => {
@@ -353,7 +394,7 @@ export default function App() {
     if (!repositoryId) return;
     try { setWorkspace(await window.twig.selectRepository(repositoryId)); } catch { /* the previous status stays on screen */ }
     setWorktreeVersion(value => value + 1);
-  }, [repositoryId]);
+  }, [repositoryId, setWorkspace]);
   useEffect(() => {
     let alive = true;
     const show = view => {
@@ -421,12 +462,16 @@ export default function App() {
     setUndoMoving(true); setSyncNote('');
     try {
       const result = await window.twig.moveUndo(repositoryId, direction);
+      // The graph starts reading right away, alongside the status below.
+      setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
       await refreshRepository();
       setSyncNote(`${direction === 'undo' ? 'Undo' : 'Redo'} ${result.cancelled ? 'cancelled' : 'completed'}.`);
     }
-    catch (failure) { setSyncNote(failure.message || 'The action could not be reversed.'); showConsole(); }
+    catch (failure) {
+      setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
+      setSyncNote(failure.message || 'The action could not be reversed.'); showConsole();
+    }
     finally { setUndoMoving(false); }
-    setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
   }, [repositoryActive, repositoryId, refreshRepository, showConsole, undoMoving]);
   useEffect(() => {
     const keydown = event => {
@@ -449,6 +494,12 @@ export default function App() {
   }
   async function selectRepository(id) {
     const request = ++selectionRequest.current;
+    // The tab switches at once; main's answer brings its fresh status after.
+    // Waiting for it first held every tab click behind a round of git reads.
+    if (workspace?.repositories.some(item => item.id === id)) {
+      setActive(`repository:${id}`);
+      setClosedTabs(current => { if (!current.has(id)) return current; const copy = new Set(current); copy.delete(id); return copy; });
+    }
     try {
       const next = await window.twig.selectRepository(id);
       if (request === selectionRequest.current) {
@@ -484,7 +535,7 @@ export default function App() {
       setActive(`repository:${next.activeId}`);
       setClosedTabs(current => { if (!current.has(next.activeId)) return current; const copy = new Set(current); copy.delete(next.activeId); return copy; });
     }
-  }, []);
+  }, [setWorkspace]);
   const acceptWorkspaceRef = useRef(null);
   acceptWorkspaceRef.current = acceptWorkspace;
   const updateWorkspace = useCallback(next => { if (next) acceptWorkspaceRef.current(next); }, []);
@@ -574,12 +625,13 @@ export default function App() {
     {!ready && <div className="loading-shell" aria-label="Loading workspace" aria-busy="true">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>}
     {ready && <div className="workspace-container">
       {workspace?.repositories.map(item => <div className="workspace-tab" key={item.id} hidden={active !== `repository:${item.id}`}>
-        {/* Real repository tabs stay mounted so switching keeps their DOM; the
-            always-present demo tab mounts only while active, so its graph never
-            collides with another tab's. */}
-        {(!item.sandbox || active === `repository:${item.id}`) && (item.available
+        {/* A real repository tab mounts the first time it is shown and then
+            stays mounted, so switching back keeps its DOM; a closed tab is not
+            mounted at all. The always-present demo tab mounts only while active,
+            so its graph never collides with another tab's. */}
+        {(item.sandbox ? active === `repository:${item.id}` : !closedTabs.has(item.id) && (visited.has(item.id) || active === `repository:${item.id}`)) && (item.available
           ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} mod={mod} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} platform={info?.platform} editor={editor?.label} toolbarSlot={bugHunterSlot} toolbarBusyReason={syncing ? `${syncing} is running` : undoMoving ? 'Reversing the action…' : undefined}
-            filterRef={node => { if (node) repositoryFilters.current.set(item.id, node); else repositoryFilters.current.delete(item.id); }}
+            filterRef={filterRefFor(item.id)}
             onConsole={showConsole} onRepositoryChanged={refreshRepository} onOpenWorkspace={openWorkspaceTab} onWorkspace={updateWorkspace} />
           : <RepositoryReady repository={item} onOpen={openRepository} />)}
       </div>)}

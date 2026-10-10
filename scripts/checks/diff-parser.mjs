@@ -149,9 +149,9 @@ assertRejects('diff --git a/b.bin b/b.bin\nBinary files a/b.bin and b/b.bin diff
 
 assert.deepEqual(buildStatusArgv(), ['status', '--porcelain=v2', '--branch', '-z']);
 assert.deepEqual(buildDiffArgv({ path: 'src/a.js' }),
-  ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '--no-renames', '--', ':(literal)src/a.js']);
+  ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--no-renames', '--', ':(literal)src/a.js']);
 assert.deepEqual(buildDiffArgv({ path: 'src/a.js', staged: true }),
-  ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '--no-renames', '--cached', '--', ':(literal)src/a.js']);
+  ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--no-renames', '--cached', '--', ':(literal)src/a.js']);
 // A path that looks like a flag or carries glob characters stays a path.
 assert.deepEqual(buildDiffArgv({ path: '--upload-pack=evil' }).at(-1), ':(literal)--upload-pack=evil');
 assert.deepEqual(buildDiffArgv({ path: 'weird[*].txt' }).at(-1), ':(literal)weird[*].txt');

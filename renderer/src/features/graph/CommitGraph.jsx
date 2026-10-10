@@ -8,6 +8,7 @@ import { bisectClass } from './bisect-marks.js';
 import { GRAPH_AUTO_MIN, HISTORY_COLUMNS, TOGGLABLE_COLUMNS, clampColumnWidth, clampGraphScroll, dragColumnWidth, graphFloor, nudgeColumnWidth, readColumnWidths, revealGraphX, writeColumnWidths, readColumnVisibility, writeColumnVisibility } from './column-widths.js';
 import { refEndpoint, rowEndpoint } from './useGitDrag.js';
 import { summaryChips } from '../worktree/worktree-summary.js';
+import { localDayKey, relativeTime } from '../../ui/relative-time.js';
 import Menu from '../../ui/Menu.jsx';
 
 const EMPTY_SELECTION = new Set();
@@ -49,13 +50,15 @@ function makeTextMeasure() {
   };
 }
 
+/**
+ * "3 days ago", "5 months ago", "6 years ago": the wording the reflog and the
+ * fetch status use, with weeks, months and years — no more "2,410 days ago".
+ * Cheap on purpose: it runs for every visible row, and the old version built a
+ * new Intl formatter on every call.
+ */
 export function relativeDate(value) {
-  const seconds = Math.round((Date.parse(value) - Date.now()) / 1000);
-  const format = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
-  if (Math.abs(seconds) < 60) return 'just now';
-  if (Math.abs(seconds) < 3600) return format.format(Math.round(seconds / 60), 'minute');
-  if (Math.abs(seconds) < 86400) return format.format(Math.round(seconds / 3600), 'hour');
-  return format.format(Math.round(seconds / 86400), 'day');
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? '' : relativeTime(time / 1000);
 }
 
 const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, index, selected, member, head, stashes, stashX, onStashes, refs, refLines, mark, bisect, onSelect, onMenu, onCheckout, onPickRef, dayStart, age, drag, headBranch, visibility }) {
@@ -393,7 +396,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
           top={metrics.top(start + offset)} height={metrics.height(start + offset)} refLines={refLines.get(commit.oid) || EMPTY_LINES}
           selected={selected === commit.oid} member={selectionSet.has(commit.oid)} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} onCheckout={onCheckout} onPickRef={onPickRef} age={now === null ? null : ageStop(commit.committedAt, now)}
           mark={marks[commit.oid] || null} bisect={bisectMarks.get(commit.oid.toLowerCase()) || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch} visibility={visibility}
-          dayStart={start + offset > 0 && commit.committedAt.slice(0, 10) !== commits[start + offset - 1].committedAt.slice(0, 10)} />)}
+          dayStart={start + offset > 0 && localDayKey(commit.committedAt) !== localDayKey(commits[start + offset - 1].committedAt)} />)}
       </div>
     </div>
     <div className="history-pagination">{loading ? <span role="status">Loading history…</span> : hasMore

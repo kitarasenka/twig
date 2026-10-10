@@ -115,4 +115,10 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
     if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid console request');
     return journal.list();
   });
+  // The output of an automatic read reaches the window only when its entry is
+  // opened (the list and the live events leave it out).
+  ipcMain.handle('console:output', (event, ...args) => {
+    if (!validSender(event, getWindow, entryUrl, args, 1) || typeof args[0] !== 'string' || args[0].length > 100) throw new Error('Invalid console request');
+    return journal.outputOf(args[0]);
+  });
 }

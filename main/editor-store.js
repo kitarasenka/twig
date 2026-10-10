@@ -1,5 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { readJsonFile, writeFileAtomic } from './json-file.js';
 import { normalizeEditorSettings } from './editor.js';
 
 /**
@@ -16,9 +17,7 @@ export class EditorStore {
 
   async load() {
     await mkdir(path.dirname(this.#file), { recursive: true });
-    try {
-      this.#state = normalizeEditorSettings(JSON.parse(await readFile(this.#file, 'utf8')));
-    } catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; }
+    this.#state = normalizeEditorSettings(await readJsonFile(this.#file));
     return this.get();
   }
 
@@ -26,9 +25,7 @@ export class EditorStore {
 
   async save(value) {
     const next = normalizeEditorSettings(value);
-    const temporary = `${this.#file}.next`;
-    await writeFile(temporary, JSON.stringify(next, null, 2), 'utf8');
-    await rename(temporary, this.#file);
+    await writeFileAtomic(this.#file, JSON.stringify(next, null, 2));
     this.#state = next;
     return this.get();
   }

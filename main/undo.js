@@ -1,8 +1,13 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { captureState } from './git/undo-snapshot.js';
-import { buildUndoPlan, inverseReason } from './git/undo-plan.js';
+import { UNDOABLE_KINDS, buildUndoPlan, inverseReason } from './git/undo-plan.js';
 import { runGit } from './git/exec.js';
+import { readJsonFile, writeFileAtomic } from './json-file.js';
+
+// The state a skipped snapshot stands for when only a reason is needed: no
+// operation in progress, nothing left in the working tree to lose.
+const QUIET_STATE = Object.freeze({ operation: 'none', clean: true, paths: [], head: null, branch: null });
 
 export class UndoService {
   #states = new Map(); #busy = new Set(); #listeners = new Set(); #writes = Promise.resolve(); #versions = new Map();
@@ -10,9 +15,9 @@ export class UndoService {
   async load() {
     await mkdir(path.dirname(this.file), { recursive: true });
     try {
-      const entries = JSON.parse(await readFile(this.file, 'utf8'));
+      const entries = await readJsonFile(this.file);
       if (Array.isArray(entries)) this.#states = new Map(entries);
-    } catch (error) { if (error.code !== 'ENOENT') this.#states.clear(); }
+    } catch { this.#states.clear(); }
   }
   #state(cwd) {
     if (!this.#states.has(cwd)) this.#states.set(cwd, { undo: [], redo: [], reason: 'No application actions to undo.' });
@@ -25,8 +30,7 @@ export class UndoService {
   #emit(cwd) { this.#versions.set(cwd, (this.#versions.get(cwd) || 0) + 1); for (const listener of this.#listeners) listener(cwd); }
   async #save() {
     const next = this.#writes.catch(() => {}).then(async () => {
-      await writeFile(`${this.file}.next`, JSON.stringify([...this.#states]), { mode: 0o600 });
-      await rename(`${this.file}.next`, this.file);
+      await writeFileAtomic(this.file, JSON.stringify([...this.#states]), { mode: 0o600 });
     });
     this.#writes = next; await next;
   }
@@ -60,17 +64,32 @@ export class UndoService {
     this.#busy.add(cwd); this.#emit(cwd);
     let before; let result; let failure;
     try {
-      before = await captureState({ cwd, log: this.log });
       const state = this.#state(cwd);
+      // A fetch only moves remote-tracking refs, which the Undo state leaves
+      // out, so it ends the chain only when it changed something else (tags).
+      const fetchOnly = kind === 'sync:run' && typeof args[0] === 'string' && args[0].startsWith('fetch');
+      const attempted = () => ['sync:run', 'sync:push-ref', 'sync:drop', 'ops:rebase'].includes(kind) && !fetchOnly && !(failure instanceof TypeError) && !result?.notStarted;
+      // Nothing to protect and nothing to record: an action Undo cannot reverse
+      // (staging, a push, a fetch…), with no chain to end, runs without the two
+      // snapshots around it — each reads every changed file and the whole index.
+      // It still leaves its reason, which the Undo button shows.
+      if (!UNDOABLE_KINDS.includes(kind) && !state.undo.length && !state.redo.length) {
+        try { result = await action(); } catch (error) { failure = error; }
+        const finished = !failure && result?.ok !== false;
+        if (attempted() || (finished && !fetchOnly)) {
+          const reason = finished ? inverseReason(kind, QUIET_STATE, QUIET_STATE, args) : 'The operation did not finish normally. Continue or abort it explicitly.';
+          if (reason && reason !== state.reason) { this.#break(cwd, reason); await this.#save(); }
+        }
+        if (failure) throw failure;
+        return result;
+      }
+      before = await captureState({ cwd, log: this.log });
       const expected = state.redo.at(-1)?.redoState || state.undo.at(-1)?.after;
       if (expected && before.digest !== expected.digest) this.#break(cwd, 'External changes ended the Undo chain.');
       try { result = await action(); } catch (error) { failure = error; }
       const after = await captureState({ cwd, log: this.log });
       const changed = before.digest !== after.digest;
-      // A fetch only moves remote-tracking refs, which the Undo state leaves
-      // out, so it ends the chain only when it changed something else (tags).
-      const fetchOnly = kind === 'sync:run' && typeof args[0] === 'string' && args[0].startsWith('fetch');
-      const irreversibleAttempt = ['sync:run', 'sync:push-ref', 'sync:drop', 'ops:rebase'].includes(kind) && !fetchOnly && !(failure instanceof TypeError) && !result?.notStarted;
+      const irreversibleAttempt = attempted();
       if (changed || irreversibleAttempt) {
         let reason = inverseReason(kind, before, after, args);
         if (failure || result?.ok === false) reason = 'The operation did not finish normally. Continue or abort it explicitly.';

@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { lstat, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 /**
@@ -38,10 +38,39 @@ export async function resolveGitDir(cwd) {
   return stat(resolved).then(entry => (entry.isDirectory() ? resolved : null)).catch(() => null);
 }
 
+// 🌱 Twig's own bookkeeping (the backups a discard or a .gitignore edit
+// records): never drawn in the graph, so its writes are not a change to show.
+const OWN_REFS = /(^|[/\\])refs[/\\]twig([/\\]|$)/;
+
 export function isWatchedPath(filename) {
   if (!filename) return true; // some platforms omit the name; assume it mattered
   const name = String(filename);
-  return !name.endsWith('.lock') && WATCHED.test(name);
+  return !name.endsWith('.lock') && !OWN_REFS.test(name) && WATCHED.test(name);
+}
+
+/**
+ * The folder to watch for `gitDir`. A linked worktree's git directory holds
+ * only its own HEAD and index; its branches, tags and `packed-refs` live in
+ * the repository's common directory, which a `commondir` file names. Watching
+ * that one covers both (the worktree's own folder is inside it).
+ */
+export async function resolveWatchedDir(gitDir) {
+  const file = path.join(gitDir, 'commondir');
+  // A small regular file only: a FIFO here would hold a thread of the fs pool.
+  const info = await lstat(file).catch(() => null);
+  if (!info?.isFile() || info.size > 4096) return gitDir;
+  const pointer = (await readFile(file, 'utf8').catch(() => '')).trim();
+  if (!pointer) return gitDir;
+  const common = path.resolve(gitDir, pointer);
+  // Only the layout Git itself makes for a linked worktree: this directory is
+  // <common>/worktrees/<name>, and the common directory has refs and objects.
+  // A folder that did not come from `git clone` (an unpacked archive) can
+  // carry any `commondir`; pointed at `/` or the home folder, the recursive
+  // watch would cover all of it.
+  const relative = path.relative(common, gitDir).split(path.sep);
+  if (relative.length !== 2 || relative[0] !== 'worktrees') return gitDir;
+  const [refs, objects] = await Promise.all(['refs', 'objects'].map(name => stat(path.join(common, name)).catch(() => null)));
+  return refs?.isDirectory() && objects?.isDirectory() ? common : gitDir;
 }
 
 /**
@@ -64,17 +93,23 @@ export function createRepositoryWatcher(getWindow, debounceMs = DEBOUNCE_MS) {
     stop();
     const mine = ++token; // bump before any await so a later watch() call wins the race
     if (!cwd) return;
-    const gitDir = await resolveGitDir(cwd);
+    const ownDir = await resolveGitDir(cwd);
+    const gitDir = ownDir && await resolveWatchedDir(ownDir);
     if (mine !== token || !gitDir) return;
 
-    const state = { cwd, handle: null, timer: null };
+    const state = { cwd, handle: null, timer: null, changedAt: 0 };
+    // `changedAt`: when the last change of this burst reached the watch. The
+    // window compares it with when it last read the refs, so it can tell a
+    // change it has not seen from the echo of its own action — instead of
+    // dropping every change that lands just after one of its reloads.
     const fire = () => {
       state.timer = null;
       const window = getWindow();
-      if (window && !window.isDestroyed()) window.webContents.send('repo:external-change', { cwd });
+      if (window && !window.isDestroyed()) window.webContents.send('repo:external-change', { cwd, changedAt: state.changedAt });
     };
     const onEvent = (_type, filename) => {
       if (!isWatchedPath(filename)) return;
+      state.changedAt = Date.now();
       if (state.timer) clearTimeout(state.timer);
       state.timer = setTimeout(fire, debounceMs);
     };

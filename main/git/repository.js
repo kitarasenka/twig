@@ -88,12 +88,22 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
     return decorate(state);
   }
 
+  /**
+   * Selecting a repository — a tab click, and the refresh after every action
+   * and every return to the window — reads that repository alone. The others
+   * keep the status they had and are read when they are selected; reading all
+   * of them each time was most of the git processes 🌱 Twig ran (a refresh
+   * with ten connected repositories was twenty-odd processes, half a second).
+   * The file is written only when the active repository actually changes.
+   */
   async function select(id) {
     if (sandbox && id === sandbox.dir) { await refreshSandbox(); return decorate(state); }
     const repository = state.repositories.find(item => item.id === id);
     if (!repository) throw new Error('Unknown repository.');
-    state = await store.save(state.repositories, repository.id);
-    return refresh();
+    if (state.activeId !== repository.id) state = await store.save(state.repositories, repository.id);
+    const fresh = await statusFor(repository);
+    state = { ...state, repositories: state.repositories.map(item => (item.id === repository.id ? fresh : item)) };
+    return decorate(state);
   }
 
   /** Close or reopen the demo tab. Nothing on disk is touched either way. */

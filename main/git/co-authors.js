@@ -1,5 +1,6 @@
 import { runGit } from './exec.js';
 import { validateCoAuthor } from './co-author-trailer.js';
+import { HISTORY_REFS } from './history-refs.js';
 
 /**
  * Who a commit can credit as co-author: the people who already authored
@@ -19,7 +20,7 @@ const OWN_EMAIL = 'twig@localhost';
 
 export function buildCoAuthorsArgv() {
   // `--exclude` only applies to the `--all` that follows it.
-  return ['log', '--exclude=refs/twig/*', '--exclude=refs/stash', '--all', '-z', '--format=%aN%x00%aE', `--max-count=${SCAN_LIMIT}`];
+  return ['log', ...HISTORY_REFS, '-z', '--format=%aN%x00%aE', `--max-count=${SCAN_LIMIT}`];
 }
 
 /** `--default ''` makes an unset address an empty answer rather than exit code 1 in the console. */

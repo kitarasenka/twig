@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sameEndpoint } from '../../../../main/git/drop-plan.js';
 
 export const refEndpoint = ref => ref.type === 'tag' ? { kind: 'commit', oid: ref.target, ref: null }
@@ -27,51 +27,59 @@ export default function useGitDrag({ active, revision, onDrop, onStart }) {
     return () => { removeEventListener('keydown', escape); removeEventListener('blur', cancel); removeEventListener('dragend', end); };
   }, [cancel]);
 
-  function start(source, event, keyboard = false) {
-    if (!active) return;
-    event.stopPropagation();
-    if (!keyboard) {
-      event.dataTransfer.effectAllowed = 'link';
-      event.dataTransfer.setData('application/x-twig-git', 'internal');
+  // The object handed to the graph keeps its identity until the drag state or
+  // `active` changes: the graph's rows are memoized, and a new object on every
+  // render re-rendered every visible row. The handlers read `onStart`, `onDrop`
+  // and `active` from here, so they stay current without a new object.
+  const latest = useRef(null);
+  latest.current = { active, onDrop, onStart };
+  return useMemo(() => {
+    function start(source, event, keyboard = false) {
+      if (!latest.current.active) return;
+      event.stopPropagation();
+      if (!keyboard) {
+        event.dataTransfer.effectAllowed = 'link';
+        event.dataTransfer.setData('application/x-twig-git', 'internal');
+      }
+      update({ source, target: null, phase: 'drag', keyboard });
+      latest.current.onStart?.();
     }
-    update({ source, target: null, phase: 'drag', keyboard });
-    onStart?.();
-  }
-  function hover(target, event) {
-    if (current.current?.phase !== 'drag') return;
-    event.stopPropagation();
-    const valid = !sameEndpoint(current.current.source, target);
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = valid ? 'link' : 'none';
-    if (!sameEndpoint(current.current.target, target)) update({ ...current.current, target });
-  }
-  function drop(target, event) {
-    if (current.current?.phase !== 'drag') return;
-    event.preventDefault(); event.stopPropagation();
-    const source = current.current.source;
-    if (sameEndpoint(source, target)) { cancel(); return; }
-    update({ source, target, phase: 'menu' });
-    const rect = event.currentTarget.getBoundingClientRect();
-    onDrop(source, target, event.clientX || rect.left + 24, event.clientY || rect.bottom);
-  }
-  function keydown(item, event) {
-    if (event.altKey && event.code === 'KeyD') { event.preventDefault(); start(item, event, true); }
-    else if (event.altKey && event.key === 'Enter') drop(item, event);
-  }
-  const className = item => [sameEndpoint(state?.source, item) ? 'drag-source' : '', sameEndpoint(state?.target, item) ? 'drag-target' : ''].join(' ');
-  return {
-    state, cancel, className, keydown,
-    bind: item => ({
-      draggable: active, 'data-drag-ref': item.ref || undefined,
-      onDragStart: event => start(item, event),
-      onFocus: event => { if (current.current?.keyboard) hover(item, event); },
-      onDragOver: event => hover(item, event),
-      onDragLeave: event => {
-        if (!event.currentTarget.contains(event.relatedTarget) && sameEndpoint(current.current?.target, item) && current.current?.phase === 'drag') update({ ...current.current, target: null });
-      },
-      onDrop: event => drop(item, event),
-      onDragEnd: () => { if (current.current?.phase === 'drag') cancel(); },
-      onKeyDown: event => keydown(item, event)
-    })
-  };
+    function hover(target, event) {
+      if (current.current?.phase !== 'drag') return;
+      event.stopPropagation();
+      const valid = !sameEndpoint(current.current.source, target);
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = valid ? 'link' : 'none';
+      if (!sameEndpoint(current.current.target, target)) update({ ...current.current, target });
+    }
+    function drop(target, event) {
+      if (current.current?.phase !== 'drag') return;
+      event.preventDefault(); event.stopPropagation();
+      const source = current.current.source;
+      if (sameEndpoint(source, target)) { cancel(); return; }
+      update({ source, target, phase: 'menu' });
+      const rect = event.currentTarget.getBoundingClientRect();
+      latest.current.onDrop(source, target, event.clientX || rect.left + 24, event.clientY || rect.bottom);
+    }
+    function keydown(item, event) {
+      if (event.altKey && event.code === 'KeyD') { event.preventDefault(); start(item, event, true); }
+      else if (event.altKey && event.key === 'Enter') drop(item, event);
+    }
+    const className = item => [sameEndpoint(state?.source, item) ? 'drag-source' : '', sameEndpoint(state?.target, item) ? 'drag-target' : ''].join(' ');
+    return {
+      state, cancel, className, keydown,
+      bind: item => ({
+        draggable: active, 'data-drag-ref': item.ref || undefined,
+        onDragStart: event => start(item, event),
+        onFocus: event => { if (current.current?.keyboard) hover(item, event); },
+        onDragOver: event => hover(item, event),
+        onDragLeave: event => {
+          if (!event.currentTarget.contains(event.relatedTarget) && sameEndpoint(current.current?.target, item) && current.current?.phase === 'drag') update({ ...current.current, target: null });
+        },
+        onDrop: event => drop(item, event),
+        onDragEnd: () => { if (current.current?.phase === 'drag') cancel(); },
+        onKeyDown: event => keydown(item, event)
+      })
+    };
+  }, [state, active, update, cancel]);
 }

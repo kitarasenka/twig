@@ -18,7 +18,9 @@ export function pickFailedEntry(entries, now = Date.now()) {
   if (!Array.isArray(entries)) return null;
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    if (!entry || entry.code === null || entry.code === undefined || entry.code === 0) continue;
+    // A command 🌱 Twig stopped itself (a replaced search, a history read no
+    // longer needed) did not fail.
+    if (!entry || entry.code === null || entry.code === undefined || entry.code === 0 || entry.cancelled) continue;
     const finished = entryFinishedAt(entry);
     if (finished === null || now - finished > FOCUS_WINDOW_MS) return null;
     return entry;

@@ -43,7 +43,8 @@ try {
   assert.match(await readFile(env.GIT_CONFIG_GLOBAL, 'utf8'), /Updated Global/);
   const reads = log.list().filter(entry => entry.argv.includes('--get-regexp'));
   assert.ok(reads.length > 0);
-  assert.ok(reads.every(entry => !entry.stdout.includes('not-for-profile') && !entry.stdout.includes('credential.')));
+  // The whole kept output, not the list: an automatic read's output is left out of the list.
+  assert.ok(reads.every(entry => !log.outputOf(entry.id).stdout.includes('not-for-profile') && !log.outputOf(entry.id).stdout.includes('credential.')));
   assert.equal(parseProfile('user.name\nfirst\0user.name\nlast\0')['user.name'], 'last');
   assert.throws(() => parseProfile('user.name\ntruncated'));
   console.log('Profile checks passed: isolated global/local config, inheritance, literal argv, stale edits, validation, allowlisted reads.');

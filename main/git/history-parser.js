@@ -61,22 +61,29 @@ export function parseHistoryV1(output) {
   if (tokens.length % FIELD_COUNT !== 0) fail('wrong field count');
 
   const commits = [];
-  for (let i = 0; i < tokens.length; i += FIELD_COUNT) {
-    const [oid, parentsField, authorName, authorEmail, authorDate, committerDate, subject, body] = tokens.slice(i, i + FIELD_COUNT);
-    validateOid(oid);
-    const parents = parseParents(parentsField);
-    if (!ISO_DATE_PATTERN.test(authorDate)) fail('invalid author date');
-    if (!ISO_DATE_PATTERN.test(committerDate)) fail('invalid committer date');
-    commits.push({
-      oid,
-      parents,
-      author: { name: authorName, email: authorEmail, date: authorDate },
-      committedAt: committerDate,
-      subject,
-      body
-    });
-  }
+  for (let i = 0; i < tokens.length; i += FIELD_COUNT) commits.push(commitFromFields(tokens.slice(i, i + FIELD_COUNT)));
   return commits;
+}
+
+/** How many NUL-terminated fields one commit of this format takes. */
+export const HISTORY_FIELD_COUNT = FIELD_COUNT;
+
+/** One commit from its eight fields, validated like a whole page is. */
+export function commitFromFields(fields) {
+  if (!Array.isArray(fields) || fields.length !== FIELD_COUNT) fail('wrong field count');
+  const [oid, parentsField, authorName, authorEmail, authorDate, committerDate, subject, body] = fields;
+  validateOid(oid);
+  const parents = parseParents(parentsField);
+  if (!ISO_DATE_PATTERN.test(authorDate)) fail('invalid author date');
+  if (!ISO_DATE_PATTERN.test(committerDate)) fail('invalid committer date');
+  return {
+    oid,
+    parents,
+    author: { name: authorName, email: authorEmail, date: authorDate },
+    committedAt: committerDate,
+    subject,
+    body
+  };
 }
 
 /** Read NUL-delimited name-status records after each eight-field commit header. */

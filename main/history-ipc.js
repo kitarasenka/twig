@@ -15,10 +15,16 @@ export function registerHistoryIpc(getWindow, entryUrl, { repositories, journal 
       return read({ cwd: repo.path, log: journal }, ...args.slice(1));
     });
   }
+  // One `git log` per repository, read as far as the graph has scrolled (see
+  // git/history-stream.js), instead of a new full walk for every page.
+  let streams = null;
   handler('history:page', 3, async (options, skip, limit) => {
-    if (!Number.isSafeInteger(skip) || skip < 0 || !Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error('Invalid history page');
-    const { loadHistoryPage } = await import('./git/history.js');
-    return loadHistoryPage({ ...options, skip, limit });
+    if (!Number.isSafeInteger(skip) || skip < 0 || !Number.isInteger(limit) || limit < 1 || limit > 2000) throw new Error('Invalid history page');
+    if (!streams) {
+      const { createHistoryStreams } = await import('./git/history-stream.js');
+      streams ||= createHistoryStreams({ log: journal });
+    }
+    return streams.page({ cwd: options.cwd, skip, limit });
   });
   // One search at a time per repository: a pickaxe over a long history can
   // take seconds, and each keystroke's search replaces the one before it.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HardDrive } from 'lucide-react';
 import { annotatePatch } from './intraline.js';
 import { displayRows, patchSourceLines, sideSyntax } from './diff-view.js';
@@ -6,6 +6,7 @@ import { languageFor, languageLabel } from './languages.js';
 import useHighlighter from './useHighlighter.js';
 import useDiffPrefs from './useDiffPrefs.js';
 import { formatSize, lfsChangeLabel, lfsPointerDiff } from './lfs-pointer.js';
+import { VIRTUAL_FROM, visibleRange, widestRow } from './virtual-rows.js';
 
 /** A row's text: the marker, then pieces carrying syntax and change classes. */
 export function DiffPieces({ marker, pieces }) {
@@ -73,17 +74,48 @@ export default function DiffLines({ patch, path = null, className = '', label = 
     '--diff-old-digits': digits(rows, 'oldLine'),
     '--diff-new-digits': digits(rows, 'newLine')
   }), [rows]);
+  // A long diff draws only the rows in view (see virtual-rows.js); the row
+  // height is read from a drawn row once, the view from the scroller.
+  const big = shown.length > VIRTUAL_FROM;
+  const scroller = useRef(null);
+  const [view, setView] = useState({ top: 0, height: 800 });
+  const [rowHeight, setRowHeight] = useState(18);
+  useLayoutEffect(() => {
+    const node = scroller.current;
+    if (!big || !node) return;
+    const drawn = node.querySelector('[data-diff-row]');
+    if (drawn?.offsetHeight) setRowHeight(drawn.offsetHeight);
+    setView({ top: node.scrollTop, height: node.clientHeight || 800 });
+  }, [big, shown]);
+  useEffect(() => {
+    const node = scroller.current;
+    if (!big || !node) return undefined;
+    const observer = new ResizeObserver(() => setView(current => ({ ...current, height: node.clientHeight || current.height })));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [big]);
+  const widest = useMemo(() => (big ? widestRow(shown) : -1), [big, shown]);
+  const { start, end } = big ? visibleRange({ count: shown.length, rowHeight, scrollTop: view.top, viewHeight: view.height }) : { start: 0, end: shown.length };
   if (lfs && !rawPointer) return <LfsPointerCard diff={lfs} onRaw={() => setRawPointer(true)} />;
   return <>
     <DiffToolbar language={language} />
-    <div className={`diff-lines${syntax ? ' diff-syntax' : ''}${className ? ` ${className}` : ''}`} tabIndex={0} aria-label={label} style={style}>
-      {shown.map((row, index) => <div key={index} className={row.cls}>
-        <span className="diff-gutter" aria-hidden="true">
-          <span className="diff-line-number diff-line-old">{row.oldLine ?? ''}</span>
-          <span className="diff-line-number diff-line-new">{row.newLine ?? ''}</span>
-        </span>
-        <DiffPieces marker={row.marker} pieces={row.pieces} />
-      </div>)}
+    <div ref={scroller} className={`diff-lines${syntax ? ' diff-syntax' : ''}${className ? ` ${className}` : ''}`} tabIndex={0} aria-label={label} style={style}
+      onScroll={big ? event => setView({ top: event.currentTarget.scrollTop, height: event.currentTarget.clientHeight }) : undefined}>
+      {big && <div className="diff-spacer" style={{ height: start * rowHeight }} aria-hidden="true" />}
+      {big && widest >= 0 && <DiffRow row={shown[widest]} probe />}
+      {shown.slice(start, end).map((row, offset) => <DiffRow key={start + offset} row={row} />)}
+      {big && <div className="diff-spacer" style={{ height: (shown.length - end) * rowHeight }} aria-hidden="true" />}
     </div>
   </>;
+}
+
+/** One line of a diff: the gutter of line numbers, then the text. `probe` is the invisible width keeper. */
+function DiffRow({ row, probe = false }) {
+  return <div className={probe ? `${row.cls} diff-width-probe` : row.cls} data-diff-row={probe ? undefined : ''} aria-hidden={probe || undefined}>
+    <span className="diff-gutter" aria-hidden="true">
+      <span className="diff-line-number diff-line-old">{row.oldLine ?? ''}</span>
+      <span className="diff-line-number diff-line-new">{row.newLine ?? ''}</span>
+    </span>
+    <DiffPieces marker={row.marker} pieces={row.pieces} />
+  </div>;
 }

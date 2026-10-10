@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Clipboard, CornerDownLeft, Search, Terminal } from 'lucide-react';
 import Button from '../ui/Button.jsx';
 import { isUserCommand } from './command-source.js';
+import { plainText } from './console-entries.js';
 import { checkReadOnly, tokenize } from '../../../main/git/read-only-command.js';
 
 function commandText(entry) { return `$ ${entry.executable || 'git'} ${entry.argv.join(' ')}`; }
@@ -21,6 +22,24 @@ export function Console({ expanded, onToggle, mod, entries, repositoryId = null,
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [focusedId, setFocusedId] = useState(null);
   const entryNodes = useRef(new Map());
+  // The output of the app's own reads is not sent with the journal: it arrives
+  // when its entry is opened (again once a running one finishes).
+  const [outputs, setOutputs] = useState(() => new Map());
+  const opened = entries.find(entry => entry.id === expandedId);
+  const lazyId = opened?.lazy ? opened.id : null;
+  const lazyState = opened?.state;
+  useEffect(() => {
+    if (!lazyId || !window.twig?.getConsoleOutput) return undefined;
+    let alive = true;
+    window.twig.getConsoleOutput(lazyId)
+      .then(output => { if (alive && output) setOutputs(current => new Map(current).set(lazyId, output)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [lazyId, lazyState]);
+  const outputOf = entry => {
+    const output = entry.lazy ? outputs.get(entry.id) : entry;
+    return { stdout: plainText(output?.stdout || ''), stderr: plainText(output?.stderr || ''), loading: Boolean(entry.lazy && !output) };
+  };
 
   // Expand the output of the last command the user typed, so it is readable
   // the moment it finishes rather than after a manual click.
@@ -88,12 +107,14 @@ export function Console({ expanded, onToggle, mod, entries, repositoryId = null,
   // they asked for, by name. The app's own reads (and their long argv) stay in
   // Full History; the exact command is one hover or one click away.
   const mine = entries.findLast(entry => isUserCommand(entry.operation));
-  const outcome = entry => (entry.code === null ? 'running' : entry.code === 0 ? `done · ${elapsed(entry)}` : `failed with exit code ${entry.code} · ${elapsed(entry)}`);
+  const outcome = entry => (entry.code === null ? 'running' : entry.code === 0 ? `done · ${elapsed(entry)}`
+    : entry.cancelled ? `stopped by 🌱 Twig · ${elapsed(entry)}` : `failed with exit code ${entry.code} · ${elapsed(entry)}`);
+  const failed = entry => entry.code !== null && entry.code !== 0 && !entry.cancelled;
   async function copy(value) { try { await navigator.clipboard.writeText(value); } catch { /* Clipboard access may be unavailable in a locked-down desktop session. */ } }
   return <section className={`console ${expanded ? 'expanded' : ''}`} aria-label="Command console">
     <button className="console-status" onClick={onToggle} aria-expanded={expanded} title={`Terminal · ${mod}+J`}>
       <Terminal /><strong>CONSOLE</strong><ChevronDown className={expanded ? '' : 'rotate'} />
-      <span className={`console-last ${mine && mine.code !== null && mine.code !== 0 ? 'failed' : ''}`} title={mine ? commandText(mine) : undefined}>
+      <span className={`console-last ${mine && failed(mine) ? 'failed' : ''}`} title={mine ? commandText(mine) : undefined}>
         {mine ? <>{mine.operation || commandText(mine)} <small>{outcome(mine)}</small></> : 'Nothing you ran yet'}</span>
       <span className="console-tail">{latest?.state === 'running' ? `Running: ${latest.operation || 'git'}` : '🌱 Twig'}</span>
     </button>
@@ -104,9 +125,9 @@ export function Console({ expanded, onToggle, mod, entries, repositoryId = null,
           : mode === 'mine' ? 'Nothing you ran yet. Full History also shows what 🌱 Twig runs on its own.'
             : 'No commands match this filter.'}</p></div></div>}
       {visible.map(entry => <article key={entry.id} ref={node => { if (node) entryNodes.current.set(entry.id, node); else entryNodes.current.delete(entry.id); }}
-        className={`console-entry ${entry.code !== null && entry.code !== 0 ? 'failed' : ''} ${focusedId === entry.id ? 'focused' : ''}`}>
-        <button className="console-entry-summary" onClick={() => { setFocusedId(null); setExpandedId(value => value === entry.id ? null : entry.id); }} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} />{entry.operation?.startsWith('MCP:') && <b className="console-tag" title={`${entry.operation} — asked by an AI agent through the MCP server`}>MCP</b>}<code>{commandText(entry)}</code><span>(cwd: {entry.cwd})</span><small>{startedText(entry)} · {entry.code ?? '…'} · {elapsed(entry)}</small></button>
-        {expandedId === entry.id && <div className="console-output"><div className="console-copy"><Button icon={Clipboard} onClick={() => copy(`${commandText(entry)}\n(cwd: ${entry.cwd})\n${entry.stdout}${entry.stderr}`)}>Copy entry</Button></div>{entry.stdout && <pre>{entry.stdout}</pre>}{entry.stderr && <pre className="stderr">{entry.stderr}</pre>}{!entry.stdout && !entry.stderr && <p className="muted">Waiting for output…</p>}</div>}
+        className={`console-entry ${failed(entry) ? 'failed' : ''} ${focusedId === entry.id ? 'focused' : ''}`}>
+        <button className="console-entry-summary" onClick={() => { setFocusedId(null); setExpandedId(value => value === entry.id ? null : entry.id); }} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} />{entry.operation?.startsWith('MCP:') && <b className="console-tag" title={`${entry.operation} — asked by an AI agent through the MCP server`}>MCP</b>}<code>{commandText(entry)}</code><span>(cwd: {entry.cwd})</span><small>{startedText(entry)} · {entry.cancelled ? 'stopped' : entry.code ?? '…'} · {elapsed(entry)}</small></button>
+        {expandedId === entry.id && (({ stdout, stderr, loading }) => <div className="console-output"><div className="console-copy"><Button icon={Clipboard} onClick={() => copy(`${commandText(entry)}\n(cwd: ${entry.cwd})\n${stdout}${stderr}`)}>Copy entry</Button></div>{stdout && <pre>{stdout}</pre>}{stderr && <pre className="stderr">{stderr}</pre>}{!stdout && !stderr && <p className="muted">{loading ? 'Loading output…' : 'Waiting for output…'}</p>}</div>)(outputOf(entry))}
       </article>)}
       <div className="console-dock">
         {error && <p className="console-input-error" role="alert">{error}</p>}

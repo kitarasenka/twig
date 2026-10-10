@@ -15,3 +15,14 @@ export function relativeTime(seconds, now = Date.now()) {
   }
   return 'long ago';
 }
+
+/**
+ * The calendar day an ISO date falls on by this machine's clock — the day a
+ * person reads in the list. Git writes each date in its committer's own time
+ * zone, so comparing the text before the `T` drew day breaks between two
+ * commits made minutes apart from different zones.
+ */
+export function localDayKey(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value).slice(0, 10) : `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}

@@ -3,6 +3,7 @@ import { validateFile, validateRevision } from './commit.js';
 import { chunkPath } from './worktree.js';
 import { splitPatchFiles } from './diff-parser.js';
 import { unquotePath } from './blame.js';
+import { HISTORY_REFS } from './history-refs.js';
 
 /**
  * What a search through history can look for, as an agent asks for it:
@@ -59,7 +60,7 @@ export function buildPickaxeArgv({ query, mode, revision = 'HEAD', all = false, 
   if (!PICKAXE_MODES.includes(mode)) throw new TypeError('Unknown search mode');
   if (!Number.isInteger(limit) || limit < 1 || limit > LIMIT_MAX) throw new TypeError('Invalid limit');
   if (path !== null) validateFile(path);
-  const where = all ? ['--exclude=refs/stash', '--exclude=refs/twig/*', '--all'] : ['--end-of-options', validateRevision(revision)];
+  const where = all ? [...HISTORY_REFS] : ['--end-of-options', validateRevision(revision)];
   return ['log', '--topo-order', ...SELECT[mode](query), '--format=%H', `--max-count=${limit}`,
     ...where, '--', ...(path === null ? [] : [`:(literal)${path}`])];
 }
@@ -78,7 +79,7 @@ export function buildPickaxeShowArgv({ query, mode, oids, path = null, context =
   if (!Number.isInteger(context) || context < 0 || context > CONTEXT_MAX) throw new TypeError('Invalid context');
   if (path !== null) validateFile(path);
   const patch = PATCH_MODES.includes(mode)
-    ? [...SELECT[mode](query), '-p', '--no-ext-diff', '--no-textconv', '--no-renames', `-U${context}`]
+    ? [...SELECT[mode](query), '-p', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--no-renames', `-U${context}`]
     : ['--no-patch'];
   return ['show', ...patch, `--format=${FORMAT}`, '--end-of-options', ...oids, '--', ...(path === null ? [] : [`:(literal)${path}`])];
 }

@@ -1,5 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { readJsonFile, writeFileAtomic } from './json-file.js';
 
 /**
  * A saved choice wins; with none (no file, damaged file, no boolean) the
@@ -30,9 +31,7 @@ export class UpdateStore {
 
   async load() {
     await mkdir(path.dirname(this.#file), { recursive: true });
-    try {
-      this.#state = normalizeUpdateSettings(JSON.parse(await readFile(this.#file, 'utf8')), this.#defaultAuto);
-    } catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; }
+    this.#state = normalizeUpdateSettings(await readJsonFile(this.#file), this.#defaultAuto);
     return this.get();
   }
 
@@ -40,9 +39,7 @@ export class UpdateStore {
 
   async save(value) {
     const next = { auto: Boolean(value && typeof value === 'object' && value.auto === true) };
-    const temporary = `${this.#file}.next`;
-    await writeFile(temporary, JSON.stringify(next, null, 2), 'utf8');
-    await rename(temporary, this.#file);
+    await writeFileAtomic(this.#file, JSON.stringify(next, null, 2));
     this.#state = next;
     return this.get();
   }

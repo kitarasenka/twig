@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { CommandLog } from '../../main/command-log.js';
 import { runGit } from '../../main/git/exec.js';
-import { SEARCH_MODES, buildSearchArgv, searchHistory } from '../../main/git/history.js';
+import { SEARCH_MODES, buildSearchArgv, loadHistoryPage, searchHistory } from '../../main/git/history.js';
 import { SEARCH_MODE_OPTIONS, searchEmpty, searchSummary } from '../../renderer/src/features/graph/search-modes.js';
 
 // --- argv, without Git ---------------------------------------------------------------------
@@ -74,6 +74,23 @@ try {
   assert.ok(!(await find('pages', 'message')).includes(backup));
   assert.ok(!(await find('maya', 'author')).includes(backup));
 
+  // Namespaces that hold no history a person made stay out of the graph and
+  // the search: git notes, `git maintenance` prefetch, filter-branch backups,
+  // replacements and the labels of a rebase in progress.
+  const hidden = [];
+  for (const [ref, message] of [['refs/prefetch/remotes/origin/main', 'Prefetched pages'], ['refs/original/refs/heads/main', 'Filter-branch pages'],
+    ['refs/replace/0000000000000000000000000000000000000001', 'Replacement pages'], ['refs/rewritten/onto', 'Rewritten pages']]) {
+    const oid = await git(['commit-tree', tree, '-m', message], { GIT_AUTHOR_NAME: 'Maya Chen', GIT_AUTHOR_EMAIL: 'maya@example.invalid', GIT_COMMITTER_NAME: 'x', GIT_COMMITTER_EMAIL: 'x@x' });
+    await git(['update-ref', ref, oid]);
+    hidden.push(oid);
+  }
+  await git(['-c', 'user.name=x', '-c', 'user.email=x@x', 'notes', 'add', '-m', 'pages note', 'HEAD']);
+  const graph = (await loadHistoryPage({ cwd, log, limit: 100 })).commits;
+  for (const oid of hidden) assert.ok(!graph.some(item => item.oid === oid), 'the graph leaves out hidden namespaces');
+  assert.ok(!graph.some(item => item.subject.startsWith('Notes added by')), 'and git notes commits');
+  assert.equal(graph.length, 5, 'only the five real commits are drawn');
+  for (const oid of hidden) assert.ok(!(await find('pages', 'message')).includes(oid), 'the search leaves them out too');
+
   // A search replaced by a newer one is cancelled, not left running.
   const controller = new AbortController();
   controller.abort();
@@ -81,4 +98,4 @@ try {
   assert.equal(cancelled.cancelled, true);
 } finally { await rm(root, { recursive: true, force: true }); }
 
-console.log('Search checks passed: modes and argv, literal author/file/content, -S appear/disappear, -G, broken regex, glob escaping, hidden backups, cancellation.');
+console.log('Search checks passed: modes and argv, literal author/file/content, -S appear/disappear, -G, broken regex, glob escaping, hidden backups and namespaces, cancellation.');

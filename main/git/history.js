@@ -1,10 +1,13 @@
 import { runGit } from './exec.js';
 import { parseFileHistory, parseHistoryV1 } from './history-parser.js';
 import { validateFile, validateOid } from './commit.js';
+import { HISTORY_REFS } from './history-refs.js';
 
 const FORMAT = '%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b';
 const MIN_LIMIT = 1;
-const MAX_LIMIT = 500;
+// A reload restores up to 2000 rows and a jump reads ahead in big pages: with
+// the history streamed (history-stream.js) a page costs what it holds.
+const MAX_LIMIT = 2000;
 const MAX_REBASE_ENTRIES = 1000;
 const SEARCH_QUERY_MAX = 200;
 const SEARCH_LIMIT = 200;
@@ -43,7 +46,16 @@ function validateQuery(query) {
 export function buildHistoryArgv({ limit = 250, skip = 0 } = {}) {
   validateLimit(limit);
   validateSkip(skip);
-  return ['log', '--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${limit}`, `--skip=${skip}`];
+  return ['log', ...HISTORY_REFS, '--topo-order', '-z', `--format=${FORMAT}`, `--max-count=${limit}`, `--skip=${skip}`];
+}
+
+/**
+ * The same read as `buildHistoryArgv`, unbounded: the whole history in one
+ * `git log`, consumed a page at a time by history-stream.js.
+ * @returns {string[]}
+ */
+export function buildHistoryStreamArgv() {
+  return ['log', ...HISTORY_REFS, '--topo-order', '-z', `--format=${FORMAT}`];
 }
 
 /**
@@ -122,7 +134,7 @@ export function buildSearchArgv(query, limit = SEARCH_LIMIT, mode = 'message') {
   const trimmed = validateQuery(query);
   validateLimit(limit);
   if (!SEARCH_MODES.includes(mode)) throw new TypeError('Unknown search mode');
-  const head = ['log', '--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--topo-order', '-z'];
+  const head = ['log', ...HISTORY_REFS, '--topo-order', '-z'];
   const tail = [`--format=${FORMAT}`, `--max-count=${limit}`];
   if (mode === 'message') return [...head, '-i', '--fixed-strings', `--grep=${trimmed}`, ...tail];
   if (mode === 'author') return [...head, '-i', '--fixed-strings', `--author=${trimmed}`, ...tail];

@@ -17,7 +17,10 @@ import { parseChangedFiles, validateFile, validateOid } from './commit.js';
  * id at that index is still the one the screen was showing.
  */
 
-const DIFF_ARGS = ['--no-ext-diff', '--no-textconv', '--no-color', '--no-renames'];
+// `--no-color` and explicit prefixes: a person's `color.diff = always`,
+// `diff.noprefix` or `diff.mnemonicPrefix` would otherwise put escape codes or
+// other prefixes into the patch text that is parsed and matched by path here.
+const DIFF_ARGS = ['--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--no-renames'];
 
 export const STASH_ACTIONS = ['apply', 'pop', 'drop', 'branch'];
 

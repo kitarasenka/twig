@@ -31,6 +31,7 @@ import { createMcpService } from '../../main/mcp/service.js';
 import { isUserCommand } from '../../renderer/src/app/command-source.js';
 import { buildUiContext } from '../../renderer/src/features/graph/ui-context-report.js';
 import { mcpStatusLine, mcpSummary, mcpToolTitle } from '../../renderer/src/features/settings/mcp-view.js';
+import { HISTORY_REFS } from '../../main/git/history-refs.js';
 
 // --- the catalog: read-only, and nothing that runs commands ----------------------------
 assert.deepEqual(TOOLS.map(tool => tool.name), TOOL_NAMES, 'every catalog entry has an implementation, in the same order');
@@ -54,7 +55,7 @@ assert.throws(() => new McpError('SOMETHING_ELSE', 'x'), TypeError);
   assert.deepEqual(argv.slice(-3), ['--end-of-options', 'HEAD', '--']);
   assert.ok(argv.includes('--format=%H') && argv.includes('--max-count=11') && !argv.includes('-p'), 'the walk prints hashes only');
   const scoped = buildPickaxeArgv({ query: 'x', mode: 'regex', all: true, path: 'src/a b.js', limit: 5 });
-  assert.deepEqual(scoped.slice(-5), ['--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--', ':(literal)src/a b.js']);
+  assert.deepEqual(scoped.slice(-(HISTORY_REFS.length + 2)), [...HISTORY_REFS, '--', ':(literal)src/a b.js']);
   assert.ok(scoped.includes('-Gx') && !scoped.some(arg => arg.startsWith('--skip')), 'no --skip: Git applies it before the pickaxe');
   const shown = buildPickaxeShowArgv({ query: 'x', mode: 'code', oids: ['a'.repeat(40), 'b'.repeat(40)], path: 'src', context: 0 });
   assert.equal(shown[0], 'show');

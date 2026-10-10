@@ -90,7 +90,8 @@ try {
   assert.equal(summary.kind, 'mbox');
   assert.deepEqual(summary.commits, ['Add a Latin-1 file', 'Add a second file'], 'oldest first, as exported');
   assert.deepEqual(summary.files, ['latin.txt', 'second file.txt']);
-  const leaked = log.list().filter(entry => entry.stdout?.includes('caf'));
+  // The whole kept output, not the list: an automatic read's output is left out of the list.
+  const leaked = log.list().filter(entry => log.outputOf(entry.id)?.stdout.includes('caf'));
   assert.deepEqual(leaked.map(entry => entry.argv.join(' ')), [], 'the patch text does not go through the journal');
 
   // Into the other repository, as the same two commits.

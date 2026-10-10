@@ -1,6 +1,6 @@
 import { gitReason } from './commit-ops.js';
 import { runGit } from './exec.js';
-import { loadRefs } from './refs.js';
+import { buildRefsArgv, parseRefsV1 } from './refs.js';
 import { validateRefName } from './refs-ops.js';
 import { loadRemotes, validateRemoteName, validateRepositoryUrl } from './remotes.js';
 import { BACKGROUND_FETCH_ARGV } from '../background-fetch.js';
@@ -62,10 +62,19 @@ export async function runSync({ cwd, log, mode, branch = null, signal = null }) 
  * @param {{ cwd: string, log: object, branch: ?string }} options
  * @returns {Promise<{ ahead: number, behind: number, upstream: ?string }>}
  */
+/**
+ * Ahead/behind of one branch, for the Pull and Push badges. It asks about that
+ * branch alone: `%(upstream:track)` makes Git walk the history of every branch
+ * it is asked about, and this used to read every ref to keep one of them.
+ * A pattern also matches refs under it (`feat` → `feat/x`), hence the exact
+ * name check after.
+ */
 export async function loadDivergence({ cwd, log, branch }) {
   if (!branch) return { ahead: 0, behind: 0, upstream: null };
-  const refs = await loadRefs({ cwd, log });
-  const current = refs.find(ref => ref.type === 'local' && ref.name === branch);
+  validateRefName(branch);
+  const result = await runGit({ argv: buildRefsArgv([`refs/heads/${branch}`]), cwd, log, operation: 'Read branch divergence' });
+  if (result.code !== 0) throw new Error('Git could not read this branch.');
+  const current = parseRefsV1(result.stdout).find(ref => ref.type === 'local' && ref.name === branch);
   if (!current) return { ahead: 0, behind: 0, upstream: null };
   return { ahead: current.ahead, behind: current.behind, upstream: current.upstream };
 }

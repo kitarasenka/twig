@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { parseFileHistory, parseHistoryV1, HistoryParseError } from '../../main/git/history-parser.js';
 import { buildFileHistoryArgv, buildHistoryArgv, buildSearchArgv } from '../../main/git/history.js';
+import { HISTORY_REFS } from '../../main/git/history-refs.js';
 
 const SHA1_A = '82df62445b05a04be53291bb36b5db80e46dad77';
 const SHA1_B = 'ebb6e9d3dec115ba8b429d3b143db9d27777a083';
@@ -125,12 +126,12 @@ assertRejects(record(SHA1_A, '', 'a', 'a@example.com', '2026-01-01T00:00:00Z', '
 
 // --- buildHistoryArgv: pure argv builder, no Git spawned ---
 
-assert.deepEqual(buildHistoryArgv(), ['log', '--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--topo-order', '-z',
+assert.deepEqual(buildHistoryArgv(), ['log', ...HISTORY_REFS, '--topo-order', '-z',
   '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=250', '--skip=0']);
-assert.deepEqual(buildHistoryArgv({ limit: 50, skip: 100 }), ['log', '--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--topo-order', '-z',
+assert.deepEqual(buildHistoryArgv({ limit: 50, skip: 100 }), ['log', ...HISTORY_REFS, '--topo-order', '-z',
   '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=50', '--skip=100']);
 
-for (const limit of [0, -1, 501, 1.5, '250', NaN, Infinity]) {
+for (const limit of [0, -1, 2001, 1.5, '250', NaN, Infinity]) {
   assert.throws(() => buildHistoryArgv({ limit }), TypeError, `limit ${limit} must be rejected`);
 }
 for (const skip of [-1, 1.5, '0', NaN]) {
@@ -150,13 +151,13 @@ assert.equal(buildFileHistoryArgv('--force').at(-1), ':(literal)--force');
 for (const file of ['', 42, '/etc/passwd', '../escape', 'a/../b', 'has\0nul']) {
   assert.throws(() => buildFileHistoryArgv(file), TypeError, `file ${file} must be rejected`);
 }
-for (const limit of [0, -1, 501, 1.5, '250', NaN, Infinity]) {
+for (const limit of [0, -1, 2001, 1.5, '250', NaN, Infinity]) {
   assert.throws(() => buildFileHistoryArgv('src/app.js', limit), TypeError, `limit ${limit} must be rejected`);
 }
 
 // --- buildSearchArgv: literal, case-insensitive `git log --grep` over all refs ---
 
-assert.deepEqual(buildSearchArgv('fix login'), ['log', '--exclude=refs/stash', '--exclude=refs/twig/*', '--all', '--topo-order', '-z', '-i', '--fixed-strings',
+assert.deepEqual(buildSearchArgv('fix login'), ['log', ...HISTORY_REFS, '--topo-order', '-z', '-i', '--fixed-strings',
   '--grep=fix login', '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', '--max-count=200']);
 // The query is trimmed and stays one argv token after `--grep=`, so a regex- or
 // flag-looking search string is matched literally, never interpreted.
@@ -165,7 +166,7 @@ assert.deepEqual(buildSearchArgv('x', 500).includes('--max-count=500'), true);
 for (const query of ['', '   ', 42, null, undefined, 'x'.repeat(201), 'has\0nul']) {
   assert.throws(() => buildSearchArgv(query), TypeError, `query ${query} must be rejected`);
 }
-for (const limit of [0, -1, 501, 1.5, '250', NaN]) {
+for (const limit of [0, -1, 2001, 1.5, '250', NaN]) {
   assert.throws(() => buildSearchArgv('x', limit), TypeError, `limit ${limit} must be rejected`);
 }
 

@@ -44,7 +44,9 @@ assert.equal(checkoutChoice([local('main')], { headBranch: null }).kind, 'branch
 const workspace = readFileSync(new URL('../../renderer/src/features/graph/HistoryWorkspace.jsx', import.meta.url), 'utf8');
 const graph = readFileSync(new URL('../../renderer/src/features/graph/CommitGraph.jsx', import.meta.url), 'utf8');
 assert.match(workspace, /onDoubleClick=\{\(\) => onCheckout\(\[ref\]\)\}/, 'sidebar branch double-click');
-assert.equal((workspace.match(/onCheckout=\{checkoutOnDoubleClick\}/g) || []).length, 3, 'sidebar, graph and search results');
+assert.equal((workspace.match(/onCheckout=\{checkoutOnDoubleClick\}/g) || []).length, 1, 'the sidebar');
+assert.equal((workspace.match(/onCheckout=\{rowHandlers\.checkout\}/g) || []).length, 2, 'the graph and the search results');
+assert.match(workspace, /checkout: refs => latest\.current\.checkoutOnDoubleClick\(refs\)/, 'one handler behind them all');
 assert.match(graph, /onDoubleClick=\{event => \{ event\.stopPropagation\(\); onCheckout\?\.\(\[ref\]\); \}\}/, 'badge double-click stops at the badge');
 assert.match(graph, /onDoubleClick=\{\(\) => onCheckout\?\.\(refs \|\| \[\]\)\}/, 'row double-click');
 assert.match(workspace, /checkoutRef\(repository\.id, name, false\), `Checked out \$\{name\}\.`,\s*\{ select:/, 'branch checkout selects its commit');
@@ -52,5 +54,7 @@ assert.match(workspace, /checkoutRef\(repository\.id, name, false\), `Checked ou
 const reload = workspace.slice(workspace.indexOf('const reload = useCallback'), workspace.indexOf('const refreshOperation'));
 assert.ok(!/dataRef\.current = \{ commits: \[\][^\n]*\n\s*setData\(dataRef\.current\)/.test(reload), 'reload does not show an empty list first');
 assert.match(reload, /missing\(\)/, 'reload reads back as many rows as were shown');
+assert.match(reload, /const buffer = \{ current: \{ commits: \[\]/, 'into a buffer of its own');
+assert.match(reload, /dataRef\.current = buffer\.current;/, 'swapped in once it is read');
 
 console.log('checkout-choice: ok');

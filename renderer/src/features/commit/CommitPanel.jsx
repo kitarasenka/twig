@@ -31,7 +31,15 @@ function fileMenuProps(path, onFileMenu) {
   };
 }
 
+/** Past this many files a list shows its first ones and a button for the rest, and a tree starts with its folders closed. */
+const FILE_STEP = 500;
+
 function FileTree({ files, onFile, onFileMenu }) {
+  // A folder's files are drawn only while it is open: 8 000 files under open
+  // folders froze the window for two seconds on switching to the tree.
+  const startOpen = files.length <= FILE_STEP;
+  const [toggled, setToggled] = useState(() => new Map());
+  useEffect(() => { setToggled(new Map()); }, [files]);
   const tree = useMemo(() => {
     const root = { folders: new Map(), files: [] };
     for (const file of files) {
@@ -45,8 +53,14 @@ function FileTree({ files, onFile, onFileMenu }) {
     }
     return root;
   }, [files]);
-  function render(node) {
-    return <>{[...node.folders].map(([name, child]) => <details className="file-folder" key={name} open><summary>{name}</summary>{render(child)}</details>)}
+  function render(node, prefix = '') {
+    return <>{[...node.folders].map(([name, child]) => {
+      const key = `${prefix}${name}/`;
+      const open = toggled.get(key) ?? startOpen;
+      return <details className="file-folder" key={name} open={open}>
+        <summary onClick={event => { event.preventDefault(); setToggled(current => new Map(current).set(key, !open)); }}>{name}</summary>
+        {open && render(child, key)}</details>;
+    })}
       {node.files.map(file => <button className="commit-file" key={file.path} onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{file.path.split('/').at(-1)}</span></button>)}</>;
   }
   return render(tree);
@@ -89,6 +103,9 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
   const [filter, setFilter] = useState('');
   const [noteDraft, setNoteDraft] = useState('');
   const [showDetails, setShowDetails] = useState(loadShowDetails);
+  // How many files of a long list are drawn; a commit or a filter starts over.
+  const [fileLimit, setFileLimit] = useState(FILE_STEP);
+  useEffect(() => { setFileLimit(FILE_STEP); }, [commit?.oid, all, filter, range]);
   useEffect(() => { setNoteDraft(mark?.note || ''); }, [mark, commit?.oid]);
   useEffect(() => {
     let alive = true;
@@ -173,7 +190,8 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
         <div className="file-controls"><div className="segmented"><button aria-pressed={!tree} onClick={() => setTree(false)}>Path</button><button aria-pressed={tree} onClick={() => setTree(true)}>Tree</button></div><label><input type="checkbox" checked={all && !range} disabled={Boolean(range)} onChange={e => setAll(e.target.checked)} /> All files</label></div>
         <div className="file-controls"><input aria-label="Filter commit files" placeholder="Filter files" value={filter} onChange={e => setFilter(e.target.value)} /><select aria-label="Sort commit files" value={sort} onChange={e => setSort(e.target.value)}><option value="path">Sort by path</option><option value="status">Sort by status</option></select></div>
         {fileError && <p role="alert">{fileError}<button onClick={onConsole}>Show output</button></p>}
-        {all && !allFiles && !range ? <div className="skeleton" aria-label="Loading files" /> : tree ? <FileTree files={files} onFile={onFile} onFileMenu={onFileMenu} /> : files.map(file => <button className="commit-file" key={file.path} onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{file.path}</span></button>)}
+        {all && !allFiles && !range ? <div className="skeleton" aria-label="Loading files" /> : tree ? <FileTree files={files} onFile={onFile} onFileMenu={onFileMenu} /> : <>{files.slice(0, fileLimit).map(file => <button className="commit-file" key={file.path} onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{file.path}</span></button>)}
+          {files.length > fileLimit && <button type="button" className="text-button" onClick={() => setFileLimit(files.length)}>Show all {files.length} files</button>}</>}
         {!files.length && (!all || allFiles) && <p className="muted">No matching files.</p>}
       </>}
     </div>

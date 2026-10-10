@@ -93,6 +93,10 @@ export function buildUndoPlan(entry, direction) {
     : 'Only the recorded application action will be reversed.' };
 }
 
+/** The actions Undo can reverse; every other action that changes the repository ends the chain. */
+export const UNDOABLE_KINDS = Object.freeze(['worktree:discard', 'worktree:ignore', 'reflog:move-branch', 'refs:create-tag', 'worktree:commit', 'ops:reword', 'ops:merge',
+  'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply']);
+
 export function inverseReason(kind, before, after, args) {
   if (before.operation !== 'none' || after.operation !== 'none') return 'An interrupted Git operation must be completed or aborted first.';
   if (kind === 'sync:push-ref') return 'A ref was published or deleted remotely. Undo cannot reverse publication.';
@@ -107,6 +111,6 @@ export function inverseReason(kind, before, after, args) {
   if (kind === 'stash:pop' && args[0] > 0) return 'Undo cannot safely restore the position of a popped stash below the top entry.';
   if (kind === 'refs:checkout' && !before.head) return 'Checkout from an unborn branch has no revision to restore.';
   if (kind === 'refs:create-branch' && !before.head) return 'There is no previous revision to restore.';
-  if (!['worktree:discard', 'worktree:ignore', 'reflog:move-branch', 'refs:create-tag', 'worktree:commit', 'ops:reword', 'ops:merge', 'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind)) return `${kind.replaceAll(':', ' ')} ends the Undo chain.`;
+  if (!UNDOABLE_KINDS.includes(kind)) return `${kind.replaceAll(':', ' ')} ends the Undo chain.`;
   return null;
 }

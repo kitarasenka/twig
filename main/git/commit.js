@@ -72,9 +72,13 @@ export async function loadCommitFiles({ cwd, log, oid }) {
 export async function loadFileDiff({ cwd, log, oid, file, base = null }) {
   validateOid(oid); validateFile(file);
   if (base !== null) validateOid(base);
+  // `-c color.ui=false` does not override a person's more specific
+  // `color.diff = always`: without `--no-color` this diff arrived with escape
+  // codes and the panel could not find a single hunk in it.
+  const plain = ['--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--no-renames'];
   const argv = base
-    ? ['diff', '--no-ext-diff', '--no-textconv', '--no-renames', base, oid, '--', `:(literal)${file}`]
-    : ['show', '--format=', '--first-parent', '--no-ext-diff', '--no-textconv', '--no-renames', oid, '--', `:(literal)${file}`];
+    ? ['diff', ...plain, base, oid, '--', `:(literal)${file}`]
+    : ['show', '--format=', '--first-parent', ...plain, oid, '--', `:(literal)${file}`];
   const patch = await execute(cwd, log, argv, 'Read file diff');
   return { patch, binary: /^(?:Binary files |GIT binary patch)/m.test(patch) };
 }
@@ -107,7 +111,7 @@ export function buildCommitDiffsArgv({ oid, paths, context = null }) {
   validateOid(oid);
   if (!Array.isArray(paths) || paths.length === 0) throw new TypeError('Invalid path list');
   if (context !== null && (!Number.isInteger(context) || context < 0 || context > 100)) throw new TypeError('Invalid context line count');
-  return ['show', '--format=', '--first-parent', '--no-ext-diff', '--no-textconv', '--no-renames', '--no-color',
+  return ['show', '--format=', '--first-parent', '--no-ext-diff', '--no-textconv', '--no-renames', '--no-color', '--src-prefix=a/', '--dst-prefix=b/',
     ...(context === null ? [] : [`--unified=${context}`]), oid, '--', ...paths.map(file => `:(literal)${validateFile(file)}`)];
 }
 

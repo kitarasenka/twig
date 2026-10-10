@@ -119,14 +119,15 @@ export function registerFilesIpc(getWindow, entryUrl, { repositories, journal, e
     const info = await statOrNull(absolute);
     if (!info) return { ok: false, reason: 'missing', message: `${file} is not in the working tree — it was deleted or renamed since.` };
     if (!info.isFile()) return { ok: false, reason: 'not-file', message: `${file} is not a regular file.` };
+    const pathString = await loginPath; // resolved behind the launch, see main/index.js
     const plan = planOpen({ settings: editor.get(), file: absolute, platform: process.platform,
-      pathString: loginPath, exists, executableBit: (info.mode & 0o111) !== 0 });
+      pathString, exists, executableBit: (info.mode & 0o111) !== 0 });
     if (plan.kind === 'refused') return { ok: false, reason: plan.reason, message: plan.message };
     if (plan.kind === 'shell') {
       const failure = await shell.openPath(absolute);
       return failure ? { ok: false, reason: 'failed', message: failure } : { ok: true, editor: editorLabel(editor.get()) };
     }
-    const result = await launch({ ...plan, cwd: root, log: journal, pathString: loginPath });
+    const result = await launch({ ...plan, cwd: root, log: journal, pathString });
     return { ...result, editor: editorLabel(editor.get()) };
   });
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, stat, utimes, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { CommandLog } from '../../main/command-log.js';
@@ -85,5 +85,32 @@ try {
   assert.match((await undo.inspect(cwd)).undoReason, /published/);
   await assert.rejects(undo.move(cwd, 'bad', async () => true), TypeError);
   assert.ok(log.list().some(entry => entry.operation.startsWith('Undo')));
-  console.log('Undo checks passed: root/normal commit, persistence, branch, checkout, staged/untracked stash chains, merge/revert confirmations, redo, external edits and irreversible barrier.');
+
+  // An action Undo cannot reverse, with no chain to end, takes no snapshot:
+  // each one reads every changed file and the whole index. With a chain, it does.
+  const checks = () => log.list().filter(entry => entry.operation === 'Background: Undo safety check').length;
+  const quiet = checks();
+  await writeFile(path.join(cwd, 'staged.txt'), 'staged\n');
+  await run('worktree:stage', ['staged.txt'], () => git(['add', '--', 'staged.txt']));
+  assert.equal(checks(), quiet, 'no snapshot around staging when there is nothing to undo');
+  assert.match((await undo.inspect(cwd)).undoReason, /worktree stage ends the Undo chain/, 'the Undo button still says why');
+  await run('worktree:commit', [], () => createCommit({ ...options, message: 'Staged file' }));
+  const chained = checks();
+  await writeFile(path.join(cwd, 'staged.txt'), 'staged again\n');
+  await run('worktree:stage', ['staged.txt'], () => git(['add', '--', 'staged.txt']));
+  assert.ok(checks() > chained, 'with a chain to end, the snapshots are taken');
+
+  // A large file is fingerprinted by its metadata instead of read: an edit is
+  // still seen, even one that keeps the size and puts the mtime back.
+  const large = path.join(cwd, 'dataset.bin');
+  await writeFile(large, Buffer.alloc(2 * 1024 * 1024, 1));
+  const largeBefore = await state();
+  const { atime, mtime } = await stat(large);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  await writeFile(large, Buffer.alloc(2 * 1024 * 1024, 2));
+  await utimes(large, atime, mtime);
+  assert.notEqual((await state()).digest, largeBefore.digest, 'a same-size rewrite with the old mtime still changes the digest');
+  const largeAfter = await state();
+  assert.equal((await state()).digest, largeAfter.digest, 'and an untouched large file keeps it');
+  console.log('Undo checks passed: root/normal commit, persistence, branch, checkout, staged/untracked stash chains, merge/revert confirmations, redo, external edits and irreversible barrier, no snapshots without a chain, large files by metadata.');
 } finally { await rm(root, { recursive: true, force: true }); }

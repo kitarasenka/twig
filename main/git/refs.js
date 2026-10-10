@@ -122,8 +122,8 @@ const FORMAT = '%(refname)%00%(objectname)%00%(*objectname)%00%(objecttype)'
  * the self-check can assert on the exact argv without spawning Git.
  * @returns {string[]}
  */
-export function buildRefsArgv() {
-  return ['for-each-ref', `--format=${FORMAT}`, 'refs/heads', 'refs/remotes', 'refs/tags'];
+export function buildRefsArgv(patterns = ['refs/heads', 'refs/remotes', 'refs/tags']) {
+  return ['for-each-ref', `--format=${FORMAT}`, ...patterns];
 }
 
 /**

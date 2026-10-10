@@ -247,7 +247,7 @@ try {
   assert.ok(reads.length >= 8);
   assert.ok(reads.every(entry => entry.code === 0), 'a missing side is an answer, not a failed command');
   const bytesRead = reads.filter(entry => entry.operation.startsWith('Read image bytes'));
-  assert.ok(bytesRead.every(entry => /^\d+ bytes of binary output, not shown\.\n$/.test(entry.stdout)));
+  assert.ok(bytesRead.every(entry => /^\d+ bytes of binary output, not shown\.\n$/.test(log.outputOf(entry.id).stdout)));
   const journal = await readFile(path.join(root, 'command-log.jsonl'), 'utf8');
   assert.equal(journal.includes('\\u0000\\n\\r\\n'), false, 'no image bytes in the journal file');
   assert.equal(journal.includes('"type":"Buffer"'), false);

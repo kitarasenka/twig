@@ -17,7 +17,10 @@ import { parseFilePatchV1, splitPatchFiles } from './diff-parser.js';
 // would describe two different paths in one patch, while the patch builder
 // writes a header from the single path it was given. Renames still reach the
 // UI through parseStatusV2, which reports originalPath.
-const DIFF_ARGS = ['--no-ext-diff', '--no-textconv', '--no-color', '--no-renames'];
+// `--no-color` and explicit prefixes: a person's `color.diff = always`,
+// `diff.noprefix` or `diff.mnemonicPrefix` would otherwise put escape codes or
+// other prefixes into the patch text that is parsed and matched by path here.
+const DIFF_ARGS = ['--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--no-renames'];
 
 function validatePath(file) {
   if (typeof file !== 'string' || file.length === 0 || file.length > 32768

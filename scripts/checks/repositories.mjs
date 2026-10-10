@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile, access } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { runGit } from '../../main/git/exec.js';
@@ -42,8 +42,10 @@ try {
   await git(['config', 'remote.private.url', 'https://user:fixture-secret@host/repo']);
   assert.equal((await loadRemotes(options))[0].name, 'private');
   const privateRead = log.list().findLast(entry => entry.operation === 'Read remotes');
-  assert.ok(!JSON.stringify(privateRead).includes('fixture-secret'));
-  assert.match(privateRead.stdout, /address hidden/);
+  // The whole kept output, not the list: an automatic read's output is left out of the list.
+  const privateOutput = log.outputOf(privateRead.id);
+  assert.ok(!JSON.stringify({ ...privateRead, ...privateOutput }).includes('fixture-secret'));
+  assert.match(privateOutput.stdout, /address hidden/);
   await git(['config', '--remove-section', 'remote.private']);
   for (const url of ['--upload-pack=bad', 'ext::sh bad', 'https://user:secret@host/repo', 'https://host/repo?token=secret', 'ssh://host/repo\ninvalid']) assert.throws(() => validateRepositoryUrl(url), TypeError);
   for (const url of ['git@github.com:team/repo.git', 'ssh://git@host/team/repo', 'https://host/team/repo', cwd]) assert.equal(validateRepositoryUrl(url), url);
@@ -106,5 +108,36 @@ try {
   const shown = withDemo(); await shown.load();
   assert.equal(shown.snapshot().repositories[0]?.sandbox, true, 'and an open demo survives a restart too');
 
-  console.log('Repository checks passed: remotes, stale state, fetch, clone, cancellation, existing-directory refusal, persistence, concurrent list mutations, no disk deletion, demo close/show.');
+  // Selecting reads the selected repository alone and writes the list only
+  // when the active one changes: a tab switch or a refresh used to run
+  // rev-parse and status in every connected repository and rewrite the file.
+  const many = path.join(root, 'many');
+  const folders = [];
+  for (const name of ['one', 'two', 'three']) {
+    const folder = path.join(many, name);
+    await mkdir(folder, { recursive: true });
+    await git(['init', '--initial-branch=main'], folder);
+    folders.push(folder);
+  }
+  const manyLog = new CommandLog(many);
+  await manyLog.load();
+  const manyStore = path.join(many, 'store');
+  await mkdir(manyStore);
+  const several = createRepositoryService({ log: manyLog, store: new RepositoryStore(manyStore) });
+  await several.load();
+  for (const folder of folders) await several.add(folder);
+  const listFile = path.join(manyStore, 'repositories.json');
+  const ids = several.snapshot().repositories.map(item => item.id);
+  const journalBefore = manyLog.list().length;
+  const picked = await several.select(ids[0]);
+  const ranIn = manyLog.list().slice(journalBefore);
+  assert.ok(ranIn.length > 0 && ranIn.every(entry => entry.cwd === picked.repositories.find(item => item.id === ids[0]).path), 'git ran in the selected repository only');
+  const listInode = (await stat(listFile)).ino; // an atomic write always makes a new file
+  await several.select(ids[0]);
+  assert.equal((await stat(listFile)).ino, listInode, 'selecting the active repository again does not rewrite the list');
+  await several.select(ids[1]);
+  assert.equal(JSON.parse(await readFile(listFile, 'utf8')).activeId, ids[1], 'a new active repository is written');
+  assert.ok(several.snapshot().repositories.every(item => item.available), 'the others keep their last known state');
+
+  console.log('Repository checks passed: remotes, stale state, fetch, clone, cancellation, existing-directory refusal, persistence, concurrent list mutations, no disk deletion, demo close/show, select reads one repository.');
 } finally { await rm(root, { recursive: true, force: true }); }

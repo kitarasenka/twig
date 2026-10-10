@@ -122,7 +122,8 @@ assert.match(graph, /summaryChips\(summary\)/, 'the row prints the breakdown');
 const workspace = await read('renderer/src/features/graph/HistoryWorkspace.jsx');
 assert.ok(!/const SCREENS = \[[^\]]*'uncommitted'/.test(workspace),
   'the uncommitted row is a selection, not a screen: it keeps the graph on screen');
-assert.match(workspace, /onUncommitted=\{\(\) => choose\(UNCOMMITTED\)\}/);
+assert.match(workspace, /onUncommitted=\{rowHandlers\.uncommitted\}/);
+assert.match(workspace, /uncommitted: \(\) => latest\.current\.choose\(UNCOMMITTED\)/, 'the row selects the uncommitted changes');
 assert.match(workspace, /<WorktreePanel /, 'the detail pane gets the uncommitted panel');
 
 // Staging from the panel goes through the staging screen's own channels: no new

@@ -95,7 +95,7 @@ export async function triggerPipeline({ event, repoId, cwd, log, automations, ru
   const context = await buildContext({ event, cwd, log, message, remote, operation, needsAddedLines });
   // Steps see the login-shell PATH (GUI Electron inherits a stub one) plus any
   // extra entries configured in Settings.
-  const basePath = loginPath || process.env.PATH || '';
+  const basePath = (await loginPath) || process.env.PATH || ''; // a promise while the login shell answers
   const env = { PATH: [...settings.extraPath, basePath].filter(Boolean).join(process.platform === 'win32' ? ';' : ':') };
 
   const steps = [];

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Button from '../../ui/Button.jsx';
 import { segmentHunkLines } from '../diff/intraline.js';
 import { lineSpans, sideSyntax } from '../diff/diff-view.js';
@@ -42,8 +42,17 @@ function numbering(hunk) {
   });
 }
 
+/** Lines drawn before a long diff asks to show the rest: a lock file's 32 000
+ * changed lines, each with a checkbox, froze the staging screen on opening. */
+const LINE_BUDGET = 3000;
+
 export default function StageDiff({ repositoryId = null, file, diff, staged, selection, onSelection, onApply, onDiscard = null, busy, onClose }) {
   const [prefs] = useDiffPrefs();
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => { setShowAll(false); }, [diff]);
+  const totalLines = useMemo(() => diff.hunks.reduce((total, hunk) => total + hunk.lines.length, 0), [diff.hunks]);
+  const limited = !showAll && totalLines > LINE_BUDGET;
+  let budget = limited ? LINE_BUDGET : Infinity;
   const language = languageFor(file);
   const gutters = useMemo(() => diff.hunks.map(numbering), [diff.hunks]);
   const segments = useMemo(() => diff.hunks.map(hunk => segmentHunkLines(hunk.lines)), [diff.hunks]);
@@ -80,8 +89,12 @@ export default function StageDiff({ repositoryId = null, file, diff, staged, sel
     {!diff.binary && diff.hunks.length > 0 && <DiffToolbar language={language} words={false} />}
     <div className={`diff-scroll${syntax ? ' diff-syntax' : ''}`} hidden={diff.binary}>
       {diff.hunks.map((hunk, hunkIndex) => {
+        if (budget <= 0) return null;
+        const drawn = Math.min(hunk.lines.length, budget);
+        budget -= drawn;
         const lines = hunk.lines.map((line, index) => (changeable(line) ? index : -1)).filter(index => index >= 0);
         const chosen = selection[hunkIndex] || [];
+        const picked = new Set(chosen);
         return <div className="stage-hunk" key={hunkIndex}>
           <div className="stage-hunk-head">
             <label><input type="checkbox" checked={lines.length > 0 && chosen.length === lines.length}
@@ -90,12 +103,12 @@ export default function StageDiff({ repositoryId = null, file, diff, staged, sel
             <span>@@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@</span></label>
             {hunk.heading && <em>{hunk.heading}</em>}
           </div>
-          {hunk.lines.map((line, lineIndex) => {
+          {hunk.lines.slice(0, drawn).map((line, lineIndex) => {
             const gutter = gutters[hunkIndex][lineIndex];
             const kind = line.kind === 'add' ? 'diff-added' : line.kind === 'delete' ? 'diff-deleted' : '';
             return <div className={`stage-line ${kind}`} key={lineIndex}>
               {changeable(line)
-                ? <input type="checkbox" checked={chosen.includes(lineIndex)}
+                ? <input type="checkbox" checked={picked.has(lineIndex)}
                   aria-label={`${verb} line ${gutter.next ?? gutter.old}`}
                   onChange={event => toggleLine(hunkIndex, lineIndex, event.target.checked)} />
                 : <span className="stage-line-spacer" />}
@@ -105,9 +118,11 @@ export default function StageDiff({ repositoryId = null, file, diff, staged, sel
                 pieces={lineSpans(line.text, syntax?.[hunkIndex][lineIndex] ?? null, segments[hunkIndex][lineIndex])} /></span>
             </div>;
           })}
-          {hunk.lines.some(line => line.noNewline) && <div className="stage-line no-newline"><span className="stage-line-spacer" /><span className="line-number" /><span className="line-number" /><span className="line-text">\ No newline at end of file</span></div>}
+          {drawn === hunk.lines.length && hunk.lines.some(line => line.noNewline) && <div className="stage-line no-newline"><span className="stage-line-spacer" /><span className="line-number" /><span className="line-number" /><span className="line-text">\ No newline at end of file</span></div>}
         </div>;
       })}
+      {limited && <p className="empty-inline">Showing {LINE_BUDGET} of {totalLines} lines.{' '}
+        <button type="button" className="text-button" onClick={() => setShowAll(true)}>Show all {totalLines} lines</button></p>}
     </div>
   </section>;
 }
