@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { copyFile, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import afterPack, { fusesFor, launcherScript } from '../after-pack.mjs';
@@ -115,6 +116,17 @@ if (process.platform === 'darwin') {
 
 // The executable name is not hardcoded: it comes from the packager.
 assert.match(launcherScript('other-name'), /exec "\$here\/other-name\.bin" "\$@"/);
+
+// electron-builder 26.17 refuses an AppImage whose productFilename has the 🌱
+// (it is pasted into AppRun), which broke the 0.19.0 release. linux.executableName
+// gives Linux a plain one; the product name, /opt/🌱 Twig and the .desktop
+// entry stay as they were. Checked with electron-builder's own validator.
+const require = createRequire(import.meta.url);
+const pkg = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+const { validateCriticalPathString } = require('app-builder-lib/out/targets/appimage/appImageUtil.js');
+const { sanitizeFileName } = require('builder-util/out/filename');
+assert.equal(pkg.build.linux.executableName, 'twig', 'the launcher and twig.bin keep their names');
+assert.doesNotThrow(() => validateCriticalPathString(sanitizeFileName(pkg.build.linux.executableName), 'productFilename'));
 
 await rm(tmp, { recursive: true, force: true });
 console.log('after-pack check passed');
