@@ -76,7 +76,7 @@ try {
     await demo.evaluate(() => globalThis.document.fonts.ready);
     assert.equal(await demo.locator('[role="tabpanel"]:visible').count(), 1, errors.join('\n'));
     const heights = [];
-    for (const id of ['checks', 'commands', 'marks']) {
+    for (const id of ['selection', 'search', 'commit']) {
       await demo.locator(`#tab-${id}`).click();
       assert.equal(await demo.locator(`#tab-${id}`).getAttribute('aria-selected'), 'true');
       assert.equal(await demo.locator(`#demo-${id}`).isVisible(), true);
@@ -87,18 +87,18 @@ try {
       if (width === 1440) await demo.screenshot({ path: new URL(`site-demo-${id}.png`, artifacts).pathname });
     }
     assert.ok(Math.max(...heights) - Math.min(...heights) < 2, `Tab switching shifts layout at ${width}px: ${heights}`);
-    await demo.locator('#tab-checks').click();
+    await demo.locator('#tab-selection').click();
     await demo.keyboard.press('ArrowRight');
-    assert.equal(await demo.locator(':focus').getAttribute('id'), 'tab-commands');
+    assert.equal(await demo.locator(':focus').getAttribute('id'), 'tab-search');
     await demo.keyboard.press('End');
-    assert.equal(await demo.locator(':focus').getAttribute('id'), 'tab-marks');
+    assert.equal(await demo.locator(':focus').getAttribute('id'), 'tab-commit');
     await demo.keyboard.press('ArrowRight');
-    assert.equal(await demo.locator(':focus').getAttribute('id'), 'tab-checks');
+    assert.equal(await demo.locator(':focus').getAttribute('id'), 'tab-selection');
     await demo.keyboard.press('ArrowLeft');
-    assert.equal(await demo.locator(':focus').getAttribute('id'), 'tab-marks');
+    assert.equal(await demo.locator(':focus').getAttribute('id'), 'tab-commit');
     await demo.keyboard.press('Home');
     await demo.keyboard.press('Tab');
-    assert.equal(await demo.locator(':focus').getAttribute('id'), 'demo-checks');
+    assert.equal(await demo.locator(':focus').getAttribute('id'), 'demo-selection');
     const brokenAnchors = await demo.evaluate(() => [...globalThis.document.querySelectorAll('a[href^="#"]')].map(a => a.getAttribute('href').slice(1)).filter(id => id && !globalThis.document.getElementById(id)));
     assert.deepEqual(brokenAnchors, []);
     await demo.locator('h1').click();
@@ -108,10 +108,10 @@ try {
     await demo.screenshot({ path: new URL(`site-${width}.png`, artifacts).pathname, fullPage: true });
   }
   await demo.emulateMedia({ reducedMotion: 'no-preference' });
-  await demo.locator('#tab-commands').click();
-  assert.ok(await demo.locator('#demo-commands').evaluate(element => element.getAnimations({ subtree: true }).length > 0), 'Selected scenario animates');
+  await demo.locator('#tab-search').click();
+  assert.ok(await demo.locator('#demo-search').evaluate(element => element.getAnimations({ subtree: true }).length > 0), 'Selected scenario animates');
   await demo.locator('#features').scrollIntoViewIfNeeded();
-  await demo.waitForFunction(() => !!globalThis.document.querySelector('.feature.is-revealed'));
+  await demo.waitForFunction(() => !!globalThis.document.querySelector('#features .is-revealed'));
   await demo.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await demo.evaluate(() => globalThis.document.getAnimations().length), 0, 'Changing motion preference stops animations');
   // mcp.html: the page about 🌱 Twig as an MCP server, linked from the main

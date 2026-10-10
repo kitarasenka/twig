@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#000000">
-  <meta name="description" content="🌱 Twig — десктопный Git-клиент с визуальными проверками перед commit и push, личными заметками на коммитах и журналом команд. macOS, Windows и Linux.">
+  <meta name="description" content="🌱 Twig — Git-клиент со встроенным MCP-сервером. Вы работаете с графом, staging и rebase, а Claude Code, Codex и Cursor видят тот же репозиторий, тратят меньше токенов и коммитят только по вашей кнопке. macOS, Windows, Linux.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="🌱 Twig — Git-клиент с автоматизациями и журналом команд">
-  <meta property="og:description" content="Проверки перед commit и push, локальные марки, предпросмотр команд и рабочая Git-песочница. Без аккаунта и телеметрии.">
-  <title>🌱 Twig — Git-клиент с автоматизациями и журналом команд</title>
+  <meta property="og:title" content="🌱 Twig — Git-клиент для вас и вашего AI-агента">
+  <meta property="og:description" content="Встроенный MCP: агент видит выделенный коммит, ищет по истории в 3–63 раза дешевле git и коммитит только по вашей кнопке. Без аккаунта и телеметрии.">
+  <title>🌱 Twig — Git-клиент со встроенным MCP для AI-агентов</title>
   <link rel="icon" type="image/png" href="assets/twig-small.png">
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="style.css">
@@ -19,128 +19,131 @@
   <a class="skip-link" href="#main">К содержимому</a>
   <header class="header wrap">
     <a class="brand" href="#" aria-label="🌱 Twig — на главную"><img src="assets/twig-small.png" width="40" height="40" alt=""><span>🌱 Twig</span></a>
-    <nav aria-label="Главная навигация"><a href="#features">Особенности</a><a href="#workspace">Интерфейс</a><a href="#screens">Экраны</a><a href="#bughunter">BugHunter</a><a href="mcp.html">MCP</a><a href="#whats-new">Что нового</a><a href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#download">Скачать <span aria-hidden="true">↗</span></a></nav>
+    <nav aria-label="Главная навигация"><a href="#why">Почему 🌱 Twig</a><a href="mcp.html">MCP</a><a href="#features">Возможности</a><a href="#screens">Экраны</a><a href="#whats-new">Что нового</a><a href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#download">Скачать <span aria-hidden="true">↗</span></a></nav>
   </header>
   <main id="main">
     <section class="hero wrap" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> <span class="release-line">ДЕСКТОПНЫЙ GIT-КЛИЕНТ · v{{version}} · {{released}}</span></p>
-        <h1 id="hero-title">Ветки, команды,<br><span>проверки.</span><br>В одном окне.</h1>
-        <p class="hero-description">Настройте проверки перед commit и push. Оставляйте личные заметки на коммитах. Просматривайте команды перед изменением истории.</p>
-        <div class="hero-actions"><a class="button primary" href="#download">Скачать 🌱 Twig <span aria-hidden="true">↓</span></a><a class="text-link" href="#workspace">Посмотреть интерфейс <span aria-hidden="true">↗</span></a></div>
+        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> <span class="release-line">GIT-КЛИЕНТ + MCP · v{{version}} · {{released}}</span></p>
+        <h1 id="hero-title">Git-клиент<br>для вас<br><span>и вашего<br>AI-агента.</span></h1>
+        <p class="hero-description">Граф, staging по строкам, rebase и Undo — в окне. Claude Code, Codex и Cursor подключаются к тому же репозиторию через встроенный MCP: видят выделенное вами, тратят меньше токенов, а коммит только предлагают.</p>
+        <div class="hero-actions"><a class="button primary" href="#download">Скачать 🌱 Twig <span aria-hidden="true">↓</span></a><a class="text-link" href="#why">Почему 🌱 Twig <span aria-hidden="true">↓</span></a></div>
         <p class="availability">macOS <span>·</span> Windows <span>·</span> Linux <span class="version">Предварительная версия</span></p>
       </div>
-      <div class="product-demo" aria-label="Примеры возможностей 🌱 Twig">
-        <div class="demo-titlebar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>🌱 Twig / workspace-demo</span><span class="demo-badge">ПРИМЕР</span></div>
-        <div class="demo-tabs" role="tablist" aria-label="Сценарии работы" hidden>
-          <button id="tab-checks" type="button" role="tab" aria-selected="true" aria-controls="demo-checks">01 Проверки</button>
-          <button id="tab-commands" type="button" role="tab" aria-selected="false" aria-controls="demo-commands" tabindex="-1">02 Команды</button>
-          <button id="tab-marks" type="button" role="tab" aria-selected="false" aria-controls="demo-marks" tabindex="-1">03 Марки</button>
+      <div class="product-demo" aria-label="Как AI-агент работает через 🌱 Twig">
+        <div class="demo-titlebar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Агент · 🌱 Twig MCP</span><span class="demo-badge">ПРИМЕР</span></div>
+        <div class="demo-tabs" role="tablist" aria-label="Что агент делает через 🌱 Twig" hidden>
+          <button id="tab-selection" type="button" role="tab" aria-selected="true" aria-controls="demo-selection">01 Выделение</button>
+          <button id="tab-search" type="button" role="tab" aria-selected="false" aria-controls="demo-search" tabindex="-1">02 Поиск</button>
+          <button id="tab-commit" type="button" role="tab" aria-selected="false" aria-controls="demo-commit" tabindex="-1">03 Коммит</button>
         </div>
-        <div class="demo-panel" id="demo-checks">
-          <div class="demo-panel-heading"><span class="eyebrow">AUTOMATIONS</span><span class="branch-pill">feature/search</span></div>
-          <h2>Проверить до отправки</h2>
-          <p class="demo-description">Событие → ваши проверки → результат</p>
-          <div class="pipeline-step step-enter"><span class="step-icon">↓</span><div><strong>Перед push</strong><small>Запуск из 🌱 Twig</small></div><code>pre-push</code></div>
-          <div class="pipeline-step step-enter"><span class="step-icon">✓</span><div><strong>Проверить код</strong><small>Проверка завершена</small></div><code>npm run lint</code></div>
-          <div class="pipeline-step step-enter failed"><span class="step-icon">×</span><div><strong>Запустить тесты</strong><small>1 тест не прошёл</small></div><code>npm test</code></div>
-          <div class="demo-result step-enter"><span class="result-dot" aria-hidden="true"></span><div><strong>Push остановлен</strong><span>Исправьте ошибку и повторите проверку.</span></div></div>
+        <div class="demo-panel" id="demo-selection">
+          <div class="demo-panel-heading"><span class="eyebrow">ЧТО ВЫДЕЛЕНО В 🌱 TWIG</span><span class="branch-pill">get_ui_context</span></div>
+          <h2>«Объясни этот коммит»</h2>
+          <p class="demo-description">Хэш копировать не нужно — агент видит выделенное.</p>
+          <div class="marked-row selected-row step-enter"><code>a4f891c</code><strong>fix: restore search results</strong></div>
+          <div class="pipeline-step step-enter"><span class="step-icon">→</span><div><strong>Что выделено?</strong><small>коммит a4f891c, файл search.js</small></div><code>get_ui_context</code></div>
+          <div class="pipeline-step step-enter"><span class="step-icon">→</span><div><strong>Коммит целиком</strong><small>сообщение и патчи одним вызовом</small></div><code>get_commit</code></div>
+          <div class="demo-result neutral step-enter"><span class="step-icon">✓</span><div><strong>Ответ — про коммит на вашем экране</strong><span>Два вызова и ни одного хэша в чате.</span></div></div>
         </div>
-        <div class="demo-panel" id="demo-commands">
-          <div class="demo-panel-heading"><span class="eyebrow">ПРЕДПРОСМОТР</span><span class="branch-pill">merge</span></div>
-          <h2>Видно, что будет выполнено</h2>
-          <p class="demo-description">Перенос ветки открывает выбор действия.</p>
-          <div class="branch-route step-enter"><code>feature/search</code><svg viewBox="0 0 100 32" fill="none" aria-hidden="true"><path d="M1 16H95m-9-8 9 8-9 8"/></svg><code>main</code></div>
-          <div class="command-preview step-enter"><span>Слияние в main · хэш коммита сокращён</span><code><b>$</b> git switch --no-guess -- main</code><code><b>$</b> git merge --no-edit --no-ff a4f891c</code></div>
-          <div class="demo-result neutral step-enter"><span class="step-icon">↳</span><div><strong>Сначала подтверждение</strong><span>Затем — команды и их вывод в журнале.</span></div></div>
+        <div class="demo-panel" id="demo-search">
+          <div class="demo-panel-heading"><span class="eyebrow">ЗАМЕР · CLAUDE OPUS 5.5</span><span class="branch-pill">search_history</span></div>
+          <h2>«Когда добавили или убрали requestAnimationFrame?»</h2>
+          <p class="demo-description">9 коммитов в истории. Сколько токенов прочитал агент.</p>
+          <div class="meter step-enter"><div class="meter-row"><code>git log -S… -p</code><strong>189 272</strong></div><svg viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="bar-git" width="100" height="6"/></svg></div>
+          <div class="meter step-enter"><div class="meter-row"><code>git log -S… -p | grep -C3</code><strong>4 745</strong></div><svg viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="bar-track" width="100" height="6"/><rect class="bar-git" width="2.5" height="6"/></svg></div>
+          <div class="meter is-twig step-enter"><div class="meter-row"><code>search_history</code><strong>2 992</strong></div><svg viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="bar-track" width="100" height="6"/><rect class="bar-twig" width="1.6" height="6"/></svg></div>
+          <div class="demo-result neutral step-enter"><span class="step-icon">↓</span><div><strong>−98 % токенов, один вызов</strong><span>Строки вокруг совпадений, а не все диффы. На пяти запросах — в 3–63 раза меньше.</span></div></div>
         </div>
-        <div class="demo-panel" id="demo-marks">
-          <div class="demo-panel-heading"><span class="eyebrow">ЛОКАЛЬНАЯ МАРКА</span><span class="branch-pill">Только у вас</span></div>
-          <h2>Заметка привязана к коммиту</h2>
-          <p class="demo-description">Шесть цветов. Текст до 2 000 символов.</p>
-          <div class="marked-row step-enter"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 20V4h12v16l-6-4z"/></svg><code>a4f891c</code><strong>fix: restore search results</strong></div>
-          <div class="note-preview step-enter"><span>ЗАМЕТКА</span><p>Проверить поиск с пустым фильтром перед релизом.</p><div class="swatches" aria-label="Шесть цветов марок"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
-          <div class="demo-result neutral step-enter"><span class="step-icon">✓</span><div><strong>История Git не меняется</strong><span>Цвет и заметка хранятся в настройках клиента.</span></div></div>
+        <div class="demo-panel" id="demo-commit">
+          <div class="demo-panel-heading"><span class="eyebrow">ОКНО 🌱 TWIG</span><span class="branch-pill">propose_commit</span></div>
+          <h2>Агент предлагает.<br>Коммитите вы.</h2>
+          <p class="demo-description">Файлы, сообщение, версия и тег — перед глазами. Undo отменит и этот коммит.</p>
+          <div class="command-preview step-enter"><span>2 файла · сообщение можно поправить</span><code><b>M</b> README.md +1 −0</code><code><b>A</b> docs/connect.md +24 −0</code><code>docs: explain how to connect an agent</code></div>
+          <div class="choice-row step-enter"><span>Версия <b>0.2.0 → 0.2.1</b></span><span>Тег <b>v0.2.1</b></span></div>
+          <div class="choice-row step-enter"><span>Cancel</span><span>Commit</span><span class="is-primary">Commit &amp; Push</span></div>
         </div>
-        <p class="demo-caption">Иллюстрация сценария · команды на сайте не запускаются</p>
+        <p class="demo-caption">Иллюстрация · цифры поиска — из замера на странице MCP</p>
       </div>
     </section>
-    <div class="facts wrap"><span><span class="status-dot" aria-hidden="true"></span> Без аккаунта 🌱 Twig</span><span>Без телеметрии</span><span>Работает с вашим Git</span><a href="#sandbox">Встроенная Git-песочница <span aria-hidden="true">↗</span></a></div>
+    <div class="facts wrap"><span><span class="status-dot" aria-hidden="true"></span> Без аккаунта и телеметрии</span><span>MCP выключен, пока вы не включите</span><span>Локальный сокет, без сетевого порта</span><a href="mcp.html#security">Модель безопасности <span aria-hidden="true">↗</span></a></div>
     <section class="preview wrap section-space" id="workspace" aria-labelledby="workspace-title">
-      <div class="section-heading compact"><div><p class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</p><h2 id="workspace-title">Граф, изменения и команды — рядом.</h2></div><p>Все ветки и теги коммита видны по именам.<br>Ширина столбцов и панелей регулируется.</p></div>
+      <div class="section-heading compact"><div><p class="eyebrow">ДЛЯ ВАС · GIT-КЛИЕНТ</p><h2 id="workspace-title">Граф, изменения и команды — рядом.</h2></div><p>Все ветки и теги коммита — по именам.<br>Снято в самом 🌱 Twig, не нарисовано.</p></div>
       <figure class="app-frame" data-reveal><a href="assets/shots/workspace.webp" target="_blank" rel="noopener" aria-label="Открыть скриншот 🌱 Twig в полном размере (новая вкладка)"><img src="assets/shots/workspace.webp" width="2880" height="1760" alt="🌱 Twig: демо-песочница с 12 коммитами и тремя ветками. Над графом — полоса незакоммиченных изменений, две строки помечены цветом; справа открыт коммит с зелёной маркой и заметкой." loading="lazy"></a><figcaption><span>🌱 Twig {{version}} · реальная Git-песочница · тёмная тема</span><span>Нажмите, чтобы рассмотреть <span aria-hidden="true">↗</span></span></figcaption></figure>
     </section>
-    <section class="screens wrap section-space" id="screens" aria-labelledby="screens-title">
-      <div class="section-heading compact"><div><p class="eyebrow">ЭКРАНЫ ПРИЛОЖЕНИЯ</p><h2 id="screens-title">Снято в самом 🌱 Twig, не нарисовано.</h2></div><p>Все снимки — демо-репозиторий, который<br>открывается при первом запуске.</p></div>
-      <div class="screen-grid">
-        <figure class="screen" data-reveal><a href="assets/shots/uncommitted.webp" target="_blank" rel="noopener" aria-label="Незакоммиченные изменения — открыть в полном размере (новая вкладка)"><img src="assets/shots/uncommitted.webp" width="2880" height="1760" alt="Полоса «Uncommitted changes, 3 files» с чипами 1 staged, 2 changed, 1 untracked над графом; справа списки Staged, Changed и Untracked с кнопками плюс и минус у каждого файла." loading="lazy"></a><figcaption><strong>Незакоммиченные изменения</strong><span>Полоса над графом с разбивкой, списки справа. Плюс и минус переносят файл в коммит и обратно, граф остаётся на месте.</span></figcaption></figure>
-        <figure class="screen" data-reveal><a href="assets/shots/conflict.webp" target="_blank" rel="noopener" aria-label="Редактор конфликтов — открыть в полном размере (новая вкладка)"><img src="assets/shots/conflict.webp" width="2880" height="1760" alt="Merge in progress: редактор конфликта в app/App.jsx — колонки Ours, Base и Theirs с отмеченными строками, справа результат, который будет записан на диск." loading="lazy"></a><figcaption><strong>Редактор конфликтов</strong><span>Ваша сторона, база и их изменения. Строки выбираются по одной, порядок сторон задаётся, у редактора своя отмена.</span></figcaption></figure>
-        <figure class="screen" data-reveal><a href="assets/shots/automations-blocked.webp" target="_blank" rel="noopener" aria-label="Автоматизации — открыть в полном размере (новая вкладка)"><img src="assets/shots/automations-blocked.webp" width="2880" height="1760" alt="Окно Before Commit checks: Commit blocked, 0 passed, 1 failed — правило «No direct commits» запрещает коммиты в main; кнопки Fix and retry, Run again и Bypass once." loading="lazy"></a><figcaption><strong>Проверки перед коммитом</strong><span>Пайплайн остановил коммит в main и объяснил почему. Разовый обход записывается в историю запусков.</span></figcaption></figure>
-        <figure class="screen" data-reveal><a href="assets/shots/bughunter.webp" target="_blank" rel="noopener" aria-label="BugHunter — открыть в полном размере (новая вкладка)"><img src="assets/shots/bughunter.webp" width="2880" height="1760" alt="Панель BugHunter (bisect): тестируется коммит «Remember selection for each tab», около двух проверок после этой; кнопки Bug absent, Bug present, Cannot test · Skip." loading="lazy"></a><figcaption><strong>🌱 BugHunter</strong><span>Тестовая версия, оценка оставшихся проверок и три ответа. Stop and return возвращает на исходную ветку.</span></figcaption></figure>
-        <figure class="screen" data-reveal><a href="assets/shots/blame.webp" target="_blank" rel="noopener" aria-label="Blame — открыть в полном размере (новая вкладка)"><img src="assets/shots/blame.webp" width="2880" height="1760" alt="Blame файла app/App.jsx: строки сгруппированы по коммитам с автором и датой; справа коммит выбранной строки и дифф этого файла с номерами строк." loading="lazy"></a><figcaption><strong>Blame и история строки</strong><span>Кто и когда изменил строку, дифф этого файла в том коммите и шаг к версии до правки.</span></figcaption></figure>
-        <figure class="screen" data-reveal><a href="assets/shots/console.webp" target="_blank" rel="noopener" aria-label="Журнал команд — открыть в полном размере (новая вкладка)"><img src="assets/shots/console.webp" width="2880" height="1760" alt="Развёрнутая консоль на вкладке My: набранная команда git log --oneline --graph с каталогом, временем и выводом; внизу строка ввода только для команд чтения." loading="lazy"></a><figcaption><strong>Журнал команд</strong><span>«My» — то, что сделали вы, «Full History» — ещё и то, чем 🌱 Twig рисует граф. Строка ввода принимает только команды чтения.</span></figcaption></figure>
-      </div>
-    </section>
     <div class="light-section" data-theme="light">
-      <section class="features wrap section-space" id="features" aria-labelledby="features-title">
-        <div class="section-heading"><div><p class="eyebrow">ОСОБЕННОСТИ 🌱 Twig</p><h2 id="features-title">Автоматизации, заметки,<br><span>журнал и песочница.</span></h2></div><p>Настройте правила для репозитория,<br>сохраните заметки и проверьте результат<br>каждого действия в журнале.</p></div>
-        <div class="feature-grid">
-          <article class="feature feature-automation" data-reveal>
-            <span class="feature-number">01 / ВИЗУАЛЬНЫЕ АВТОМАТИЗАЦИИ</span>
-            <h3>Тесты и правила<br>перед commit и push</h3><p>Выберите событие, условия и шаги проверки в редакторе. Запускайте тесты, проверяйте имя ветки, сообщение коммита или добавленные строки на секреты. При ошибке — предупреждение или блокировка операции.</p>
-            <div class="automation-flow" aria-label="Пример настройки автоматизации"><span>Перед commit</span><span aria-hidden="true">↓</span><span>Проверить сообщение</span><span aria-hidden="true">↓</span><span>Запустить тесты</span></div>
-            <p class="feature-footnote">Работает для операций внутри 🌱 Twig. Есть история запусков и вывод каждого шага.</p>
-          </article>
-          <article class="feature feature-marks" data-reveal>
-            <span class="feature-number">02 / ЛОКАЛЬНЫЕ МАРКИ И ЗАМЕТКИ</span>
-            <h3>Свои пометки<br>поверх истории Git</h3><p>Отметьте подозрительный коммит или версию для релиза. Цвет выделяет строку и узел графа, заметка хранит детали. Марки остаются на вашем компьютере и не попадают в общий репозиторий.</p>
-            <div class="mark-example"><div><span class="mark-glyph" aria-hidden="true">⚑</span><code>a4f891c</code><strong>Проверить перед релизом</strong></div><p>Баг появляется при пустом фильтре.<br>Сравнить с предыдущей версией.</p><div class="swatches" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
-          </article>
-          <article class="feature" data-reveal>
-            <span class="feature-number">03 / ЖУРНАЛ КОМАНД</span>
-            <h3>От действия в интерфейсе<br>до фактической команды</h3><p>Консоль показывает команду Git, каталог, вывод, код завершения и длительность. Последние 2 000 записей доступны после перезапуска. Журнал открывается на ваших действиях, всё остальное — во «Full History».</p>
-            <div class="log-example"><code><b>$</b> git log --oneline -3</code><span>Код 0 <span aria-hidden="true">·</span> 12 мс <span aria-hidden="true">·</span> пример записи</span></div>
-            <p class="feature-footnote">В консоли можно вводить команды чтения: например, <code>log</code>, <code>diff</code> и <code>status</code>.</p>
-          </article>
-          <article class="feature" id="sandbox" data-reveal>
-            <span class="feature-number">04 / РАБОЧАЯ ДЕМО-ПЕСОЧНИЦА</span>
-            <h3>Попробуйте merge и rebase<br>на учебном репозитории</h3><p>При первом запуске уже есть 12 коммитов, ветки, теги, стеш и изменённые файлы. Это настоящий Git-репозиторий: действия выполняются, а результат виден в графе и консоли.</p>
-            <div class="sandbox-stats"><div><strong>12</strong><span>коммитов</span></div><div><strong>3</strong><span>локальные ветки</span></div><div><strong>0</strong><span>сетевых запросов*</span></div></div>
-            <p class="feature-footnote">Сброс в настройках восстанавливает исходный пример. Вкладку можно закрыть — песочница останется на диске и вернётся из настроек. *Удалённый репозиторий песочницы тоже локальный.</p>
-          </article>
+      <section class="why-twig wrap section-space" id="why" aria-labelledby="why-title">
+        <div class="section-heading"><div><p class="eyebrow">ПОЧЕМУ 🌱 TWIG</p><h2 id="why-title">Агенту — меньше токенов.<br><span>Вам — последнее слово.</span></h2></div><p>Агент и так умеет звать <code>git</code>. 🌱 Twig даёт ему только то, что дешевле или чего у <code>git</code> нет. Замер на настоящих изменениях, токены считал Claude Opus 5.5.</p></div>
+        <div class="token-stats">
+          <article data-reveal><strong>в 3–63 раза</strong><p>меньше токенов на «когда появился или исчез этот код?», чем у <code>git log -S … -p</code>.</p></article>
+          <article data-reveal><strong>1 вызов вместо <span class="nowrap">3–9</span></strong><p>на «кто и зачем менял эти строки»: <span class="nowrap">−92…−95&nbsp;%</span> токенов против <code>git blame</code> и <code>git log</code>.</p></article>
+          <article data-reveal><strong>в 2–3 раза</strong><p>короче ответ на «что изменено?» — один вызов, сразу с числом строк.</p></article>
+        </div>
+        <div class="token-table-wrap" data-reveal>
+          <table class="token-table compare-table">
+            <caption>Честно: диффы 🌱 Twig не сжимает — на чтении всех изменений для сообщения коммита выигрыш 4–10&nbsp;%, в основном за счёт 2–5 вызовов вместо 5–9. <a href="mcp.html#tokens">Весь замер</a></caption>
+            <thead><tr><th scope="col">Задача</th><th scope="col">Агент с git</th><th scope="col">Агент с 🌱 Twig</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">«Объясни этот коммит»</th><td>Вы копируете хэш в чат</td><td>Видит, что выделено в окне</td></tr>
+              <tr><th scope="row">Lock-файл на 12&nbsp;МБ</th><td>Весь дифф — в контекст</td><td>Одна строка: размер и команда, чтобы дочитать</td></tr>
+              <tr><th scope="row">Коммит и push</th><td>Запускает сам</td><td>Предлагает, Commit нажимаете вы, Undo работает</td></tr>
+              <tr><th scope="row">Что видно вам</th><td>Терминал агента</td><td>Каждый запрос — в журнале 🌱 Twig с плашкой MCP</td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
     </div>
-    <section class="bughunter wrap section-space" id="bughunter" aria-labelledby="bug-title">
-      <div class="bug-copy"><p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> 🌱 BUGHUNTER / GIT BISECT</p><h2 id="bug-title">Найдите коммит,<br><span>который внёс ошибку.</span></h2><p>Укажите версию с багом и старую версию без него. BugHunter выбирает промежуточный коммит. Вы проверяете его и отмечаете: ошибка есть, ошибки нет или версию нельзя проверить.</p><p>Поиск использует <code>git bisect</code> — деление диапазона пополам. В панели видны тестовая версия и оценка оставшихся шагов. По завершении можно вернуться на исходную ветку.</p><a class="text-link" href="#download">Скачать 🌱 Twig с BugHunter <span aria-hidden="true">↗</span></a></div>
-      <div class="hunt-card" data-reveal><div class="hunt-header"><strong>🌱 BugHunter</strong><span>ПРИМЕР ПОИСКА</span></div><div class="hunt-range"><span>✓ Ошибки нет</span><span>× Ошибка есть</span></div><div class="hunt-track" aria-hidden="true"><i></i><i></i><i></i><i class="test-node"></i><i></i><i></i><i></i><i></i><i></i></div><div class="hunt-result"><span class="eyebrow">ДЕЛЕНИЕ ДИАПАЗОНА ПОПОЛАМ</span><strong>128 <span>→</span> ~7</strong><p>версий → ручных проверок</p></div><div class="bisect-steps" aria-label="Пример уменьшения диапазона"><span>128</span><span>64</span><span>32</span><span>16</span><span>8</span><span>4</span><span>2</span><span>1</span></div><p class="hunt-footnote">Иллюстрация для линейной истории с одной причиной бага. Пропуски могут увеличить число шагов или оставить несколько кандидатов.</p></div>
-    </section>
     <section class="mcp-teaser wrap section-space" id="mcp" aria-labelledby="mcp-title">
-      <div class="bug-copy"><p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> 🌱 TWIG AS MCP / ДЛЯ AI-АГЕНТОВ</p><h2 id="mcp-title">Ваш AI-агент<br><span>видит то же, что и вы.</span></h2><p>Включите MCP-сервер в 🌱 Twig, и Claude Code, Codex или Cursor получат структурированный контекст репозитория: что изменено — сразу с диффами, коммит целиком, поиск по коду в истории и blame — и коммит, который у вас сейчас выделен.</p><p>Только чтение. Локальный сокет без сетевого порта. Выключен, пока вы его не включите.</p><a class="text-link" href="mcp.html">Почему это круто <span aria-hidden="true">→</span></a></div>
+      <div class="bug-copy"><p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> MCP · ПОДКЛЮЧЕНИЕ ЗА МИНУТУ</p><h2 id="mcp-title">Включили MCP —<br><span>агент уже в репозитории.</span></h2><p>Кнопка <b class="inline-tag">MCP</b> в 🌱 Twig → On → Copy: готовая команда для Claude Code, Codex или Cursor. Сервер встроен в приложение — ни Node.js, ни аккаунта.</p><p>Шесть инструментов читают, три предлагают коммит. Каждый есть, только если он лучше <code>git</code>.</p><a class="text-link" href="mcp.html">Инструменты, замер и безопасность <span aria-hidden="true">→</span></a></div>
       {{agentcard}}
     </section>
     <div class="light-section" data-theme="light">
-      <section class="everyday wrap section-space" aria-labelledby="everyday-title">
-        <div class="section-heading"><div><p class="eyebrow">ЕЖЕДНЕВНАЯ РАБОТА С GIT</p><h2 id="everyday-title">От отдельных строк<br><span>до перестройки истории.</span></h2></div></div>
-        <div class="benefits">
-          <article data-reveal><span class="feature-number">01 / STAGING</span><h3>Коммит из выбранных строк</h3><p>Добавляйте файлы, фрагменты или отдельные строки. Дифф нумерует строки с обеих сторон и выделяет конкретные правки внутри строки.</p></article>
-          <article data-reveal><span class="feature-number">02 / REBASE</span><h3>План до запуска</h3><p>Переставляйте и объединяйте коммиты, меняйте сообщения. Весь план виден до выполнения; при остановке доступны продолжение, пропуск и отмена.</p></article>
-          <article data-reveal><span class="feature-number">03 / КОНФЛИКТЫ</span><h3>Три версии и результат</h3><p>Ваша версия, общая база и их изменения — рядом. Собирайте результат построчно и отменяйте правки внутри редактора.</p></article>
-          <article data-reveal><span class="feature-number">04 / BLAME</span><h3>История конкретной строки</h3><p>Посмотрите, кто изменил строку. Перейдите к версии до правки и её диффу. История файла учитывает переименования.</p></article>
-        </div>
-        <div class="local-note" data-reveal><img src="assets/twig-small.png" width="48" height="48" alt="" loading="lazy"><div><h3>Локальная работа без аккаунта 🌱 Twig</h3><p>Репозитории, марки и журнал остаются на компьютере. Телеметрии нет. Сеть используют синхронизация Git и те настроенные вами команды, которым она нужна.</p></div></div>
+      <section class="features wrap section-space" id="features" aria-labelledby="features-title">
+        <div class="section-heading"><div><p class="eyebrow">ДЛЯ ВАС · ВОЗМОЖНОСТИ</p><h2 id="features-title">Ежедневный Git<br><span>и трудные случаи.</span></h2></div><p>Работает с вашим установленным Git — своего движка вместо него 🌱 Twig не подставляет.</p></div>
+        <ul class="strengths" role="list">
+          <li data-reveal><strong>Каждая команда на виду</strong><span>Точная команда, папка, вывод, код и время — в журнале. Запросы агента помечены MCP.</span></li>
+          <li data-reveal><strong>Undo для Git</strong><span>Коммит, merge, cherry-pick, checkout, stash и даже discard — правки сначала копируются в Git.</span></li>
+          <li data-reveal><strong>Проверки до commit и push</strong><span>Тесты, правила ветки и сообщения, поиск секретов — без ручных хуков.</span></li>
+          <li data-reveal><strong>Staging по строкам</strong><span>Файлы, ханки или отдельные строки. Дифф с номерами и правками внутри строки.</span></li>
+          <li data-reveal><strong>Rebase по плану</strong><span>Порядок перетаскиванием, squash выделенных, новые сообщения — до запуска.</span></li>
+          <li data-reveal><strong>Конфликты в три колонки</strong><span>Ваша версия, база и их — результат собирается построчно.</span></li>
+          <li data-reveal><strong>Ветки перетаскиванием</strong><span>Merge, rebase, cherry-pick или push — команды видны до запуска.</span></li>
+          <li data-reveal><strong>🌱 BugHunter</strong><span>Пошаговый <code>git bisect</code>: какой коммит внёс баг.</span></li>
+          <li data-reveal><strong>Blame и история строки</strong><span>Версия до правки, reverse blame, история файла через переименования.</span></li>
+          <li data-reveal><strong>Дифф картинок</strong><span>Рядом, шторкой, наложением или разницей — с рамками вокруг изменений.</span></li>
+          <li data-reveal><strong>Reflog</strong><span>Потерянные коммиты помечены, ветка восстанавливается под прежним именем.</span></li>
+          <li data-reveal><strong>Поиск по всей истории</strong><span>По сообщению, хэшу, автору, пути и коду (<code>-S</code>, <code>-G</code>).</span></li>
+          <li data-reveal><strong>Марки и заметки</strong><span>Цвет и текст на коммите — только у вас, не в репозитории.</span></li>
+          <li data-reveal><strong>Worktrees, сабмодули, LFS</strong><span>А ещё подписи коммитов, патчи, теги и обслуживание репозитория.</span></li>
+          <li data-reveal><strong>Учебная песочница</strong><span>Настоящий репозиторий с remote: пробуйте merge и rebase без риска.</span></li>
+          <li data-reveal><strong>Обновления в один клик</strong><span>Установщик сверяется с релизом по SHA&#8209;256, сборка для macOS подписана и нотаризована.</span></li>
+        </ul>
+        <div class="local-note" data-reveal><img src="assets/twig-small.png" width="48" height="48" alt="" loading="lazy"><div><h3>Без аккаунта и телеметрии</h3><p>Репозитории, марки и журнал остаются на компьютере. Сам 🌱 Twig ходит в сеть только за проверкой обновлений (её можно выключить) и за фоновым fetch — если вы его включили.</p></div></div>
       </section>
+    </div>
+    <section class="screens wrap section-space" id="screens" aria-labelledby="screens-title">
+      <div class="section-heading compact"><div><p class="eyebrow">ЭКРАНЫ ПРИЛОЖЕНИЯ</p><h2 id="screens-title">Снято в самом 🌱 Twig, не нарисовано.</h2></div><p>Все снимки — демо-репозиторий, который<br>открывается при первом запуске.</p></div>
+      <div class="screen-grid">
+        <figure class="screen" data-reveal><a href="assets/shots/uncommitted.webp" target="_blank" rel="noopener" aria-label="Незакоммиченные изменения — открыть в полном размере (новая вкладка)"><img src="assets/shots/uncommitted.webp" width="2880" height="1760" alt="Полоса «Uncommitted changes, 3 files» с чипами 1 staged, 2 changed, 1 untracked над графом; справа списки Staged, Changed и Untracked с кнопками плюс и минус у каждого файла." loading="lazy"></a><figcaption><strong>Незакоммиченные изменения</strong><span>Плюс и минус переносят файл в коммит и обратно, граф остаётся на месте.</span></figcaption></figure>
+        <figure class="screen" data-reveal><a href="assets/shots/mcp.webp" target="_blank" rel="noopener" aria-label="Окно MCP — открыть в полном размере (новая вкладка)"><img src="assets/shots/mcp.webp" width="2880" height="1760" alt="Окно AI agents (MCP) поверх демо-песочницы: MCP server — On, статус Listening, четыре карточки What your agent gets, три шага подключения и команда для Claude Code с кнопкой Copy." loading="lazy"></a><figcaption><strong>MCP для агента</strong><span>Включение, что получит агент, и готовая команда подключения с кнопкой Copy.</span></figcaption></figure>
+        <figure class="screen" data-reveal><a href="assets/shots/conflict.webp" target="_blank" rel="noopener" aria-label="Редактор конфликтов — открыть в полном размере (новая вкладка)"><img src="assets/shots/conflict.webp" width="2880" height="1760" alt="Merge in progress: редактор конфликта в app/App.jsx — колонки Ours, Base и Theirs с отмеченными строками, справа результат, который будет записан на диск." loading="lazy"></a><figcaption><strong>Редактор конфликтов</strong><span>Строки выбираются по одной, порядок сторон задаётся, у редактора своя отмена.</span></figcaption></figure>
+        <figure class="screen" data-reveal><a href="assets/shots/automations-blocked.webp" target="_blank" rel="noopener" aria-label="Автоматизации — открыть в полном размере (новая вкладка)"><img src="assets/shots/automations-blocked.webp" width="2880" height="1760" alt="Окно Before Commit checks: Commit blocked, 0 passed, 1 failed — правило «No direct commits» запрещает коммиты в main; кнопки Fix and retry, Run again и Bypass once." loading="lazy"></a><figcaption><strong>Проверки перед коммитом</strong><span>Пайплайн остановил коммит в main и объяснил почему.</span></figcaption></figure>
+        <figure class="screen" data-reveal><a href="assets/shots/bughunter.webp" target="_blank" rel="noopener" aria-label="BugHunter — открыть в полном размере (новая вкладка)"><img src="assets/shots/bughunter.webp" width="2880" height="1760" alt="Панель BugHunter (bisect): тестируется коммит «Remember selection for each tab», около двух проверок после этой; кнопки Bug absent, Bug present, Cannot test · Skip." loading="lazy"></a><figcaption><strong>🌱 BugHunter</strong><span>Тестовая версия, оценка оставшихся проверок и три ответа.</span></figcaption></figure>
+        <figure class="screen" data-reveal><a href="assets/shots/console.webp" target="_blank" rel="noopener" aria-label="Журнал команд — открыть в полном размере (новая вкладка)"><img src="assets/shots/console.webp" width="2880" height="1760" alt="Развёрнутая консоль на вкладке My: набранная команда git log --oneline --graph с каталогом, временем и выводом; внизу строка ввода только для команд чтения." loading="lazy"></a><figcaption><strong>Журнал команд</strong><span>Каждая команда — как она была запущена. Строка ввода принимает только чтение.</span></figcaption></figure>
+      </div>
+    </section>
+    <div class="light-section" data-theme="light">
       <section class="whats-new wrap section-space" id="whats-new" aria-labelledby="whats-new-title" data-reveal>
         {{whatsnew}}
         <p class="release-note-link">Полный список выпусков — в <a href="https://github.com/kitarasenka/twig/blob/main/CHANGELOG.md">CHANGELOG</a> и на странице <a href="https://github.com/kitarasenka/twig/releases">Releases</a>.</p>
       </section>
       <section class="downloads wrap section-space" id="download" aria-labelledby="download-title">
-        <div class="download-heading"><div><p class="eyebrow">MACOS / WINDOWS / LINUX</p><h2 id="download-title">Скачать 🌱 Twig</h2><p class="download-intro">Установщики для macOS, Windows и Debian / Ubuntu, AppImage для остальных Linux.<br>Демо-репозиторий доступен при первом запуске.</p></div><p class="release-label"><span class="status-dot" aria-hidden="true"></span> Версия {{version}}<small>Предварительная версия</small></p></div>
+        <div class="download-heading"><div><p class="eyebrow">MACOS / WINDOWS / LINUX</p><h2 id="download-title">Скачать 🌱 Twig</h2><p class="download-intro">MCP-сервер уже внутри — отдельно ставить ничего не нужно.<br>Демо-репозиторий открывается при первом запуске.</p></div><p class="release-label"><span class="status-dot" aria-hidden="true"></span> Версия {{version}}<small>Предварительная версия</small></p></div>
         <div class="download-grid">{{downloads}}</div>
         <p class="download-note">Нужен установленный Git. На Mac: Apple Silicon — чипы серии M, Intel — процессоры Intel.</p>
-        <details class="install-help"><summary>Установка и подпись</summary><p>Сборки пока без цифровой подписи и нотариального заверения Apple: macOS и Windows могут показать предупреждение при первом запуске. Разрешайте открытие только сборки из доверенного источника. Git устанавливается отдельно.</p><p>macOS: откройте <code>.dmg</code> и перенесите приложение в «Программы». Windows: запустите установщик <code>.exe</code>. Debian / Ubuntu: установите пакет <code>.deb</code>. Другие Linux: сделайте <code>.AppImage</code> исполняемым (<code>chmod +x</code>) и запустите — установка не нужна. Настройки хранятся в пользовательском каталоге системы.</p></details>
+        <details class="install-help"><summary>Установка и подпись</summary><p>Сборка для macOS подписана сертификатом Apple Developer ID и нотаризована — без предупреждения «не удаётся проверить разработчика». Установщик Windows пока без цифровой подписи: SmartScreen может предупредить при первом запуске. Git устанавливается отдельно.</p><p>macOS: откройте <code>.dmg</code> и перенесите приложение в «Программы». Windows: запустите установщик <code>.exe</code>. Debian / Ubuntu: установите пакет <code>.deb</code>. Другие Linux: сделайте <code>.AppImage</code> исполняемым (<code>chmod +x</code>) и запустите — установка не нужна. Дальше обновления приходят в самом приложении.</p></details>
       </section>
-      <footer class="footer wrap"><a class="brand" href="#" aria-label="🌱 Twig — в начало страницы"><img src="assets/twig-small.png" width="36" height="36" alt=""><span>🌱 Twig</span></a><p>Десктопный Git-клиент · macOS, Windows, Linux</p><a class="footer-link" href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a href="#main">Наверх <span aria-hidden="true">↑</span></a></footer>
+      <footer class="footer wrap"><a class="brand" href="#" aria-label="🌱 Twig — в начало страницы"><img src="assets/twig-small.png" width="36" height="36" alt=""><span>🌱 Twig</span></a><p>Git-клиент со встроенным MCP · macOS, Windows, Linux</p><a class="footer-link" href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a href="#main">Наверх <span aria-hidden="true">↑</span></a></footer>
     </div>
   </main>
 </body>

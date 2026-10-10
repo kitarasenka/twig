@@ -4,7 +4,7 @@
   "releaseDate": "2026-10-10",
   "private": true,
   "type": "module",
-  "description": "An independent desktop Git workspace with a visual commit graph",
+  "description": "Desktop Git client with a built-in MCP server for AI coding agents",
   "author": "Kiryl Tarasenka <tarasenka.kiryl@gmail.com>",
   "homepage": "https://kitarasenka.github.io/twig/",
   "license": "SEE LICENSE IN LICENSE.md",
