@@ -30,7 +30,10 @@ assert.deepEqual(imageObjectNames(validateImageSource({ kind: 'commit', oid: OID
 assert.deepEqual(imageObjectNames(validateImageSource({ kind: 'staged' }), 'x.png'), { old: 'HEAD:x.png', new: ':0:x.png' });
 assert.deepEqual(imageObjectNames(validateImageSource({ kind: 'unstaged' }), 'x.png'), { old: ':0:x.png', new: null });
 assert.deepEqual(imageObjectNames(validateImageSource({ kind: 'untracked' }), 'x.png'), { old: null, new: null });
-for (const bad of [null, 'commit', {}, { kind: 'disk' }, { kind: 'commit', oid: 'HEAD' }, { kind: 'commit', oid: OID, base: 'main' }, { kind: 'commit', oid: `${OID} --x` }]) {
+assert.deepEqual(imageObjectNames(validateImageSource({ kind: 'stash', oid: OID, untracked: false }), 'x.png'), { old: `${OID}^1:x.png`, new: `${OID}:x.png` });
+assert.deepEqual(imageObjectNames(validateImageSource({ kind: 'stash', oid: OID, untracked: true }), 'x.png'), { old: null, new: `${OID}^3:x.png` });
+for (const bad of [null, 'commit', {}, { kind: 'disk' }, { kind: 'commit', oid: 'HEAD' }, { kind: 'commit', oid: OID, base: 'main' }, { kind: 'commit', oid: `${OID} --x` },
+  { kind: 'stash', oid: OID }, { kind: 'stash', oid: 'stash@{0}', untracked: false }, { kind: 'stash', oid: OID, untracked: 'yes' }]) {
   assert.throws(() => validateImageSource(bad), TypeError, `source ${JSON.stringify(bad)} is refused`);
 }
 assert.deepEqual(parseBatchCheckLine(`${OID} blob 12`), { oid: OID, type: 'blob', size: 12 });
@@ -197,6 +200,18 @@ try {
   const untracked = await loadImagePair({ cwd: repo, log, file: 'art/new.png', source: { kind: 'untracked' } });
   assert.deepEqual(untracked.old, { state: 'missing' });
   assert.deepEqual(bytes(untracked.new), [...bytesC]);
+
+  // A stash: its work tree against the commit it was made on, and an
+  // untracked image from its third parent with no "before".
+  await git(['stash', 'push', '-q', '--include-untracked']);
+  const stashOid = (await git(['rev-parse', 'refs/stash'])).trim();
+  const stashed = await loadImagePair({ cwd: repo, log, file, source: { kind: 'stash', oid: stashOid, untracked: false } });
+  assert.deepEqual(bytes(stashed.old), [...bytesB], 'stash: ^1 before');
+  assert.deepEqual(bytes(stashed.new), [...bytesA], 'stash: its work tree after');
+  const stashedNew = await loadImagePair({ cwd: repo, log, file: 'art/new.png', source: { kind: 'stash', oid: stashOid, untracked: true } });
+  assert.deepEqual(stashedNew.old, { state: 'missing' });
+  assert.deepEqual(bytes(stashedNew.new), [...bytesC], 'stash: an untracked file from ^3');
+  await git(['stash', 'pop', '-q', '--index']);
 
   await rm(path.join(repo, 'art/new.png'));
   await git(['rm', '-q', '-f', '--cached', '--', file]);

@@ -1,7 +1,7 @@
 {
   "name": "twig",
-  "version": "0.18.3",
-  "releaseDate": "2026-10-09",
+  "version": "0.19.0",
+  "releaseDate": "2026-10-10",
   "private": true,
   "type": "module",
   "description": "An independent desktop Git workspace with a visual commit graph",

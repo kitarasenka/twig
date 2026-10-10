@@ -3,6 +3,8 @@ import { AlertTriangle, ArrowLeft, Copy, CornerUpLeft, GitBranchPlus, History, L
 import Button from '../../ui/Button.jsx';
 import DiffLines from '../diff/DiffLines.jsx';
 import FileStatus from '../diff/FileStatus.jsx';
+import ImageDiff from '../diff/ImageDiff.jsx';
+import { imageType } from '../../../../main/git/image-types.js';
 import { actionLabel, moveBranchDialog, moveReason, relativeTime, shortenIds, suggestBranchName } from './reflog-view.js';
 
 /**
@@ -79,7 +81,7 @@ export default function ReflogScreen({ repository, refs, headBranch, operation, 
     setDiff({ path: file.path, loading: true });
     try {
       const result = await window.twig.getFileDiff(repository.id, entry.oid, file.path);
-      if (request === diffRequest.current) setDiff({ path: file.path, ...result, loading: false });
+      if (request === diffRequest.current) setDiff({ path: file.path, oid: entry.oid, ...result, loading: false });
     } catch {
       if (request === diffRequest.current) setDiff({ path: file.path, error: 'Could not read this diff.', loading: false });
     }
@@ -200,6 +202,7 @@ export default function ReflogScreen({ repository, refs, headBranch, operation, 
             <Button onClick={() => { diffRequest.current++; setDiff(null); }}>Close diff</Button></header>
           {diff.loading ? <div className="loading-shell"><div className="skeleton" /></div>
             : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p>
+              : diff.binary && imageType(diff.path) ? <ImageDiff repositoryId={repository.id} file={diff.path} source={{ kind: 'commit', oid: diff.oid, base: null }} />
               : diff.binary ? <p className="empty-inline">Binary file. A text diff is unavailable.</p>
                 : <DiffLines patch={diff.patch} path={diff.path} label={`Diff of ${diff.path}`} />}
         </div>}

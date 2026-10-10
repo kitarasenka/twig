@@ -3,6 +3,8 @@ import { ArrowLeft, Archive, FilePlus2, GitBranch, RefreshCw, Trash2 } from 'luc
 import Button from '../../ui/Button.jsx';
 import DiffLines from '../diff/DiffLines.jsx';
 import FileStatus from '../diff/FileStatus.jsx';
+import ImageDiff from '../diff/ImageDiff.jsx';
+import { imageType } from '../../../../main/git/image-types.js';
 
 function when(value) {
   const date = new Date(value);
@@ -62,7 +64,7 @@ export default function StashScreen({ repository, busy, onBack, onPerform, onDia
     setDiff({ path: file.path, loading: true });
     try {
       const result = await window.twig.stashDiff(repository.id, selected, file.path, file.untracked);
-      if (request === diffRequest.current) setDiff({ path: file.path, ...result, loading: false });
+      if (request === diffRequest.current) setDiff({ path: file.path, stash: selected, untracked: file.untracked, ...result, loading: false });
     } catch {
       if (request === diffRequest.current) setDiff({ path: file.path, error: 'Could not read this diff.', loading: false });
     }
@@ -134,6 +136,7 @@ export default function StashScreen({ repository, busy, onBack, onPerform, onDia
             <Button onClick={() => { diffRequest.current++; setDiff(null); }}>Close diff</Button></header>
           {diff.loading ? <div className="loading-shell"><div className="skeleton" /></div>
             : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p>
+              : diff.binary && imageType(diff.path) ? <ImageDiff repositoryId={repository.id} file={diff.path} source={{ kind: 'stash', oid: diff.stash, untracked: diff.untracked }} />
               : diff.binary ? <p className="empty-inline">Binary file. A text diff is unavailable.</p>
                 : <DiffLines patch={diff.patch} path={diff.path} label={`Diff of ${diff.path}`} />}
         </div>}

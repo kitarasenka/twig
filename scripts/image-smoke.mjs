@@ -167,6 +167,25 @@ try {
   await page.locator('.stage-diff .image-diff').getByText(/Size 240 × 160 → 260 × 160/).waitFor();
   assert.equal(await page.getByText('Binary file changed. Stage it whole').count(), 0);
 
+  // --- Stashes and the reflog open the same viewer ---------------------------------------------
+  await git(['stash', 'push', '-q', '--include-untracked']);
+  await page.getByRole('button', { name: /Stashes/ }).first().click();
+  const stashScreen = page.getByRole('region', { name: 'Stashes', exact: true });
+  const stashFiles = stashScreen.getByRole('list', { name: /^Files in stash@\{0\}/ });
+  await stashFiles.getByRole('button', { name: /logo\.png/ }).click();
+  await stashScreen.locator('.image-diff').getByText('Size 240 × 160 → 260 × 160 · 1 changed area').waitFor();
+  await shot('image-stash-dark');
+  await stashFiles.getByRole('button', { name: /new\.png/ }).click();
+  await stashScreen.locator('.image-diff').getByText('Added in this change').waitFor();
+  assert.equal(await stashScreen.getByText(/Binary file/).count(), 0);
+  await page.getByRole('button', { name: /^Reflog/ }).click();
+  const reflog = page.getByRole('region', { name: 'Reflog', exact: true });
+  await reflog.getByRole('list', { name: 'Reflog of HEAD' }).getByRole('button', { name: /Badge and amber block/ }).first().click();
+  await reflog.getByRole('list', { name: /^Files changed in/ }).getByRole('button', { name: /logo\.png/ }).click();
+  await reflog.locator('.image-diff').getByText('240 × 160 · 2 changed areas').waitFor();
+  await shot('image-reflog-dark');
+  assert.equal(await reflog.getByText(/Binary file/).count(), 0);
+
   // Every image read exited 0, and no command failed on the way.
   const entries = await page.evaluate(() => window.twig.getConsoleEntries());
   const reads = entries.filter(entry => entry.operation?.startsWith('Read image'));
@@ -180,7 +199,7 @@ try {
   for (const [file, source] of [['../x.png', { kind: 'staged' }], ['art/logo.png', { kind: 'disk' }], ['notes.txt', { kind: 'staged' }], ['art/logo.png', { kind: 'commit', oid: 'HEAD' }]]) {
     await assert.rejects(page.evaluate(([repository, f, s]) => window.twig.getImagePair(repository, f, s), [id, file, source]));
   }
-  console.log('image smoke: areas, four views, uncommitted, untracked, staging and IPC refusals passed');
+  console.log('image smoke: areas, four views, uncommitted, untracked, staging, stash, reflog and IPC refusals passed');
 } finally {
   await app?.close();
   await rm(root, { recursive: true, force: true });

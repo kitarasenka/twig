@@ -246,14 +246,16 @@ itself» для нового), пути — `shellWord` (POSIX-кавычки). 
 пользователя): вместо «Binary file changed» у PNG/JPEG/GIF/WebP/AVIF/BMP/ICO
 (`main/git/image-types.js`, SVG — нет, у него текстовый дифф) открывается
 `features/diff/ImageDiff.jsx` — в панели диффа коммита, сравнения, истории
-файла, незакоммиченного (и у untracked-картинки вместо «нет диффа») и на
-экране staging. Режимы **Side by side / Swipe / Onion skin / Difference**
+файла, незакоммиченного (и у untracked-картинки вместо «нет диффа»), на
+экране staging, а с 2026-10-10 — и на экранах Stashes (источник `stash
+{oid, untracked}`: `^1`→stash, untracked — из `^3`) и Reflog. Blame картинки
+Git не строит, там не нужно. Режимы **Side by side / Swipe / Onion skin / Difference**
 (`twig:image-mode`), **Changed areas** — пронумерованные рамки вокруг
 изменившихся пикселей (`twig:image-areas`) и список областей «30 × 20 at 40,
 30» (клик подсвечивает и прокручивает только свой контейнер — `scrollIntoView`
 сдвигал всю панель), масштаб Fit / 1:1 / 2:1 (крошечные — до 8× с
 `pixelated`). Байты: канал `history:image` (id, путь, источник `commit
-{oid, base}` | `staged` | `unstaged` | `untracked`), `main/git/image-blob.js`
+{oid, base}` | `stash` | `staged` | `unstaged` | `untracked`), `main/git/image-blob.js`
 — `cat-file --batch-check` (есть ли сторона и размер) + `cat-file --batch`
 по oid, обе с кодом 0; диск — `lstat`, без симлинков, `realpath` внутри
 дерева; > 20 МБ (`MAX_IMAGE_BYTES`) — только размер. `runGit` получил

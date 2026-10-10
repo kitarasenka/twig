@@ -9,6 +9,7 @@ import { MAX_IMAGE_BYTES, imageType } from './image-types.js';
  *
  * Where each side comes from is the same pair a text diff of that file
  * compares: a commit against its first parent (or against `base` in a range),
+ * a stash against the commit it was made on,
  * the index against HEAD for staged changes, the file on disk against the
  * index for unstaged ones, and only the disk for an untracked file. Git is
  * asked twice at most: one `cat-file --batch-check` learns whether each side
@@ -18,11 +19,16 @@ import { MAX_IMAGE_BYTES, imageType } from './image-types.js';
  * writes to the repository.
  */
 
-const SOURCE_KINDS = ['commit', 'staged', 'unstaged', 'untracked'];
+const SOURCE_KINDS = ['commit', 'stash', 'staged', 'unstaged', 'untracked'];
 
-/** @returns {{ kind: string, oid?: string, base?: ?string }} */
+/** @returns {{ kind: string, oid?: string, base?: ?string, untracked?: boolean }} */
 export function validateImageSource(source) {
   if (!source || typeof source !== 'object' || !SOURCE_KINDS.includes(source.kind)) throw new TypeError('Invalid image source');
+  if (source.kind === 'stash') {
+    validateOid(source.oid);
+    if (typeof source.untracked !== 'boolean') throw new TypeError('Invalid image source');
+    return { kind: 'stash', oid: source.oid, untracked: source.untracked };
+  }
   if (source.kind !== 'commit') return { kind: source.kind };
   validateOid(source.oid);
   if (source.base !== null && source.base !== undefined) validateOid(source.base);
@@ -31,6 +37,11 @@ export function validateImageSource(source) {
 
 /** The `<rev>:<path>` names of each side; `null` is a side Git does not hold (the disk, or nothing). */
 export function imageObjectNames(source, file) {
+  // A stash is the work tree on top of `^1`; its untracked files live in the
+  // third parent, the same sides the stash screen's text diff compares.
+  if (source.kind === 'stash') return source.untracked
+    ? { old: null, new: `${source.oid}^3:${file}` }
+    : { old: `${source.oid}^1:${file}`, new: `${source.oid}:${file}` };
   if (source.kind === 'commit') return { old: `${source.base ?? `${source.oid}^`}:${file}`, new: `${source.oid}:${file}` };
   if (source.kind === 'staged') return { old: `HEAD:${file}`, new: `:0:${file}` };
   if (source.kind === 'unstaged') return { old: `:0:${file}`, new: null };
@@ -127,7 +138,7 @@ export async function loadImagePair({ cwd, log, file, source }) {
   const strip = side => (side?.state === 'ok' ? { state: 'ok', size: side.size, bytes: side.bytes } : side);
   return {
     type,
-    old: checked.kind === 'untracked' ? { state: 'missing' } : strip(sides.old),
+    old: names.old === null ? { state: 'missing' } : strip(sides.old),
     new: fromDisk ? await readDiskSide(cwd, file) : strip(sides.new)
   };
 }
