@@ -423,3 +423,6 @@
 .image-regions button[aria-pressed='true'] { background: var(--accent-bg); color: var(--accent); }
 /* The selected ref in the sidebar tree: the same accent bar as a selected screen. */
 .real-branch.selected-ref { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); font-weight: 600; }
+/* Where HEAD is when it is not the top row: a dashed line in its own lane on the
+   far left, from the top of the graph to HEAD's node. */
+.real-lane path.head-link { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 3 3; }

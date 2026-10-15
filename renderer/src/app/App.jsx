@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, Bot, Bug, ChevronDown, Download, FileInput, FolderOpen, GitBranch, Keyboard, LoaderCircle, Plus, Redo2, RefreshCw, RotateCw, Settings, Undo2, UserRound, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Bot, Bug, Download, FileInput, FolderOpen, GitBranch, Keyboard, LoaderCircle, Plus, Redo2, RefreshCw, RotateCw, Settings, Undo2, UserRound, X } from 'lucide-react';
 import { StashPop, StashPush } from '../ui/stash-icons.js';
 import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
@@ -54,6 +54,8 @@ export default function App() {
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [bugHunterSlot, setBugHunterSlot] = useState(null);
   const [repoToolsSlot, setRepoToolsSlot] = useState(null);
+  // A click on the branch under CURRENT BRANCH, for the open repository to show its HEAD.
+  const [headRequest, setHeadRequest] = useState({ id: null, seq: 0 });
   const [refreshSlot, setRefreshSlot] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [dialogBusy, setDialogBusy] = useState(false);
@@ -603,7 +605,8 @@ export default function App() {
           {!workspace?.repositories.some(item => item.available && active === `repository:${item.id}`) &&
             <Button className="repo-refresh" icon={RefreshCw} aria-label="Refresh" reason={unavailable} />}
         </span></div><select id="repository-select" value={active} onChange={(e) => { const { value } = e.target; if (value === 'new') openEmpty(); else void selectRepository(value.slice(11)); }}>{workspace?.repositories.map(item => <option key={item.id} value={`repository:${item.id}`}>{item.name}</option>)}<option value="new">Open repository…</option></select></div>
-      <div className="branch-select"><span>CURRENT BRANCH</span><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : unavailable} onClick={focusSearch}>{repositoryActive ? repository?.status?.branch?.name || (repository?.status?.branch?.detached ? 'Detached HEAD' : 'Unavailable') : 'main'}<ChevronDown /></Button></div>
+      <div className="branch-select"><span>CURRENT BRANCH</span><Button icon={GitBranch} reason={repositoryActive && repository?.available ? (repository?.status?.branch?.oid ? undefined : 'There is no commit yet') : unavailable}
+        title="Show it in the history" onClick={() => setHeadRequest(current => ({ id: active.slice(11), seq: current.seq + 1 }))}>{repositoryActive ? repository?.status?.branch?.name || (repository?.status?.branch?.detached ? 'Detached HEAD' : 'Unavailable') : 'main'}</Button></div>
       <div className="tool-group"><Button className="tool" icon={Undo2} title={undoState.undoReason} reason={undoMoving ? 'Reversing the action…' : !repositoryActive ? unavailable : !undoState.undo ? undoState.undoReason : undefined} onClick={() => moveUndo('undo')}>Undo</Button><Button className="tool" icon={Redo2} title={undoState.redoReason} reason={undoMoving ? 'Reversing the action…' : !repositoryActive ? unavailable : !undoState.redo ? undoState.redoReason : undefined} onClick={() => moveUndo('redo')}>Redo</Button></div>
       <div className="tool-group">
         <Button className="tool" icon={ArrowDown} onClick={() => runSync('pull')} title={repositoryActive ? pullTitle(fetchStatus) : undefined}
@@ -645,7 +648,7 @@ export default function App() {
             mounted at all. The always-present demo tab mounts only while active,
             so its graph never collides with another tab's. */}
         {(item.sandbox ? active === `repository:${item.id}` : !closedTabs.has(item.id) && (visited.has(item.id) || active === `repository:${item.id}`)) && (item.available
-          ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} platform={info?.platform} editor={editor?.label} toolbarSlot={bugHunterSlot} toolsSlot={repoToolsSlot} refreshSlot={refreshSlot} toolbarBusyReason={syncing ? `${syncing} is running` : undoMoving ? 'Reversing the action…' : undefined}
+          ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} platform={info?.platform} editor={editor?.label} toolbarSlot={bugHunterSlot} toolsSlot={repoToolsSlot} refreshSlot={refreshSlot} revealHead={headRequest.id === item.id ? headRequest.seq : 0} toolbarBusyReason={syncing ? `${syncing} is running` : undoMoving ? 'Reversing the action…' : undefined}
             filterRef={filterRefFor(item.id)}
             onConsole={showConsole} onRepositoryChanged={refreshRepository} onOpenWorkspace={openWorkspaceTab} onWorkspace={updateWorkspace} />
           : <RepositoryReady repository={item} onOpen={openRepository} />)}

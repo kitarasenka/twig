@@ -594,12 +594,29 @@ try {
   // The current branch is not checked out again; a tag never is.
   await nearBadge.dblclick();
   await page.getByText('smoke/near is already checked out.').waitFor();
+  // HEAD far below the top row: a dashed line in its own lane on the far left
+  // runs from the top of the graph to HEAD's node, so the uncommitted changes
+  // above the graph do not read as if they sat on the newest commit.
+  await list.evaluate(node => { node.scrollTop = 0; });
+  await page.locator('.real-commit-row').first().locator('path.head-link').waitFor({ state: 'attached' });
+  assert.match(await page.locator('.real-commit-row').first().locator('path.head-link').getAttribute('d'), /^M12 0V\d+$/,
+    'above HEAD the line runs straight down the leftmost lane');
+  // The branch under CURRENT BRANCH goes to HEAD in the history.
+  await page.locator('.real-commit-row').first().click();
+  await page.locator('.branch-select').getByRole('button', { name: 'smoke/near', exact: true }).click();
+  const headRow = page.locator('.real-commit-row.selected', { hasText: 'History fixture 101' });
+  await headRow.waitFor();
+  assert.match(await headRow.locator('path.head-link').getAttribute('d'), /^M12 0V\d+(\.\d+)?H\d+/, 'in HEAD\'s row the line turns to its node');
+  assert.ok(await list.evaluate(node => node.scrollTop) > rowHeight * 50, 'the history scrolled down to HEAD');
+  await list.evaluate((node, back) => { node.scrollTop -= back; }, rowHeight * 6);
+  await page.locator('.graph-panel').screenshot({ path: 'artifacts/m2-head-line.png', animations: 'disabled' });
   // Back to main, by double-clicking it in the sidebar.
   await sidebar.locator('.real-branch[title^="refs/heads/main"]').dblclick();
   await page.waitForTimeout(300); await confirmCheckout('main');
   await headIs('main');
   await page.getByText('Checked out main.').waitFor();
   await list.evaluate(node => { node.scrollTop = 0; });
+  await page.waitForFunction(() => !document.querySelector('path.head-link'));
 
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();

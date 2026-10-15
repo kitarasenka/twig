@@ -1,5 +1,7 @@
 export const ROW_HEIGHT = 28;
 export const LANE_WIDTH = 18;
+/** Where the first lane's centre sits in the graph column. */
+export const LANE_ORIGIN = 12;
 
 function colorKey(value) {
   let hash = 0;
@@ -74,9 +76,9 @@ export function authorTint(author) {
 
 /** The node sits in the middle of its row, whatever that row's height is:
  * a row grows downwards when its refs wrap, and the lanes have to follow. */
-export function segmentPath({ from, to, half }, height = ROW_HEIGHT) {
-  const x1 = 12 + from * LANE_WIDTH;
-  const x2 = 12 + to * LANE_WIDTH;
+export function segmentPath({ from, to, half }, height = ROW_HEIGHT, origin = LANE_ORIGIN) {
+  const x1 = origin + from * LANE_WIDTH;
+  const x2 = origin + to * LANE_WIDTH;
   const middle = height / 2;
   if (half === 'top') return `M${x1} 0V${middle}`;
   if (half === 'full') return `M${x1} 0V${height}`;
@@ -133,4 +135,31 @@ export function createRowMetrics(extras = []) {
       return { start, end };
     },
   };
+}
+
+/**
+ * Which row the dashed HEAD line runs down to, or null for no line. The line
+ * shows where the checked-out commit is whenever it is not the top row — a
+ * branch behind its remote, or behind another branch, would otherwise read as
+ * if the uncommitted changes above the graph sat on the newest commit. HEAD
+ * further down than the loaded pages gives Infinity: the line runs through
+ * every loaded row and on past the bottom.
+ */
+export function headLineIndex(head, indexMap, hasMore) {
+  if (!head) return null;
+  const index = indexMap.get(head);
+  if (index === undefined) return hasMore ? Infinity : null;
+  return index > 0 ? index : null;
+}
+
+/**
+ * The dashed HEAD line in one row: its own lane on the far left (LANE_ORIGIN;
+ * the commit lanes move one lane right while it shows), straight through the
+ * rows above HEAD, then down to the middle of HEAD's row and across to its node.
+ */
+export function headLinePath(index, headIndex, height, nodeX) {
+  if (headIndex === null || index > headIndex) return null;
+  if (index < headIndex) return `M${LANE_ORIGIN} 0V${height}`;
+  const middle = height / 2;
+  return `M${LANE_ORIGIN} 0V${middle}H${nodeX - 8}`;
 }

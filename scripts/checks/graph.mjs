@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AUTHOR_TINTS, ROW_HEIGHT, authorTint, createLaneLayout, createRowMetrics, segmentPath } from '../../renderer/src/features/graph/layout.js';
+import { AUTHOR_TINTS, LANE_WIDTH, ROW_HEIGHT, authorTint, createLaneLayout, createRowMetrics, headLineIndex, headLinePath, segmentPath } from '../../renderer/src/features/graph/layout.js';
 import { BADGE_GAP, REF_LINE_HEIGHT, badgeWidth, extraHeight, packRefLines } from '../../renderer/src/features/graph/ref-lines.js';
 
 const c = (oid, ...parents) => ({ oid, parents });
@@ -65,6 +65,21 @@ for (let y = 0; y < sum; y += 7) {
 // The node stays centred however tall the row is, and the lanes reach the edges.
 assert.equal(segmentPath({ from: 0, to: 0, half: 'top' }, 48), 'M12 0V24');
 assert.equal(segmentPath({ from: 0, to: 0, half: 'full' }, 48), 'M12 0V48');
+assert.equal(segmentPath({ from: 0, to: 0, half: 'full' }, 48, 12 + LANE_WIDTH), 'M30 0V48', 'the lanes move right while the HEAD line shows');
+
+// The dashed HEAD line: only when HEAD is not the top row; past the loaded
+// pages it runs through all of them; in HEAD's row it turns to the node.
+const heads = new Map([['top', 0], ['mid', 5]]);
+assert.equal(headLineIndex('top', heads, true), null, 'HEAD on top needs no line');
+assert.equal(headLineIndex('mid', heads, false), 5);
+assert.equal(headLineIndex('deep', heads, true), Infinity, 'HEAD on a page not read yet');
+assert.equal(headLineIndex('gone', heads, false), null);
+assert.equal(headLineIndex(null, heads, true), null, 'an unborn branch has no HEAD commit');
+assert.equal(headLinePath(2, 5, 28, 30), 'M12 0V28');
+assert.equal(headLinePath(5, 5, 28, 48), 'M12 0V14H40', 'down to the middle, across to the node edge');
+assert.equal(headLinePath(6, 5, 28, 30), null, 'nothing below HEAD');
+assert.equal(headLinePath(900, Infinity, 28, 30), 'M12 0V28');
+assert.equal(headLinePath(0, null, 28, 30), null);
 assert.ok(segmentPath({ from: 0, to: 1, half: 'bottom' }, 48).endsWith('30 48'));
 
 // Ref badges wrap instead of collapsing into a `+N` stub.

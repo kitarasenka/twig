@@ -1,7 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GitBranch, Sprout, Globe, Tag, FilePenLine, Bookmark, Bug, CheckCircle2, FlaskConical, SkipForward, XCircle } from 'lucide-react';
 import { StashBox } from '../../ui/stash-icons.js';
-import { LANE_WIDTH, ROW_HEIGHT, authorInitials, authorTint, createRowMetrics, segmentPath } from './layout.js';
+import { LANE_ORIGIN, LANE_WIDTH, ROW_HEIGHT, authorInitials, authorTint, createRowMetrics, headLineIndex, headLinePath, segmentPath } from './layout.js';
 import { HEAD_WIDTH, MARK_WIDTH, badgeWidth, extraHeight, packRefLines } from './ref-lines.js';
 import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
 import { markClass } from './mark-color.js';
@@ -63,11 +63,12 @@ export function relativeDate(value) {
   return Number.isNaN(time) ? '' : relativeTime(time / 1000);
 }
 
-const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, index, selected, member, head, stashes, stashX, onStashes, refs, refLines, mark, bisect, onSelect, onMenu, onCheckout, onPickRef, dayStart, age, drag, headBranch, visibility }) {
+const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, index, selected, member, head, stashes, stashX, onStashes, refs, refLines, mark, bisect, onSelect, onMenu, onCheckout, onPickRef, dayStart, age, drag, headBranch, visibility, origin, headIndex }) {
   // In age mode a row paints its own age onto every lane crossing it, so the
   // graph reads as one gradient down the page instead of per-branch colours.
   const stroke = age === null ? null : ageStrokeClass(age);
-  const laneX = 12 + layout.lane * LANE_WIDTH;
+  const laneX = origin + layout.lane * LANE_WIDTH;
+  const headLine = headLinePath(index, headIndex, height, laneX);
   const endpoint = rowEndpoint(commit, refs, headBranch);
   return <div role="option" id={`commit-${commit.oid}`} aria-selected={selected || member} aria-posinset={index + 1} aria-setsize={total}
     {...drag?.bind(endpoint)}
@@ -88,7 +89,8 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
     <span className="lane-cell"><span className="lane-track">
       <svg className="real-lane" aria-hidden="true" height={height}>
         {stashes && <path className="stash-link" d={`M${laneX} ${height / 2}H${stashX}`} />}
-        {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment, height)} />)}
+        {headLine && <path className="head-link" d={headLine} />}
+        {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment, height, origin)} />)}
         <circle className={`${stroke || `graph-color-${layout.color}`} author-tint author-tint-${authorTint(commit.author)}`} cx={laneX} cy={height / 2} r={8} />
         {mark && <circle className="mark-node" cx={laneX} cy={height / 2} r={8} />}
         <text className="commit-initials" x={laneX} y={height / 2}>{authorInitials(commit.author.name)}</text>
@@ -105,7 +107,7 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
   </div>;
 });
 
-export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, onCheckout, onPickRef, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, bisectMarks = NO_BISECT_MARKS, onUncommitted, onStashes, reveal = null, active, commitColors = 'lanes', drag, headBranch }) {
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, onCheckout, onPickRef, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, bisectMarks = NO_BISECT_MARKS, onUncommitted, onStashes, reveal = null, active, commitColors = 'lanes', drag, headBranch, headLine = false }) {
   const selectionSet = selection || EMPTY_SELECTION;
   const scroller = useRef(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
@@ -180,11 +182,15 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
     return map;
   }, [stashes]);
   const stashLane = stashesByBase.size ? 1 : 0;
-  const stashX = 12 + laneCount * LANE_WIDTH;
+  // Not the top row, HEAD gets a dashed line of its own on the far left, and
+  // every commit lane moves one lane to the right to make room for it.
+  const headIndex = headLine ? headLineIndex(head, indexMap, hasMore) : null;
+  const origin = LANE_ORIGIN + (headIndex === null ? 0 : LANE_WIDTH);
+  const stashX = origin + laneCount * LANE_WIDTH;
   // The graph column fits the lanes by default; a drag pins it to a fixed width.
   // Narrower than its lanes, the column clips them and scrolls sideways by
   // itself (`graphOffset`), so the lanes never spill over the message column.
-  const autoGraphWidth = Math.max(GRAPH_AUTO_MIN, (laneCount + stashLane) * LANE_WIDTH + 24);
+  const autoGraphWidth = Math.max(GRAPH_AUTO_MIN, (laneCount + stashLane + (headIndex === null ? 0 : 1)) * LANE_WIDTH + 24);
   const minGraphWidth = graphFloor(autoGraphWidth);
   const graphWidth = Number.isFinite(columns.graph) ? clampColumnWidth('graph', columns.graph, minGraphWidth) : autoGraphWidth;
   const graphOffset = clampGraphScroll(graphScroll, autoGraphWidth, graphWidth);
@@ -315,8 +321,8 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
     setViewport({ top: node.scrollTop, height: node.clientHeight || 600 });
     // A clipped graph brings the selected commit's dot into view as well.
     const lane = lanes[index]?.lane;
-    if (lane !== undefined) setGraphScroll(prev => revealGraphX(clampGraphScroll(prev, autoGraphWidth, graphWidth), 12 + lane * LANE_WIDTH, graphWidth, autoGraphWidth));
-  }, [selected, indexMap, metrics, lanes, autoGraphWidth, graphWidth]);
+    if (lane !== undefined) setGraphScroll(prev => revealGraphX(clampGraphScroll(prev, autoGraphWidth, graphWidth), origin + lane * LANE_WIDTH, graphWidth, autoGraphWidth));
+  }, [selected, indexMap, metrics, lanes, autoGraphWidth, graphWidth, origin]);
   const { start, end } = metrics.range(commits.length, viewport.top, viewport.height);
   const focused = focusIndex >= start && focusIndex < end ? commits[focusIndex]?.oid : null;
   function keyboard(event) {
@@ -397,7 +403,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
         {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
           top={metrics.top(start + offset)} height={metrics.height(start + offset)} refLines={refLines.get(commit.oid) || EMPTY_LINES}
           selected={selected === commit.oid} member={selectionSet.has(commit.oid)} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} onCheckout={onCheckout} onPickRef={onPickRef} age={now === null ? null : ageStop(commit.committedAt, now)}
-          mark={marks[commit.oid] || null} bisect={bisectMarks.get(commit.oid.toLowerCase()) || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch} visibility={visibility}
+          mark={marks[commit.oid] || null} bisect={bisectMarks.get(commit.oid.toLowerCase()) || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch} visibility={visibility} origin={origin} headIndex={headIndex}
           dayStart={start + offset > 0 && localDayKey(commit.committedAt) !== localDayKey(commits[start + offset - 1].committedAt)} />)}
       </div>
     </div>

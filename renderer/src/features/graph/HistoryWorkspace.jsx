@@ -155,7 +155,7 @@ function FileHistory({ data, selected, onSelect, onClose, onConsole }) {
   </section>;
 }
 
-function HistoryWorkspace({ repository, active, platform, editor, filterRef, onConsole, onRepositoryChanged, onOpenWorkspace, onWorkspace, referencesRevision = 0, commitColors = 'lanes', toolbarSlot, toolsSlot, refreshSlot, toolbarBusyReason }) {
+function HistoryWorkspace({ repository, active, platform, editor, filterRef, onConsole, onRepositoryChanged, onOpenWorkspace, onWorkspace, referencesRevision = 0, commitColors = 'lanes', toolbarSlot, toolsSlot, refreshSlot, toolbarBusyReason, revealHead = 0 }) {
   const [data, setData] = useState(() => ({ commits: [], lanes: [], refs: [], nextSkip: 0, width: 1, oids: new Set() }));
   const dataRef = useRef(data);
   const layout = useRef(createLaneLayout());
@@ -1295,6 +1295,17 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new selection moves the tree
   }, [selectedKey]);
   const headRef = headBranch ? data.refs.find(ref => ref.type === 'local' && ref.name === headBranch) || null : null;
+  // The branch under CURRENT BRANCH in the toolbar was clicked: show HEAD in
+  // the history the way a click on it in the sidebar does, out of a search or
+  // another screen. `revealHead` counts the clicks, so each one goes there again.
+  useEffect(() => {
+    if (!revealHead || !headOid) return;
+    setFilter('');
+    if (headRef) pickRef(headRef);
+    setTreeKept(NO_KEYS);
+    void jump(headOid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new click moves the view
+  }, [revealHead]);
   const headInfo = { branch: headBranch, oid: headOid, detached: Boolean(repository.status?.branch?.detached) };
   const showDetail = detail && !conflict && !screen;
   // What is on screen, for an AI agent asking through the MCP server. Sent
@@ -1412,7 +1423,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         : loading && !data.commits.length ? <div className="loading-shell" aria-label="Loading history">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
             onSelect={rowHandlers.select} onMenu={rowHandlers.menu} onCheckout={rowHandlers.checkout} onPickRef={pickRef} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
-            onUncommitted={rowHandlers.uncommitted} onStashes={rowHandlers.stashes} reveal={reveal} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} />}
+            onUncommitted={rowHandlers.uncommitted} onStashes={rowHandlers.stashes} reveal={reveal} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} headLine />}
       </div>
       {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}
         onResolved={state => { setConflict(null); setOperation(state); setNote(`${conflict} marked resolved.`); void reload(); onRepositoryChanged?.(); }} />}
