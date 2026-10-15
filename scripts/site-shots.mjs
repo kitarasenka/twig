@@ -111,7 +111,18 @@ try {
 
   // Uncommitted work: the strip over the graph and the panel beside it.
   // README goes into the index from the panel's plus, then gets one more edit
-  // on disk, so all three lists have something in them.
+  // on disk, so all three lists have something in them. origin/main moves one
+  // commit ahead of main (a commit-tree on main, nothing checked out), so the
+  // dashed line runs from the top row down to main — the branch the
+  // uncommitted work is really on. The lists are shown as a tree.
+  const originMain = await git(['rev-parse', 'refs/remotes/origin/main']);
+  const now = new Date().toISOString();
+  const teammate = { GIT_AUTHOR_NAME: 'Alex Morgan', GIT_AUTHOR_EMAIL: 'alex@twig.example', GIT_AUTHOR_DATE: now,
+    GIT_COMMITTER_NAME: 'Alex Morgan', GIT_COMMITTER_EMAIL: 'alex@twig.example', GIT_COMMITTER_DATE: now };
+  const ahead = await git(['commit-tree', 'main^{tree}', '-p', 'main', '-m', 'Show the branch in the toolbar'], teammate);
+  await git(['update-ref', 'refs/remotes/origin/main', ahead]);
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.locator('path.head-link').first().waitFor({ state: 'attached' });
   await page.getByRole('button', { name: /Uncommitted changes/ }).click();
   const uncommitted = page.getByRole('complementary', { name: 'Uncommitted changes', exact: true });
   await uncommitted.waitFor();
@@ -119,9 +130,16 @@ try {
   await uncommitted.getByRole('button', { name: 'Unstage README.md', exact: true }).waitFor();
   await appendFile(path.join(sandbox, 'README.md'), 'Open the Uncommitted strip to stage from the side panel.\n');
   await writeFile(path.join(sandbox, 'workspace.js'), (await readFile(path.join(sandbox, 'workspace.js'), 'utf8')) + '\nexport const detailsWidth = 320;\n');
+  await appendFile(path.join(sandbox, 'app/App.jsx'), '\nexport const showsHead = true;\n');
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await uncommitted.getByRole('button', { name: 'Stage workspace.js', exact: true }).waitFor();
+  await uncommitted.getByRole('button', { name: 'Tree', exact: true }).click();
+  await uncommitted.locator('.file-folder summary').filter({ hasText: 'app' }).first().waitFor();
   await shot('uncommitted');
+  await uncommitted.getByRole('button', { name: 'Path', exact: true }).click();
+  await git(['update-ref', 'refs/remotes/origin/main', originMain]);
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('path.head-link'));
 
   // File history of app/App.jsx with the per-commit diff, line numbers included.
   await row('Add keyboard navigation to commit details').click();

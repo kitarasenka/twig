@@ -71,8 +71,11 @@ cut in the middle. More: [docs/mcp.md](docs/mcp.md).
 - **History** — a virtualized graph that names every branch and tag; search by message,
   hash, author, path or code (`-S`, `-G`); blame, "blame before this change" and reverse
   blame; file history across renames; reflog with lost commits marked and recoverable.
-- **Changes** — stage files, hunks or single lines; discard with Undo; amend,
-  co-authors, `.gitignore` from the menu.
+  When the checked-out branch is not the top row — behind its remote or another
+  branch — a dashed line on the left leads down to its commit.
+- **Changes** — stage files, hunks or single lines; lists by path or as a folder tree,
+  filtered by name or file type, and with a filter on, Stage/Unstage take only what is
+  shown; discard with Undo; amend, co-authors, `.gitignore` from the menu.
 - **Diffs** — numbered on both sides, intra-line and word modes, syntax highlighting;
   images side by side, swipe, onion skin or difference, with the changed areas boxed.
 - **Rewriting history** — a context menu with everything that applies; interactive
@@ -86,14 +89,14 @@ cut in the middle. More: [docs/mcp.md](docs/mcp.md).
   review them.
 - **Everyday** — picks up commits made in a terminal by itself (no polling), a demo
   sandbox that is a real repository, dark and light themes, full keyboard control
-  (Cmd/Ctrl + J console, F search, T new tab, W close tab, `,` settings).
+  with every shortcut reassignable in Settings and working in any keyboard layout.
 
 ## Screenshots
 
 | | |
 | --- | --- |
-| ![Uncommitted changes: the strip over the graph with 1 staged, 2 changed and 1 untracked, and the three lists in the right panel with a plus or minus on each file.](site/assets/shots/uncommitted.webp) | ![The AI agents (MCP) window over the demo sandbox: MCP server On and listening, what the agent gets, three connection steps and the Claude Code command with Copy.](site/assets/shots/mcp.webp) |
-| **Uncommitted changes** — stage and unstage without leaving the graph. | **MCP** — turn it on and copy the command for your agent. |
+| ![Uncommitted changes: main is one commit behind origin/main, so a dashed line runs from the top row down to main; the strip over the graph says 1 staged, 3 changed, 1 untracked, and the right panel lists them as a folder tree with a plus or minus on each file.](site/assets/shots/uncommitted.webp) | ![The AI agents (MCP) window over the demo sandbox: MCP server On and listening, what the agent gets, three connection steps and the Claude Code command with Copy.](site/assets/shots/mcp.webp) |
+| **Uncommitted changes** — as a tree or filtered by type; the dashed line shows which branch they are on. | **MCP** — turn it on and copy the command for your agent. |
 | ![A merge stopped on app/App.jsx: the conflict editor with Ours, Base and Theirs columns, lines picked from both sides, and the result that will be written to disk.](site/assets/shots/conflict.webp) | ![An automation pipeline blocking a commit to main: Commit blocked, 0 passed, 1 failed, with Fix and retry, Run again and Bypass once.](site/assets/shots/automations-blocked.webp) |
 | **Conflict editor** — pick lines from each side in the order you choose. | **Automations** — a pre-commit pipeline stops a direct commit to `main`. |
 | ![BugHunter testing a commit in the middle of the range, with about two more tests to go and Bug absent / Bug present / Cannot test · Skip.](site/assets/shots/bughunter.webp) | ![Blame of app/App.jsx grouped by commit, with the selected line's commit and its diff of this file on the right.](site/assets/shots/blame.webp) |
