@@ -160,10 +160,11 @@ const tag = { type: 'tag', name: 'v1.0', fullName: 'refs/tags/v1.0', target: B }
   assert.ok(items.filter(item => !item.separator).every(item => !item.reason), 'everything applies to another branch');
   assert.equal(byKey(items, 'merge').text, 'Merge feature/x into main');
   assert.equal(byKey(items, 'rebase').text, 'Rebase main onto feature/x');
-  // Rename sits right under Check out and names its shortcut; it appears once.
+  // Rename sits right under Check out; it appears once. Its key is listed in
+  // Settings → Keyboard shortcuts, not printed in the menu.
   const rename = byKey(items, 'ref-rename-refs/heads/feature/x');
   assert.equal(rename.text, 'Rename feature/x…');
-  assert.equal(rename.hint, 'F2');
+  assert.equal(rename.hint, undefined);
   assert.equal(items.filter(item => item.key === 'ref-rename-refs/heads/feature/x').length, 1);
 }
 {
@@ -249,7 +250,7 @@ assert.equal(byKey(buildSectionMenu({ type: 'tag', head, operation: { kind: 'reb
   }
   assert.match(dialogs, /useState\(initialValue\)/);
   assert.match(dialogs, /'That is the current name'/, 'an unchanged name is refused');
-  assert.match(workspace, /event\.key === 'F2' && ref\.type === 'local'/, 'F2 renames a local branch in the sidebar');
+  assert.match(workspace, /ref\.type === 'local' && matchesShortcut\(event, 'rename'\)/, 'the rename key renames a local branch in the sidebar');
 }
 
 // --- wiring parity -----------------------------------------------------------------------------

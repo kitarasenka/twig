@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Archive, FilePlus2, GitBranch, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowLeft, FilePlus2, GitBranch, RefreshCw, Trash2 } from 'lucide-react';
+import { StashBox, StashPop } from '../../ui/stash-icons.js';
 import Button from '../../ui/Button.jsx';
 import DiffLines from '../diff/DiffLines.jsx';
 import FileStatus from '../diff/FileStatus.jsx';
@@ -98,7 +99,7 @@ export default function StashScreen({ repository, busy, onBack, onPerform, onDia
   return <section className="stash-screen" aria-label="Stashes">
     <header className="panel-heading">
       <Button icon={ArrowLeft} onClick={onBack}>Back to history</Button>
-      <div><Archive aria-hidden="true" /><strong>Stashes</strong><span className="count">{stashes.length}</span></div>
+      <div><StashBox aria-hidden="true" /><strong>Stashes</strong><span className="count">{stashes.length}</span></div>
       <Button icon={RefreshCw} reason={reason} onClick={() => void refresh()}>Refresh</Button>
     </header>
     {error && <p className="history-error" role="alert">{error}<button onClick={onConsole}>Show output</button></p>}
@@ -117,7 +118,7 @@ export default function StashScreen({ repository, busy, onBack, onPerform, onDia
       {current && <div className="stash-detail">
         <div className="stash-actions">
           <Button reason={reason} onClick={() => void act(current, 'apply')}>Apply</Button>
-          <Button className="primary" reason={reason} onClick={() => void act(current, 'pop')}>Pop</Button>
+          <Button className="primary" icon={StashPop} reason={reason} onClick={() => void act(current, 'pop')}>Pop</Button>
           <Button icon={GitBranch} reason={reason} onClick={() => toBranch(current)}>Branch…</Button>
           <Button icon={Trash2} className="danger quiet" reason={reason} onClick={() => drop(current)}>Drop</Button>
         </div>

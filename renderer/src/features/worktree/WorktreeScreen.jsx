@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, FilePenLine, FilePlus2, Minus, Plus, Trash2, Undo2, Users } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import { ignoreMenuItems } from '../diff/file-menu.js';
 import FileStatus from '../diff/FileStatus.jsx';
+import FileTree, { FileListControls } from '../diff/FileTree.jsx';
+import { ALL_TYPES, baseName, matchesFile, readFileView, writeFileView } from '../diff/file-filter.js';
 import StageDiff from './StageDiff.jsx';
 import CoAuthors from './CoAuthors.jsx';
 import { BUMP_CHOICES, bumpLabel } from '../automations/version-bump.js';
 import { ConfirmDialog } from '../ops/dialogs.jsx';
 import { discardDialog } from './discard-dialog.js';
+import { isMenuKey } from '../../app/shortcuts.js';
 
 const EMPTY = { staged: [], unstaged: [], untracked: [], branch: null };
 
@@ -18,7 +21,7 @@ function menuProps(onMenu) {
   return {
     onContextMenu: event => { event.preventDefault(); onMenu(event.clientX, event.clientY); },
     onKeyDown: event => {
-      if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+      if (!isMenuKey(event)) return;
       event.preventDefault();
       const box = event.currentTarget.getBoundingClientRect();
       onMenu(box.left + 24, box.bottom);
@@ -26,10 +29,10 @@ function menuProps(onMenu) {
   };
 }
 
-function FileRow({ entry, active, onOpen, onPrimary, primaryIcon: Icon, primaryLabel, busy, discard = null, onMenu = null }) {
+function FileRow({ entry, name = entry.path, active, onOpen, onPrimary, primaryIcon: Icon, primaryLabel, busy, discard = null, onMenu = null }) {
   return <div className={`worktree-file ${active ? 'selected' : ''}`}>
-    <button className="worktree-open" onClick={onOpen} title={onMenu ? `${entry.path} · Right-click or Shift+F10 to ignore it` : entry.path} {...menuProps(onMenu)}>
-      <FileStatus status={entry.status} /><span>{entry.path}</span>
+    <button className="worktree-open" onClick={onOpen} title={onMenu ? `${entry.path} · Right-click to ignore it` : entry.path} {...menuProps(onMenu)}>
+      <FileStatus status={entry.status} /><span>{name}</span>
     </button>
     {discard && <Button className="discard" icon={discard.icon} aria-label={`${discard.label} ${entry.path}`} reason={discard.reason} onClick={discard.run} />}
     <Button icon={Icon} aria-label={`${primaryLabel} ${entry.path}`} reason={busy ? 'Git is working' : undefined} onClick={onPrimary} />
@@ -46,6 +49,17 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
   const [message, setMessage] = useState('');
   const [notice, setNotice] = useState('');
   const [amend, setAmend] = useState(false);
+  // Path or tree, a text filter and a file type: the same controls as the
+  // panel. With a filter on, the bulk buttons move only the files shown.
+  const [view, setView] = useState(readFileView);
+  const [filter, setFilter] = useState('');
+  const [extension, setExtension] = useState(ALL_TYPES);
+  const filtered = Boolean(filter.trim()) || extension !== ALL_TYPES;
+  const shown = useMemo(() => {
+    const keep = list => list.filter(entry => matchesFile(entry.path, filter, extension));
+    return { staged: keep(tree.staged), unstaged: keep(tree.unstaged), untracked: keep(tree.untracked) };
+  }, [tree, filter, extension]);
+  const allPaths = useMemo(() => [...tree.staged, ...tree.unstaged, ...tree.untracked].map(entry => entry.path), [tree]);
   // The "Bump version" automation: what the staged files would bump, and the choice for this commit.
   const [bumpPlan, setBumpPlan] = useState(null);
   const [bumpChoice, setBumpChoice] = useState(null);
@@ -145,6 +159,15 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
   const unstageAllReason = bulkReason
     || (operation && operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : undefined);
   const bulk = (run, describe) => guard(async () => setNotice(describe(await run())));
+  /** What a bulk button acts on: the whole section, or with a filter on, the files shown (`only`). */
+  const only = key => (filtered ? shown[key].map(entry => entry.path) : null);
+  const bulkLabel = (word, key) => (filtered ? `${word} ${shown[key].length} shown` : `${word} all`);
+  const filteredReason = key => (filtered && !shown[key].length ? 'No file here matches the filter' : undefined);
+  const discardAllReason = filtered ? 'Clear the filter first: this acts on the whole list' : bulkReason;
+  const list = (key, row) => (view === 'tree'
+    ? <FileTree files={shown[key]} renderFile={entry => row(entry, baseName(entry.path))} />
+    : shown[key].map(entry => row(entry, entry.path)));
+  const emptyText = (key, text) => (filtered && tree[key].length ? 'No match here.' : text);
   const apply = selected => guard(async () => {
     const payload = Object.entries(selected)
       .filter(([, lines]) => lines.length > 0)
@@ -269,41 +292,46 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
     {notice && <p className="worktree-notice" role="status">{notice}</p>}
     <div className="worktree-body">
       <div className="worktree-lists">
+        <div className="worktree-list-controls">
+          <FileListControls view={view} onView={next => { setView(next); writeFileView(next); }} filter={filter} onFilter={setFilter}
+            extension={extension} onExtension={setExtension} paths={allPaths} label="working tree files" />
+        </div>
         <section aria-label="Staged changes">
           <h3><Check /> Staged <span className="count">{tree.staged.length}</span>
-            {tree.staged.length > 0 && <Button className="bulk" icon={Minus} reason={unstageAllReason}
-              onClick={() => bulk(() => window.twig.unstageAll(repository.id), count => `Unstaged ${count} file${count === 1 ? '' : 's'}.`)}>Unstage all</Button>}</h3>
-          {tree.staged.map(entry => <FileRow key={`s-${entry.path}`} entry={entry} busy={busy}
+            {tree.staged.length > 0 && <Button className="bulk" icon={Minus}
+              reason={filteredReason('staged') || (filtered ? bulkReason : unstageAllReason)}
+              onClick={() => bulk(() => window.twig.unstageAll(repository.id, only('staged')), count => `Unstaged ${count} file${count === 1 ? '' : 's'}.`)}>{bulkLabel('Unstage', 'staged')}</Button>}</h3>
+          {list('staged', (entry, name) => <FileRow key={`s-${entry.path}`} entry={entry} name={name} busy={busy}
             active={open?.path === entry.path && open?.staged}
             onOpen={() => openDiff(entry.path, true)} primaryIcon={Minus} primaryLabel="Unstage"
             onPrimary={() => guard(() => window.twig.unstageFile(repository.id, entry.path, unborn), 'Unstaged.')} />)}
-          {!tree.staged.length && <p className="muted">Nothing staged yet.</p>}
+          {!shown.staged.length && <p className="muted">{emptyText('staged', 'Nothing staged yet.')}</p>}
         </section>
         <section aria-label="Unstaged changes">
           <h3><FilePenLine /> Changes <span className="count">{tree.unstaged.length}</span>
-            {tree.unstaged.length > 0 && <Button className="bulk" icon={Plus} reason={bulkReason}
-              onClick={() => bulk(() => window.twig.stageAll(repository.id, 'tracked'), count => `Staged ${count} file${count === 1 ? '' : 's'}.`)}>Stage all</Button>}
-            {tree.unstaged.length > 0 && <Button className="bulk discard" icon={Undo2} reason={bulkReason}
+            {tree.unstaged.length > 0 && <Button className="bulk" icon={Plus} reason={filteredReason('unstaged') || bulkReason}
+              onClick={() => bulk(() => window.twig.stageAll(repository.id, 'tracked', only('unstaged')), count => `Staged ${count} file${count === 1 ? '' : 's'}.`)}>{bulkLabel('Stage', 'unstaged')}</Button>}
+            {tree.unstaged.length > 0 && <Button className="bulk discard" icon={Undo2} reason={discardAllReason}
               onClick={() => discardAllAction('tracked')}>Discard all</Button>}</h3>
-          {tree.unstaged.map(entry => <FileRow key={`u-${entry.path}`} entry={entry} busy={busy} discard={discardRow(entry, 'unstaged')}
+          {list('unstaged', (entry, name) => <FileRow key={`u-${entry.path}`} entry={entry} name={name} busy={busy} discard={discardRow(entry, 'unstaged')}
             active={open?.path === entry.path && !open?.staged}
             onOpen={() => openDiff(entry.path, false)} primaryIcon={Plus} primaryLabel="Stage"
             onPrimary={() => guard(() => window.twig.stageFile(repository.id, entry.path), 'Staged.')} />)}
-          {!tree.unstaged.length && <p className="muted">No unstaged changes.</p>}
+          {!shown.unstaged.length && <p className="muted">{emptyText('unstaged', 'No unstaged changes.')}</p>}
         </section>
         <section aria-label="Untracked files">
           <h3><FilePlus2 /> Untracked <span className="count">{tree.untracked.length}</span>
-            {tree.untracked.length > 0 && <Button className="bulk" icon={Plus} reason={bulkReason}
-              onClick={() => bulk(() => window.twig.stageAll(repository.id, 'untracked'), count => `Staged ${count} new path${count === 1 ? '' : 's'}.`)}>Stage all</Button>}
-            {tree.untracked.length > 0 && <Button className="bulk discard" icon={Trash2} reason={bulkReason}
+            {tree.untracked.length > 0 && <Button className="bulk" icon={Plus} reason={filteredReason('untracked') || bulkReason}
+              onClick={() => bulk(() => window.twig.stageAll(repository.id, 'untracked', only('untracked')), count => `Staged ${count} new path${count === 1 ? '' : 's'}.`)}>{bulkLabel('Stage', 'untracked')}</Button>}
+            {tree.untracked.length > 0 && <Button className="bulk discard" icon={Trash2} reason={discardAllReason}
               onClick={() => discardAllAction('untracked')}>Delete all</Button>}</h3>
-          {tree.untracked.map(entry => <FileRow key={`n-${entry.path}`} entry={entry} busy={busy} discard={discardRow(entry, 'untracked')}
+          {list('untracked', (entry, name) => <FileRow key={`n-${entry.path}`} entry={entry} name={name} busy={busy} discard={discardRow(entry, 'untracked')}
             onMenu={(x, y) => setRowMenu({ path: entry.path, x, y })}
             active={open?.path === entry.path}
             onOpen={() => trackAndOpen(entry.path)}
             primaryIcon={Plus} primaryLabel="Stage"
             onPrimary={() => guard(() => window.twig.stageFile(repository.id, entry.path), 'Staged.')} />)}
-          {!tree.untracked.length && <p className="muted">No untracked files.</p>}
+          {!shown.untracked.length && <p className="muted">{emptyText('untracked', 'No untracked files.')}</p>}
         </section>
       </div>
       <div className="worktree-detail">

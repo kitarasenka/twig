@@ -147,7 +147,7 @@ try {
   await setTheme('dark');
   await git(['bisect', 'start', commits.at(-1), commits[0]]);
   await git(['bisect', await hasBug() ? 'bad' : 'good']);
-  await workspace().getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.locator('.toolbar').getByRole('button', { name: 'Refresh', exact: true }).click();
   const hunter = page.getByRole('region', { name: '🌱 BugHunter (bisect)', exact: true });
   await hunter.waitFor();
   const chip = kind => page.locator(`.bisect-chip.bisect-${kind}`);

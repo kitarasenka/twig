@@ -158,7 +158,7 @@ esac
   await expect(`Patch saved to ${patchFile}.`, 'export');
   assert.match(await readFile(patchFile, 'utf8'), /^From [0-9a-f]{40} /);
   await stubOpen(patchFile);
-  await page.getByRole('button', { name: 'Apply patch…' }).click();
+  await page.getByRole('button', { name: 'Patch', exact: true }).click();
   const patchDialog = page.getByRole('dialog', { name: 'Apply side one.patch' });
   await patchDialog.getByText('$ git am --3way -- "side one.patch"').waitFor();
   await patchDialog.getByText('Applies cleanly to the current files.').waitFor();

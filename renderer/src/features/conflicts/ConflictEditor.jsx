@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Info, Redo2, Save, Undo2, X } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import { hasConflictMarkers, parseConflictFile, resolveRegion } from './conflict-parser.js';
+import { matchesShortcut } from '../../app/shortcuts.js';
 
 const SIDES = [['ours', 'Ours'], ['base', 'Base'], ['theirs', 'Theirs']];
 
@@ -147,10 +148,12 @@ export default function ConflictEditor({ repositoryId, file, onClose, onResolved
   }
 
   function keydown(event) {
-    if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+    // The same keys as the app's Undo and Redo: inside the editor they step its own edits.
+    const direction = matchesShortcut(event, 'redo') ? 'redo' : matchesShortcut(event, 'undo') ? 'undo' : null;
+    if (!direction) return;
     event.preventDefault();
     event.stopPropagation();
-    if (event.shiftKey) redo(); else undo();
+    if (direction === 'redo') redo(); else undo();
   }
 
   return <section className="conflict-editor" aria-label={`Resolve conflict in ${file}`} onKeyDown={keydown}>

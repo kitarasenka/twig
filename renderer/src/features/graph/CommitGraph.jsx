@@ -1,5 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check, GitBranch, Globe, Tag, FilePenLine, Archive, Bookmark, Bug, CheckCircle2, FlaskConical, SkipForward, XCircle } from 'lucide-react';
+import { GitBranch, Sprout, Globe, Tag, FilePenLine, Bookmark, Bug, CheckCircle2, FlaskConical, SkipForward, XCircle } from 'lucide-react';
+import { StashBox } from '../../ui/stash-icons.js';
 import { LANE_WIDTH, ROW_HEIGHT, authorInitials, authorTint, createRowMetrics, segmentPath } from './layout.js';
 import { HEAD_WIDTH, MARK_WIDTH, badgeWidth, extraHeight, packRefLines } from './ref-lines.js';
 import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
@@ -7,6 +8,7 @@ import { markClass } from './mark-color.js';
 import { bisectClass } from './bisect-marks.js';
 import { GRAPH_AUTO_MIN, HISTORY_COLUMNS, TOGGLABLE_COLUMNS, clampColumnWidth, clampGraphScroll, dragColumnWidth, graphFloor, nudgeColumnWidth, readColumnWidths, revealGraphX, writeColumnWidths, readColumnVisibility, writeColumnVisibility } from './column-widths.js';
 import { refEndpoint, rowEndpoint } from './useGitDrag.js';
+import { isMenuKey, matchesShortcut } from '../../app/shortcuts.js';
 import { summaryChips } from '../worktree/worktree-summary.js';
 import { localDayKey, relativeTime } from '../../ui/relative-time.js';
 import Menu from '../../ui/Menu.jsx';
@@ -76,8 +78,8 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
     <span className="ref-cell">
       {visibility.branch && refLines.map((line, lineIndex) => <span className="ref-line" key={lineIndex}>
         {lineIndex === 0 && mark && <span className="mark-chip" title={mark.note || 'Marked'}><Bookmark aria-label={mark.note ? `Marked: ${mark.note}` : 'Marked'} /></span>}
-        {lineIndex === 0 && head && <Check aria-label="HEAD" />}
-        {line.map(refIndex => refs[refIndex]).map(ref => <span key={ref.fullName} title={`${ref.fullName}${ref.type === 'tag' ? '' : ' · Double-click to check out'} · Drag or Alt+D, then Alt+Enter on a target`} tabIndex={0}
+        {lineIndex === 0 && head && <Sprout aria-label="HEAD" />}
+        {line.map(refIndex => refs[refIndex]).map(ref => <span key={ref.fullName} title={`${ref.fullName}${ref.type === 'tag' ? '' : ' · Double-click to check out'} · Drag onto a target`} tabIndex={0}
           onClick={() => onPickRef?.(ref)}
           onDoubleClick={event => { event.stopPropagation(); onCheckout?.([ref]); }}
           {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
@@ -95,7 +97,7 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
         title={`${stashes.length === 1 ? 'Stash' : `${stashes.length} stashes`} on this commit:\n${stashes.map(item => item.message).join('\n')}`}
         aria-label={`Open ${stashes.length === 1 ? 'the stash' : 'stashes'} based on this commit`}
         onClick={event => { event.stopPropagation(); onStashes(); }}>
-        <Archive />{stashes.length > 1 && <span>{stashes.length}</span>}</button>}
+        <StashBox />{stashes.length > 1 && <span>{stashes.length}</span>}</button>}
     </span></span>
     <span className="commit-subject" title={`${bisect ? `${bisect.title}\n` : ''}${commit.subject}\n${commit.body}`}>{bisect && <BisectChip mark={bisect} />}<span>{commit.subject || '(no subject)'}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
     <span className="author-col" title={visibility.author ? commit.author.email : undefined}>{visibility.author && commit.author.name}</span>
@@ -318,14 +320,14 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   const { start, end } = metrics.range(commits.length, viewport.top, viewport.height);
   const focused = focusIndex >= start && focusIndex < end ? commits[focusIndex]?.oid : null;
   function keyboard(event) {
-    if (event.altKey && (event.code === 'KeyD' || event.key === 'Enter')) {
+    if (matchesShortcut(event, 'pickUp') || matchesShortcut(event, 'drop')) {
       const commit = commits[focusIndex];
       if (commit) drag?.keydown(rowEndpoint(commit, refMap.get(commit.oid), headBranch), event);
       return;
     }
-    // Shift+F10 and the Menu key are how a keyboard reaches a context menu;
-    // the menu opens over the focused row rather than at the pointer.
-    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+    // The menu key (Shift+F10 by default) is how a keyboard reaches a context
+    // menu; the menu opens over the focused row rather than at the pointer.
+    if (isMenuKey(event)) {
       const commit = commits[focusIndex];
       if (!commit) return;
       event.preventDefault();

@@ -7,6 +7,7 @@ import { languageFor } from '../diff/languages.js';
 import useHighlighter from '../diff/useHighlighter.js';
 import { splitByRanges } from '../diff/diff-view.js';
 import useDiffPrefs from '../diff/useDiffPrefs.js';
+import { matchesShortcut } from '../../app/shortcuts.js';
 
 const ROW = 22;
 const OVERSCAN = 8;
@@ -169,6 +170,7 @@ export default function BlameView({ repository, seed, onClose, onJump, onConsole
 
   function keydown(event) {
     if (event.key === 'Escape') { onClose(); return; }
+    if (mode === 'blame' && matchesShortcut(event, 'blameBefore')) { event.preventDefault(); void blameBefore(active); return; }
     let line = active;
     const page = Math.max(1, Math.floor(viewport.height / ROW) - 1);
     if (event.key === 'ArrowDown') line = Math.min(total, active + 1);
@@ -177,7 +179,6 @@ export default function BlameView({ repository, seed, onClose, onJump, onConsole
     else if (event.key === 'End') line = total;
     else if (event.key === 'PageDown') line = Math.min(total, active + page);
     else if (event.key === 'PageUp') line = Math.max(1, active - page);
-    else if ((event.key === '[' || event.key === 'b') && mode === 'blame') { event.preventDefault(); void blameBefore(active); return; }
     else if (event.key === 'Enter' && activeLine) { event.preventDefault(); onJump(activeLine.oid); return; }
     else return;
     event.preventDefault();

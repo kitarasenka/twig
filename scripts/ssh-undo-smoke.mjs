@@ -22,11 +22,16 @@ try {
   await writeFile(bootstrap, `import { app } from 'electron';\napp.setPath('home', ${JSON.stringify(home)});\napp.setPath('userData', ${JSON.stringify(path.join(root, 'profile'))});\nimport(${JSON.stringify(pathToFileURL(path.resolve('main/index.js')).href)});\n`);
   const env = { ...process.env, GIT_CONFIG_GLOBAL: path.join(root, 'global'), GIT_CONFIG_NOSYSTEM: '1' };
   delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
-  app = await electron.launch({ args: [bootstrap], env });
+  // The switch, not only setPath in the bootstrap: without it, main moves an
+  // unpackaged run to the developer's twig-dev profile, and this test's
+  // repository, journal and Undo would land there.
+  const args = [bootstrap, `--user-data-dir=${path.join(root, 'profile')}`];
+  app = await electron.launch({ args, env });
   let page = await app.firstWindow(); page.setDefaultTimeout(30000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.waitForFunction(() => Boolean(window.twig));
   assert.equal((await page.evaluate(() => window.twig.getSshConfig())).path, path.join(home, '.ssh', 'config'), 'never test SSH writes in the real user home');
+  assert.equal(await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData')), path.join(root, 'profile'), 'never write into the developer profile');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'SSH keys and config', exact: true }).click();
   const ssh = page.getByRole('dialog', { name: 'SSH', exact: true });
@@ -85,7 +90,7 @@ try {
   await page.getByText('Undo completed.', { exact: true }).waitFor();
   await redo.waitFor();
   assert.equal((await git(['for-each-ref', '--format=%(refname)', 'refs/heads/ui-branch'])), '');
-  await app.close(); app = await electron.launch({ args: [bootstrap], env });
+  await app.close(); app = await electron.launch({ args, env });
   page = await app.firstWindow(); page.setDefaultTimeout(30000);
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await page.getByText('Redo completed.', { exact: true }).waitFor();

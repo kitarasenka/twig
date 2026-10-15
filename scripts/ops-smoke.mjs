@@ -140,9 +140,8 @@ try {
   // Reviewed with the console collapsed: that is the height the editor really
   // gets when someone is working in it.
   const terminal = page.locator('.console-status');
-  await terminal.click();
+  if (await page.getByRole('textbox', { name: 'Search command log' }).isVisible()) await terminal.click();
   await shot('conflict');
-  await terminal.click();
   assert.match(await result.inputValue(), /<<<<<<</, 'the result starts as the file Git wrote');
 
   // Take one line from each side, in an order the user chose.

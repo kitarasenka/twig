@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-react
 import Button from '../../ui/Button.jsx';
 import { HOOK_EVENTS, eventPhase } from './event-labels.js';
 import { ACTION_TYPES, CONDITION_TYPES, makeId, normalizePipeline, validatePipeline } from './schema.js';
+import { matchesShortcut } from '../../app/shortcuts.js';
 
 const ACTION_LABELS = {
   command: 'Run command', script: 'Run script', validateMessage: 'Validate commit message',
@@ -51,7 +52,7 @@ function ActionRow({ action, index, count, phase, onChange, onRemove, onReorder 
     onDragStart={e => { e.dataTransfer.setData('text/plain', String(index)); e.dataTransfer.effectAllowed = 'move'; }}
     onDragOver={e => e.preventDefault()}
     onDrop={e => { e.preventDefault(); const from = Number(e.dataTransfer.getData('text/plain')); if (!Number.isNaN(from)) onReorder(from, index); }}
-    onKeyDown={e => { if (e.altKey && ['ArrowUp', 'ArrowDown'].includes(e.key)) { e.preventDefault(); onReorder(index, index + (e.key === 'ArrowUp' ? -1 : 1)); } }}>
+    onKeyDown={e => { const step = matchesShortcut(e, 'moveUp') ? -1 : matchesShortcut(e, 'moveDown') ? 1 : 0; if (step) { e.preventDefault(); onReorder(index, index + step); } }}>
     <GripVertical aria-hidden="true" className="grip" />
     <div className="rule-move">
       <Button icon={ChevronUp} aria-label="Move action up" reason={index === 0 ? 'First' : undefined} onClick={() => onReorder(index, index - 1)} />

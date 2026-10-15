@@ -66,7 +66,8 @@ try {
   const list = page.getByRole('listbox', { name: 'Commit history', exact: true });
   await list.waitFor();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
-  await page.locator('.console-status').click();
+  // Opening a repository leaves the console as it was: collapsed.
+  assert.equal(await page.locator('.console-status').getAttribute('aria-expanded'), 'false', 'opening a repository does not open the console');
   assert.ok(await list.getByRole('option').count() < 60);
   // Wrapped refs: every ref on the tip is named, the badges sit on more than one
   // line, and the row is taller than a plain one so nothing is clipped.
@@ -221,9 +222,9 @@ try {
     'Compare with main', 'Create branch from feat/graph/curves…', 'Delete feat/graph/curves', 'Copy branch name']) {
     await branchActions.getByRole('menuitem', { name, exact: true }).waitFor();
   }
-  // Rename sits right under Check out and names its F2 shortcut.
+  // Rename sits right under Check out; its key lives in Settings, not in the menu.
   const menuNames = await branchActions.getByRole('menuitem').allTextContents();
-  assert.equal(menuNames[2], 'Rename feat/graph/curves…F2', 'Rename is the third item, under Check out');
+  assert.equal(menuNames[2], 'Rename feat/graph/curves…', 'Rename is the third item, under Check out');
   await page.keyboard.press('Escape');
   // F2 on the focused branch opens the dialog on the current name; the rename is real.
   await curves.focus();

@@ -13,7 +13,7 @@ export default function Dialog({ title, onClose, wide = false, closeReason, chil
   }, []);
   return <dialog ref={ref} className={wide ? 'wide' : undefined} aria-labelledby="dialog-title" onCancel={event => { if (closeReason) event.preventDefault(); else onClose(); }}>
     <header className="panel-heading"><h2 id="dialog-title">{title}</h2>
-      <Button icon={X} aria-label="Close dialog" title="Close · Esc" reason={closeReason} onClick={onClose} /></header>
+      <Button icon={X} aria-label="Close dialog" title="Close" reason={closeReason} onClick={onClose} /></header>
     <div className="dialog-content">{children}</div>
   </dialog>;
 }

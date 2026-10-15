@@ -17,6 +17,72 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Сочетания клавиш — в Settings, в интерфейсе их больше нет; консоль — Path и
+🌱 (2026-10-15, вне вех; по запросу пользователя). Чистый
+`renderer/src/app/shortcuts.js`: `SHORTCUTS` (14 действий: console, settings,
+newTab, closeTab, search, undo, redo, menu, rename, moveUp/Down, pickUp, drop,
+blameBefore), комбо вида `Mod+Shift+Z` (`Mod` = Cmd на macOS, Ctrl иначе),
+клавиша — по `event.code` (Option+D даёт «∂», Cmd+J в русской раскладке — «о»;
+теперь работают), изменения — `localStorage` `twig:shortcuts` (только отличия
+от умолчаний). `matchesShortcut(event, id)` спрашивают обработчики в момент
+нажатия, `isMenuKey` — клавиша Menu всегда плюс переназначаемый Shift+F10.
+Отказы с причиной: занято другим действием (`conflict`), Esc/Tab, навигационные
+клавиши без модификатора, буква без модификатора у глобальных действий,
+Cmd+C/V/X/A/Q/H/M/R и зум. Испорченный файл: конфликтующие изменения
+отбрасываются при загрузке. Переведены App, CommitGraph, useGitDrag,
+HistoryWorkspace (F2), CommitPanel/WorktreeScreen/WorktreePanel (меню),
+RebaseDialog/PipelineEditor (Alt+↑/↓), ConflictEditor (undo/redo — те же
+ключи), BlameView (`[`; прежний второй ключ `b` убран). Экран
+`features/settings/ShortcutsSettings.jsx` (кнопка «Keyboard shortcuts» в
+Settings): клик → «Press keys…», Esc — выйти без изменений, сброс по одному и
+«Reset all shortcuts». Из интерфейса убраны `kbd` (поиск сайдбара, консоль),
+сочетания в подсказках (Undo/Redo, Settings, вкладки, ветки, drag, «Close ·
+Esc») и `hint: 'F2'` в меню ветки; проп `mod` больше не передаётся. Консоль:
+переключатель **Path** (`twig:console-path`, по умолчанию скрыт; подсказка
+строки и Copy entry всегда с cwd); команды, которые 🌱 Twig запускает сам
+(`!isUserCommand`), начинаются с «🌱 :», команды человека — с «$»
+(`commandWords` в `short-command.js`). Проверки: `scripts/checks/shortcuts.mjs`
+(в `npm test`: события → комбо, умолчания, переназначение, отказы, сброс,
+битое хранилище, ни одного `kbd`/сочетания в текстах и сырых проверок
+модификаторов в 14 файлах), `short-command.mjs` (Path, префикс),
+`context-menus.mjs`, `smoke.mjs` (🌱-строка, Path, Esc при записи не закрывает
+диалог, Cmd+F отказан с именем, Cmd+Shift+K работает сразу, старый Cmd+J — нет,
+Reset all), `history-smoke` (меню без «F2»). `npm test` и смоуки smoke,
+history, drop, ops, blame, worktree, automations, browse, everyday, tools,
+reflog зелёные. Версия не менялась.
+
+`ssh-undo-smoke` больше не пишет в dev-профиль (2026-10-15): его bootstrap
+ставил `userData` через `app.setPath`, а с 3ac41fe `main/index.js` без ключа
+`--user-data-dir` переводит запуск из исходников в `twig-dev` — репозиторий
+теста, его журнал и Undo попадали в профиль разработчика (5 временных
+`twig-ssh-undo-ui-*/repo` в списке, ~1300 строк журнала). Теперь ключ
+передаётся явно, и тест сверяет `app.getPath('userData')`. Остальные смоуки
+ключ передавали и раньше.
+
+Консоль: переключатель **Short** (2026-10-15, вне вех; по запросу
+пользователя). В панели инструментов консоли `.switch` «Short», по умолчанию
+включён, выбор — `localStorage` `twig:console-commands` (`short`/`full`).
+Short показывает команду как её набирают: без глобального `--no-pager -c …`,
+без `-z`, `--no-color`, `--no-ext-diff`, `--no-textconv`, `--no-show-signature`,
+`--src/dst-prefix`, `--progress`, без `:(literal)` и `--` (кроме случая, когда
+за ним слово с `-`), длинный `--format=…` свёрнут, полный oid — 7 символов.
+Это только отображение: подсказка строки, подсказка статус-строки и Copy entry
+всегда дают точный argv; поиск идёт по полному argv. Команды автоматизаций
+(`executable`) не сокращаются. Чистый `renderer/src/app/short-command.js`
+(`shortArgv`, `commandLine`, `read/writeCommandView`), проверка
+`scripts/checks/short-command.mjs` (в `npm test`), `smoke.mjs` — `git
+--version` в Short, точная команда в подсказке, Off показывает полный argv и
+запоминается; `browse-smoke` ищет `branch -d feature/old`. Версия не менялась.
+
+Консоль не раскрывается при открытии репозитория (2026-10-15, вне вех; по
+запросу пользователя): `openRepository` в `App.jsx` после успешного «Open
+repository» делал `setConsoleOpen(true)` — при первом запуске (пустой профиль →
+открыть папку) консоль всегда выезжала. Теперь она раскрывается только по
+`Cmd/Ctrl+J`, клику по статус-строке или провалу (`showConsole`).
+`history-smoke` проверяет `aria-expanded="false"` после открытия; смоуки,
+которые сворачивали консоль кликом, сворачивают её, только если она открыта.
+Версия не менялась.
+
 Производительность и баги по исследованию 2026-10-10 (вне вех; по поручению
 пользователя «исправь все по очереди»). Отчёт с замерами «до» и скрипты
 воспроизведения — `artifacts/perf-audit/` (не коммитится). Сделано:
@@ -113,6 +179,22 @@ staging 124 мс и 8 процессов (3.5 с и 37); дифф lock-файл�
 `test:smoke` зелёные. Двойной клик по remote-ветке с двумя
 отслеживающими локальными оставлен диалогом — так задумано (`checkout-choice.mjs`).
 Версия не менялась.
+
+Незакоммиченное: Path/Tree и фильтр по типу файла (2026-10-15, вне вех; по
+запросу пользователя). Панель «Uncommitted changes» и экран staging получили
+те же контролы: Path / Tree (выбор общий, `twig:worktree-files-view`), тип
+файла («.md (2)», без расширения — последним) и текстовый фильтр. Чистый
+`features/diff/file-filter.js`, дерево — общий `features/diff/FileTree.jsx`
+(им же пользуется панель коммита). При включённом фильтре массовые кнопки
+двигают только показанное («Stage the 2 shown»): renderer шлёт `only` (список
+путей) в `worktree:stage-all`/`unstage-all` (теперь 3 и 2 аргумента), main
+пересекает его со свежим status и передаёт `:(literal)` через stdin; unstage
+по списку — `restore --staged` (unborn — `rm --cached`), во время merge
+разрешён. Discard/Delete all при фильтре выключены. Новая неотслеживаемая
+папка в status одна запись (`docs/`) — типа у неё нет. Тулбар: Patch и
+Refresh переехали из шапки History в тулбар (портал, как BugHunter).
+Проверки: `file-filter.mjs`, `stage.mjs` (`only`, литеральность, unborn,
+merge), `worktree-smoke.mjs` (тип, «shown», дерево).
 
 README, лендинг и описание: «Git-клиент + MCP» (2026-10-10, вне вех; по запросу
 пользователя: MCP — главное отличие, текста меньше, только факты и замеры).

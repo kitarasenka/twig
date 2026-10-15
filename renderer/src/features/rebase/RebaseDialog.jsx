@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
+import { matchesShortcut } from '../../app/shortcuts.js';
 
 const ACTIONS = [
   ['pick', 'Pick — keep the commit as it is'],
@@ -63,9 +64,10 @@ export default function RebaseDialog({ commits, onRun, onClose }) {
           onDragOver={event => event.preventDefault()}
           onDrop={event => { event.preventDefault(); if (dragging.current !== null) reorder(dragging.current, index); dragging.current = null; }}
           onKeyDown={event => {
-            if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+            const step = matchesShortcut(event, 'moveUp') ? -1 : matchesShortcut(event, 'moveDown') ? 1 : 0;
+            if (!step) return;
             event.preventDefault();
-            reorder(index, index + (event.key === 'ArrowUp' ? -1 : 1));
+            reorder(index, index + step);
           }}>
           <GripVertical aria-hidden="true" className="rebase-grip" />
           <div className="rebase-move">

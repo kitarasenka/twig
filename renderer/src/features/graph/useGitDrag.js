@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sameEndpoint } from '../../../../main/git/drop-plan.js';
+import { matchesShortcut } from '../../app/shortcuts.js';
 
 export const refEndpoint = ref => ref.type === 'tag' ? { kind: 'commit', oid: ref.target, ref: null }
   : { kind: ref.type, oid: ref.target, ref: ref.fullName };
@@ -62,8 +63,8 @@ export default function useGitDrag({ active, revision, onDrop, onStart }) {
       latest.current.onDrop(source, target, event.clientX || rect.left + 24, event.clientY || rect.bottom);
     }
     function keydown(item, event) {
-      if (event.altKey && event.code === 'KeyD') { event.preventDefault(); start(item, event, true); }
-      else if (event.altKey && event.key === 'Enter') drop(item, event);
+      if (matchesShortcut(event, 'pickUp')) { event.preventDefault(); start(item, event, true); }
+      else if (matchesShortcut(event, 'drop')) drop(item, event);
     }
     const className = item => [sameEndpoint(state?.source, item) ? 'drag-source' : '', sameEndpoint(state?.target, item) ? 'drag-target' : ''].join(' ');
     return {

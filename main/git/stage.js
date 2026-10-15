@@ -144,41 +144,78 @@ async function readBulkTarget({ cwd, log }) {
 }
 
 /**
- * Stages a whole section of the working-tree screen.
- * @param {{ cwd: string, log: object, scope: 'tracked'|'untracked' }} options
- * @returns {Promise<number>} how many entries the section held
+ * The part of a section the person is looking at: `only` is the list the
+ * filtered view showed, kept to what the fresh status still has there, so a
+ * path the renderer names but the section no longer holds is never touched.
+ * `null` means the whole section.
  */
-export async function stageAll({ cwd, log, scope }) {
+function narrow(entries, only) {
+  const paths = entries.map(entry => entry.path);
+  if (only === null) return paths;
+  if (!Array.isArray(only)) throw new TypeError('Invalid path list');
+  const wanted = new Set(only.map(path => { validatePath(path); return path; }));
+  return paths.filter(path => wanted.has(path));
+}
+
+/** Named paths on stdin, each `:(literal)` so `a[1].ts` never matches `a1.ts`. */
+const pathList = paths => `${paths.map(validatePath).join('\0')}\0`;
+
+/** Unstaging named paths: `restore --staged`, or `rm --cached` before the first commit (see buildUnstageArgv). */
+export function buildUnstagePathsArgv(unborn = false) {
+  return unborn
+    ? ['rm', '--cached', '--force', '--quiet', '--pathspec-from-file=-', '--pathspec-file-nul']
+    : ['restore', '--staged', '--pathspec-from-file=-', '--pathspec-file-nul'];
+}
+
+/**
+ * Stages a whole section of the working-tree screen, or with `only` just the
+ * files of it a filter left on screen.
+ * @param {{ cwd: string, log: object, scope: 'tracked'|'untracked', only?: string[]|null }} options
+ * @returns {Promise<number>} how many entries were staged
+ */
+export async function stageAll({ cwd, log, scope, only = null }) {
   if (!['tracked', 'untracked'].includes(scope)) throw new TypeError('Invalid stage scope');
   const tree = await readBulkTarget({ cwd, log });
-  const paths = (scope === 'tracked' ? tree.unstaged : tree.untracked).map(entry => entry.path);
+  const paths = narrow(scope === 'tracked' ? tree.unstaged : tree.untracked, only);
   if (paths.length === 0) return 0;
-  if (scope === 'tracked') {
+  if (scope === 'tracked' && only === null) {
     await mutate({ cwd, log, argv: buildStageTrackedArgv(), operation: 'Stage all tracked changes' });
   } else {
+    const what = scope === 'tracked' ? 'changed file' : 'untracked path';
     await mutate({
-      cwd, log, argv: buildStagePathsArgv(), operation: `Stage ${paths.length} untracked path${paths.length === 1 ? '' : 's'}`,
-      stdin: `${paths.map(validatePath).join('\0')}\0`
+      cwd, log, argv: buildStagePathsArgv(), operation: `Stage ${paths.length} ${what}${paths.length === 1 ? '' : 's'}`,
+      stdin: pathList(paths)
     });
   }
   return paths.length;
 }
 
 /**
- * Empties the index back to HEAD.
+ * Empties the index back to HEAD, or with `only` unstages just those files.
  *
- * During a merge, cherry-pick, revert or rebase this would also delete the
- * marker file Git left behind and so silently cancel the operation, which is
- * not what "unstage" says. It is refused until that operation is finished or
- * aborted through its own banner.
- * @param {{ cwd: string, log: object }} options
- * @returns {Promise<number>} how many entries were staged
+ * During a merge, cherry-pick, revert or rebase emptying the whole index would
+ * also delete the marker file Git left behind and so silently cancel the
+ * operation, which is not what "unstage" says. It is refused until that
+ * operation is finished or aborted through its own banner. Named files go
+ * through `restore --staged` like the per-file button, which leaves the
+ * operation alone, so they are allowed.
+ * @param {{ cwd: string, log: object, only?: string[]|null }} options
+ * @returns {Promise<number>} how many entries were unstaged
  */
-export async function unstageAll({ cwd, log }) {
-  const state = await loadOperationState({ cwd, log });
-  if (state.kind !== 'none') throw new Error(`Finish or abort the ${state.kind} first: unstaging everything would cancel it.`);
+export async function unstageAll({ cwd, log, only = null }) {
+  if (only === null) {
+    const state = await loadOperationState({ cwd, log });
+    if (state.kind !== 'none') throw new Error(`Finish or abort the ${state.kind} first: unstaging everything would cancel it.`);
+  }
   const tree = await readBulkTarget({ cwd, log });
-  if (tree.staged.length === 0) return 0;
-  await mutate({ cwd, log, argv: buildUnstageAllArgv(), operation: 'Unstage everything' });
-  return tree.staged.length;
+  const paths = narrow(tree.staged, only);
+  if (paths.length === 0) return 0;
+  if (only === null) await mutate({ cwd, log, argv: buildUnstageAllArgv(), operation: 'Unstage everything' });
+  else {
+    await mutate({
+      cwd, log, argv: buildUnstagePathsArgv(Boolean(tree.branch?.unborn)),
+      operation: `Unstage ${paths.length} file${paths.length === 1 ? '' : 's'}`, stdin: pathList(paths)
+    });
+  }
+  return paths.length;
 }

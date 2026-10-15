@@ -52,6 +52,12 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     return value;
   };
 
+  const asPathList = value => {
+    if (value === null) return null;
+    if (!Array.isArray(value) || value.length > 100000) throw new Error('Invalid file list');
+    return value.map(asPath);
+  };
+
   handler('worktree:read', 1, options => loadWorktree(options));
   handler('worktree:diff', 3, (options, path, staged) => {
     if (typeof staged !== 'boolean') throw new Error('Invalid diff request');
@@ -67,13 +73,15 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
   /**
    * The bulk actions take a section, never a list of files: the paths are read
    * from a fresh `git status` inside main, so what gets staged is what the
-   * section holds at the moment of the click.
+   * section holds at the moment of the click. With a filter on, the renderer
+   * names the files it shows (`only`); main still keeps only those of them the
+   * fresh section holds.
    */
-  handler('worktree:stage-all', 2, (options, scope) => {
+  handler('worktree:stage-all', 3, (options, scope, only) => {
     if (!['tracked', 'untracked'].includes(scope)) throw new Error('Invalid stage request');
-    return stageAll({ ...options, scope });
+    return stageAll({ ...options, scope, only: asPathList(only) });
   });
-  handler('worktree:unstage-all', 1, options => unstageAll(options));
+  handler('worktree:unstage-all', 2, (options, only) => unstageAll({ ...options, only: asPathList(only) }));
 
   handler('worktree:apply', 5, async (options, path, staged, digest, selection) => {
     if (typeof staged !== 'boolean' || typeof digest !== 'string' || !Array.isArray(selection)) throw new Error('Invalid apply request');

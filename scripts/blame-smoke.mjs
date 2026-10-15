@@ -129,7 +129,7 @@ try {
   await grid.getByText('unicode two', { exact: true }).waitFor();
 
   await mkdir('artifacts', { recursive: true });
-  await page.locator('.console-status').click(); // collapse the console for the review shot
+  if (await page.getByRole('textbox', { name: 'Search command log' }).isVisible()) await page.locator('.console-status').click(); // collapse the console for the review shot
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 640));
   for (const theme of ['dark', 'light']) {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();

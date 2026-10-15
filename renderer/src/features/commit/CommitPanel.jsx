@@ -6,7 +6,11 @@ import { MARK_COLORS, MARK_LABELS } from '../graph/mark-color.js';
 import { authorInitials, authorTint } from '../graph/layout.js';
 import { forgeLabel, forgeLinks } from './forge-url.js';
 import { signatureView } from './signature-view.js';
+import { FILE_SORTS, compareFiles } from './file-sort.js';
 import FileStatus from '../diff/FileStatus.jsx';
+import FileTree from '../diff/FileTree.jsx';
+import { baseName } from '../diff/file-filter.js';
+import { isMenuKey } from '../../app/shortcuts.js';
 
 function ForgeIcon({ forge, ...props }) {
   if (forge === 'github') return <Github {...props} />;
@@ -23,7 +27,7 @@ function fileMenuProps(path, onFileMenu) {
   return {
     onContextMenu: event => { event.preventDefault(); onFileMenu(path, event.clientX, event.clientY); },
     onKeyDown: event => {
-      if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+      if (!isMenuKey(event)) return;
       event.preventDefault();
       const box = event.currentTarget.getBoundingClientRect();
       onFileMenu(path, box.left + 24, box.bottom);
@@ -34,37 +38,6 @@ function fileMenuProps(path, onFileMenu) {
 /** Past this many files a list shows its first ones and a button for the rest, and a tree starts with its folders closed. */
 const FILE_STEP = 500;
 
-function FileTree({ files, onFile, onFileMenu }) {
-  // A folder's files are drawn only while it is open: 8 000 files under open
-  // folders froze the window for two seconds on switching to the tree.
-  const startOpen = files.length <= FILE_STEP;
-  const [toggled, setToggled] = useState(() => new Map());
-  useEffect(() => { setToggled(new Map()); }, [files]);
-  const tree = useMemo(() => {
-    const root = { folders: new Map(), files: [] };
-    for (const file of files) {
-      const parts = file.path.split('/');
-      let node = root;
-      for (const part of parts.slice(0, -1)) {
-        if (!node.folders.has(part)) node.folders.set(part, { folders: new Map(), files: [] });
-        node = node.folders.get(part);
-      }
-      node.files.push(file);
-    }
-    return root;
-  }, [files]);
-  function render(node, prefix = '') {
-    return <>{[...node.folders].map(([name, child]) => {
-      const key = `${prefix}${name}/`;
-      const open = toggled.get(key) ?? startOpen;
-      return <details className="file-folder" key={name} open={open}>
-        <summary onClick={event => { event.preventDefault(); setToggled(current => new Map(current).set(key, !open)); }}>{name}</summary>
-        {open && render(child, key)}</details>;
-    })}
-      {node.files.map(file => <button className="commit-file" key={file.path} onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{file.path.split('/').at(-1)}</span></button>)}</>;
-  }
-  return render(tree);
-}
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -127,7 +100,7 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
   }, [repositoryId, commit?.oid, range]);
   const files = useMemo(() => (all && !range ? allFiles || [] : commit?.files || [])
     .filter(file => file.path.toLowerCase().includes(filter.toLowerCase()))
-    .slice().sort((a, b) => (sort === 'status' ? a.status.localeCompare(b.status) : 0) || a.path.localeCompare(b.path, 'en')),
+    .slice().sort(compareFiles(sort)),
   [all, range, allFiles, commit, filter, sort]);
   // The committed date carries the same age colour as its row in the graph.
   const age = commitColors === 'age' && commit ? ageStop(commit.committedAt) : null;
@@ -188,9 +161,10 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
         <div className="files-heading"><FilePenLine /><strong>{commit.files.length} changed file{commit.files.length === 1 ? '' : 's'}</strong></div>
         {commit.parents.length > 1 && !range && <p className="muted">Compared with first parent</p>}
         <div className="file-controls"><div className="segmented"><button aria-pressed={!tree} onClick={() => setTree(false)}>Path</button><button aria-pressed={tree} onClick={() => setTree(true)}>Tree</button></div><label><input type="checkbox" checked={all && !range} disabled={Boolean(range)} onChange={e => setAll(e.target.checked)} /> All files</label></div>
-        <div className="file-controls"><input aria-label="Filter commit files" placeholder="Filter files" value={filter} onChange={e => setFilter(e.target.value)} /><select aria-label="Sort commit files" value={sort} onChange={e => setSort(e.target.value)}><option value="path">Sort by path</option><option value="status">Sort by status</option></select></div>
+        <div className="file-controls"><input aria-label="Filter commit files" placeholder="Filter files" value={filter} onChange={e => setFilter(e.target.value)} /><select aria-label="Sort commit files" value={sort} onChange={e => setSort(e.target.value)}>{FILE_SORTS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
         {fileError && <p role="alert">{fileError}<button onClick={onConsole}>Show output</button></p>}
-        {all && !allFiles && !range ? <div className="skeleton" aria-label="Loading files" /> : tree ? <FileTree files={files} onFile={onFile} onFileMenu={onFileMenu} /> : <>{files.slice(0, fileLimit).map(file => <button className="commit-file" key={file.path} onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{file.path}</span></button>)}
+        {all && !allFiles && !range ? <div className="skeleton" aria-label="Loading files" /> : tree ? <FileTree files={files} startOpen={files.length <= FILE_STEP} resetKey={files}
+          renderFile={file => <button className="commit-file" key={file.path} onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{baseName(file.path)}</span></button>} /> : <>{files.slice(0, fileLimit).map(file => <button className="commit-file" key={file.path} onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{file.path}</span></button>)}
           {files.length > fileLimit && <button type="button" className="text-button" onClick={() => setFileLimit(files.length)}>Show all {files.length} files</button>}</>}
         {!files.length && (!all || allFiles) && <p className="muted">No matching files.</p>}
       </>}

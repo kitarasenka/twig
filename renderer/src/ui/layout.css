@@ -24,14 +24,22 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* Tabs still scroll (trackpad, mouse wheel, the active tab scrolls into view), just without a bar under them. */
 .tabs::-webkit-scrollbar { display: none; }
 .tabs > .button-wrap { align-self: center; margin: 0 var(--space-2); }
-.tab { display: flex; align-items: center; padding: 0 var(--space-1); border-inline: 1px solid transparent; border-top: 2px solid transparent; }
-.tab.active { background: var(--surface); border-inline-color: var(--border); border-top-color: var(--accent); }
-.tab > button { min-height: 40px; }
+/* The active tab is a raised card: lighter than the bar, its own border and a soft shadow,
+   an accent line along the top. The others lie flat on the bar. */
+.tab { display: flex; align-items: center; margin: 5px 2px; padding: 0 var(--space-1); border: 1px solid transparent; border-radius: var(--radius-md); color: var(--muted); transition: background var(--motion), box-shadow var(--motion), color var(--motion); }
+.tab:hover { color: var(--text); }
+.tab.active { background: var(--surface-raised); border-color: var(--border); color: var(--text); font-weight: 500;
+  box-shadow: inset 0 2px var(--accent), 0 1px 2px color-mix(in srgb, var(--overlay) 45%, transparent), 0 4px 12px color-mix(in srgb, var(--overlay) 30%, transparent); }
+.tab > button { min-height: 32px; }
 .tab small { color: var(--muted); font-size: 9px; letter-spacing: .08em; }
 .account-actions { margin-left: auto; display: flex; gap: var(--space-1); align-items: center; padding-inline: var(--space-3); }
 .toolbar { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-3); min-height: var(--toolbar-height); padding: var(--space-2) var(--space-4); background: var(--surface); border-bottom: 1px solid var(--border); }
 .repo-select { width: 190px; flex-shrink: 0; }
 .repo-select label, .branch-select > span { display: block; color: var(--muted); font-size: var(--text-xs); letter-spacing: .07em; padding-left: var(--space-2); }
+.repo-select-head { display: flex; align-items: center; gap: var(--space-1); }
+.repo-refresh { min-height: 0; padding: 2px; color: var(--muted); }
+.repo-refresh:hover:not(:disabled) { color: var(--text); }
+.repo-refresh svg { width: 13px; height: 13px; }
 .repo-select select { max-width: 100%; border-color: transparent; padding-left: var(--space-1); background: none; font-weight: 500; }
 .branch-select { min-width: 120px; }
 .tool-group { display: flex; align-items: center; gap: var(--space-1); padding-left: var(--space-3); border-left: 1px solid var(--border); }
@@ -182,6 +190,7 @@ details[open] > summary::before { transform: rotate(45deg); margin-bottom: 4px; 
 .console-search svg { position: absolute; left: var(--space-2); color: var(--muted); width: 14px; }
 .console-search input { width: 100%; min-height: 28px; padding-left: var(--space-6); font-size: var(--text-xs); }
 .console-tools kbd { margin-left: auto; color: var(--muted); font-size: var(--text-xs); }
+.console-tools .switch { flex: none; font-size: var(--text-xs); color: var(--muted); }
 .console-entry { border-bottom: 1px solid var(--border);
   /* The journal keeps up to 2000 entries; off-screen rows skip rendering instead of being virtualised. */
   content-visibility: auto; contain-intrinsic-size: auto 32px; }
@@ -192,6 +201,7 @@ details[open] > summary::before { transform: rotate(45deg); margin-bottom: 4px; 
 @keyframes console-focus { from { background: color-mix(in srgb, var(--danger) 34%, transparent); } }
 .console-entry-summary { width: 100%; min-height: 32px; justify-content: flex-start; gap: var(--space-2); border-radius: 0; padding: var(--space-1) var(--space-4); font-size: 10px; text-align: left; }
 .console-entry-summary > code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; }
+.console-prompt-mark { color: var(--muted); }
 .console-entry-summary > span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .console-entry-summary > small { color: var(--muted); margin-left: auto; white-space: nowrap; }
 .console-entry-summary .expanded-arrow { transform: rotate(90deg); }

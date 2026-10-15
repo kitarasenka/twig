@@ -236,6 +236,9 @@ try {
     await stageFile({ cwd: bulk, log, path: 'a.txt' });
     assert.equal(await unstageAll({ cwd: bulk, log }), 1, 'unstage all works on an unborn branch');
     assert.deepEqual((await tree()).staged, []);
+    await stageFile({ cwd: bulk, log, path: 'a.txt' });
+    assert.equal(await unstageAll({ cwd: bulk, log, only: ['a.txt'] }), 1, 'unstaging named files works on an unborn branch too');
+    assert.deepEqual((await tree()).staged, []);
 
     await stageFile({ cwd: bulk, log, path: 'a.txt' });
     await writeFile(path.join(bulk, 'gone.txt'), 'gone\n', 'utf8');
@@ -268,9 +271,28 @@ try {
     assert.equal(await readFile(path.join(bulk, 'a.txt'), 'utf8'), 'a changed\n', 'the working tree is untouched');
     assert.equal(existsSync(path.join(bulk, 'new/deep/n.txt')), true, 'unstaging never removes a new file');
 
+    // With a filter on, the renderer names the files it shows; main keeps only
+    // those the section really holds, and each name stays literal.
+    await writeFile(path.join(bulk, 'star1.txt'), 'a glob would match me\n', 'utf8');
+    assert.equal(await stageAll({ cwd: bulk, log, scope: 'tracked', only: ['gone.txt', 'not-there.txt', 'star[1].txt'] }), 1,
+      'only the named tracked change, and nothing the section does not hold');
+    assert.equal(await stageAll({ cwd: bulk, log, scope: 'untracked', only: ['star[1].txt'] }), 1);
+    now = await tree();
+    assert.deepEqual(now.staged.map(entry => entry.path).sort(), ['gone.txt', 'star[1].txt']);
+    assert.ok(now.untracked.some(entry => entry.path === 'star1.txt'), 'star[1].txt did not match star1.txt as a glob');
+    assert.ok(now.unstaged.some(entry => entry.path === 'a.txt'), 'the change that was not named stayed unstaged');
+    assert.equal(await unstageAll({ cwd: bulk, log, only: ['gone.txt'] }), 1);
+    assert.deepEqual((await tree()).staged.map(entry => entry.path), ['star[1].txt']);
+    assert.equal(await unstageAll({ cwd: bulk, log, only: [] }), 0, 'an empty list runs no Git command');
+    assert.equal(await unstageAll({ cwd: bulk, log, only: ['star[1].txt'] }), 1);
+    assert.deepEqual((await tree()).staged, []);
+    await assert.rejects(() => stageAll({ cwd: bulk, log, scope: 'tracked', only: 'a.txt' }), TypeError);
+    await assert.rejects(() => stageAll({ cwd: bulk, log, scope: 'tracked', only: ['../a.txt'] }), TypeError);
+
     await bgit(['checkout', '--', '.']);
     await rm(path.join(bulk, 'new'), { recursive: true, force: true });
     await rm(path.join(bulk, 'star[1].txt'), { force: true });
+    await rm(path.join(bulk, 'star1.txt'), { force: true });
 
     // A conflicted merge: `add` would mark the conflict resolved as it stands,
     // and `reset` would delete MERGE_HEAD and cancel the merge outright.
@@ -293,6 +315,9 @@ try {
     await stageFile({ cwd: bulk, log, path: 'conflict.txt' });
     await assert.rejects(() => unstageAll({ cwd: bulk, log }), /Finish or abort the merge first/);
     assert.equal(existsSync(path.join(bulk, '.git', 'MERGE_HEAD')), true, 'the refusal left the merge in place');
+    // Named files are a per-file restore, which leaves the merge alone.
+    assert.equal(await unstageAll({ cwd: bulk, log, only: ['conflict.txt'] }), 1);
+    assert.equal(existsSync(path.join(bulk, '.git', 'MERGE_HEAD')), true, 'unstaging named files kept the merge');
     await bgit(['merge', '--abort']);
   }
 

@@ -41,7 +41,7 @@ try {
   const graph = page.getByRole('listbox', { name: 'Commit history', exact: true }); await graph.waitFor();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByLabel('Appearance').selectOption('dark'); await page.keyboard.press('Escape');
-  await page.locator('.console-status').click();
+  if (await page.getByRole('textbox', { name: 'Search command log' }).isVisible()) await page.locator('.console-status').click();
   await expandRefTree(page);
   const sidebar = ref => page.locator(`.sidebar [data-drag-ref="${ref}"]`);
   const badge = ref => page.locator(`.real-history .ref-badge[data-drag-ref="${ref}"]`);

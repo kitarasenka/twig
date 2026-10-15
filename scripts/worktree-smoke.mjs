@@ -124,6 +124,46 @@ try {
   assert.deepEqual((await page.locator('.worktree-row-chips').innerText()).split('\n'), ['1 changed', '1 untracked'],
     'the row in the graph follows the panel');
 
+  // A file type narrows every list, and with a filter on the bulk buttons move
+  // only what is shown: the two Markdown files go in, fresh.txt stays out.
+  // A new folder is one entry in git status (`docs/`), so it has no type until staged.
+  await mkdir(path.join(cwd, 'docs'), { recursive: true });
+  await writeFile(path.join(cwd, 'extra.md'), '# extra\n');
+  await writeFile(path.join(cwd, 'notes.md'), '# notes\n');
+  await writeFile(path.join(cwd, 'docs', 'guide.md'), '# guide\n');
+  const refresh = () => page.locator('.toolbar').getByRole('button', { name: 'Refresh', exact: true }).click();
+  await refresh();
+  await page.getByRole('button', { name: /Uncommitted changes, 5 files/ }).click();
+  const types = uncommitted.getByRole('combobox', { name: 'Filter uncommitted files by type', exact: true });
+  assert.deepEqual(await types.locator('option').allInnerTexts(), ['All types', '.md (2)', '.txt (2)', 'No extension (1)'],
+    'types are counted, most common first, no extension last');
+  await types.selectOption('.md');
+  await panelList('Changed files').getByText('No match here.', { exact: true }).waitFor();
+  assert.equal(await panelList('Untracked files').locator('.commit-file').count(), 2);
+  assert.ok(await panelList('Changed files').getByRole('button', { name: 'Stage the 0 shown', exact: true }).isDisabled(),
+    'nothing shown in a list, nothing for its bulk button to move');
+  assert.ok(await panelList('Untracked files').getByRole('button', { name: /^Delete every untracked file/ }).isDisabled(),
+    'a whole-list discard waits for the filter to be cleared');
+  await panelList('Untracked files').getByRole('button', { name: 'Stage the 2 shown', exact: true }).click();
+  await panelFile('Staged files', 'notes.md').waitFor();
+  assert.equal((await stagedPaths()).split('\n').sort().join(','), 'extra.md,notes.md', 'only the shown files were staged');
+  await types.selectOption('');
+  await panelList('Untracked files').getByRole('button', { name: 'Stage docs/', exact: true }).click();
+  await panelFile('Staged files', 'guide.md').waitFor();
+  await types.selectOption('.md');
+  // The tree shows folders and bare file names; the choice is remembered.
+  await uncommitted.getByRole('button', { name: 'Tree', exact: true }).click();
+  await panelList('Staged files').locator('.file-folder summary').filter({ hasText: 'docs' }).waitFor();
+  assert.equal(await panelFile('Staged files', 'guide.md').locator('span:last-child').innerText(), 'guide.md', 'a tree row shows the name, not the path');
+  await panelList('Staged files').getByRole('button', { name: 'Unstage the 3 shown', exact: true }).click();
+  await panelFile('Untracked files', 'extra.md').waitFor();
+  assert.equal(await stagedPaths(), '', 'only the shown files were unstaged');
+  await uncommitted.getByRole('button', { name: 'Path', exact: true }).click();
+  await types.selectOption('');
+  for (const name of ['extra.md', 'notes.md', 'docs']) await rm(path.join(cwd, name), { recursive: true });
+  await refresh();
+  await page.getByRole('button', { name: /Uncommitted changes, 2 files/ }).click();
+
   await uncommitted.getByRole('button', { name: 'Open staging', exact: true }).click();
   await expect('Working tree · 0 staged, 2 not staged', 'entering the working tree');
 
@@ -155,13 +195,12 @@ try {
   // get, and both sections carry a bulk button at this point.
   await mkdir('artifacts', { recursive: true });
   const terminal = page.locator('.console-status');
-  await terminal.click();
+  if (await page.getByRole('textbox', { name: 'Search command log' }).isVisible()) await terminal.click();
   for (const theme of ['dark', 'light']) {
     await setTheme(theme);
     await page.screenshot({ path: `artifacts/m3-bulk-${theme}.png`, animations: 'disabled' });
   }
   await setTheme('dark');
-  await terminal.click();
 
   await section('Unstaged changes').getByRole('button', { name: 'Stage all', exact: true }).click();
   await expect('Staged 1 file.', 'staging the tracked section');

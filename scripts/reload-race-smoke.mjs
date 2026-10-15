@@ -75,7 +75,7 @@ try {
 
   // Both reloads end: the history is back in full and Refresh works again.
   await page.waitForFunction(count => {
-    const button = [...document.querySelectorAll('button')].find(item => item.textContent.trim() === 'Refresh');
+    const button = document.querySelector('.toolbar button[aria-label="Refresh"]');
     return button && !button.disabled && Number.parseInt(document.querySelector('.graph-heading .count')?.textContent, 10) >= count;
   }, restored, { timeout: 20000 });
   assert.ok(await page.locator('.real-commit-row').count() > 0, 'rows are drawn');

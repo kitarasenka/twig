@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlignLeft, Archive, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow, Wrench } from 'lucide-react';
+import { AlignLeft, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow, Wrench } from 'lucide-react';
+import { StashBox } from '../../ui/stash-icons.js';
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
@@ -24,6 +25,7 @@ import { exportOrder } from '../ops/patch-view.js';
 import { ConfirmDialog, MessageDialog, NameDialog } from '../ops/dialogs.jsx';
 import { buildCommitMenu, buildMultiCommitMenu } from '../ops/commit-menu.js';
 import { checkoutChoice } from '../ops/checkout-choice.js';
+import { isMenuKey, matchesShortcut } from '../../app/shortcuts.js';
 import { buildRefMenu, buildSectionMenu } from '../refs/ref-menu.js';
 import { folderKey, forgetRevealed, isOpen, revealedKeys, sectionKey, selectedRefNames } from '../refs/ref-tree-open.js';
 import { absolutePath, buildFileMenu } from '../diff/file-menu.js';
@@ -69,9 +71,7 @@ const NO_BISECT = { active: false, terms: { bad: 'bad', good: 'good' }, start: n
 const SCREENS = ['worktree', 'branches', 'stashes', 'reflog', 'worktrees', 'submodules', 'maintenance', 'automations'];
 /** Values of `selected` that are not a commit oid and so have no commit to read. */
 const isCommitSelection = value => Boolean(value) && !SCREENS.includes(value) && value !== UNCOMMITTED;
-/** Shift+F10 or the Menu key: the keyboard way to a context menu, as in the graph. */
 const NO_KEYS = new Set();
-const isMenuKey = event => event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey);
 /** Right-click and the menu keys on one element, opening at the pointer or under the element. */
 function contextMenuProps(open, keydown) {
   return {
@@ -106,15 +106,15 @@ function BranchTree({ refs, type, path = '', tree, onSelect, onCheckout, onMenu,
   })}
     {leaves.map(ref => {
       const bound = drag.bind(refEndpoint(ref));
-      // F2 renames a local branch, the way it renames a file in a file manager.
+      // F2 (by default) renames a local branch, the way it renames a file in a file manager.
       const keydown = event => {
-        if (event.key === 'F2' && ref.type === 'local' && !event.altKey && !event.metaKey && !event.ctrlKey) { event.preventDefault(); onRename(ref); return; }
+        if (ref.type === 'local' && matchesShortcut(event, 'rename')) { event.preventDefault(); onRename(ref); return; }
         bound.onKeyDown?.(event);
       };
       const picked = tree.selected.has(ref.fullName);
       return <button {...bound} {...contextMenuProps((x, y) => onMenu(ref, x, y), keydown)} className={`real-branch ${ref.type === 'local' && ref.name === headBranch ? 'current-branch' : ''} ${picked ? 'selected-ref' : ''} ${drag.className(refEndpoint(ref))}`} key={ref.fullName}
       aria-current={picked ? 'true' : undefined}
-      title={`${ref.fullName}${ref.type === 'tag' ? '' : ' · Double-click to check out'} · Drag or Alt+D, then Alt+Enter on a target · Right-click or Shift+F10 for actions${ref.type === 'local' ? ' · F2 to rename' : ''}`}
+      title={`${ref.fullName}${ref.type === 'tag' ? '' : ' · Double-click to check out'} · Drag onto a target · Right-click for actions`}
       onClick={() => onSelect(ref)} onDoubleClick={() => onCheckout([ref])}>
       {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.label}</span>{(ref.ahead > 0 || ref.behind > 0) && <small>↑{ref.ahead} ↓{ref.behind}</small>}</button>; })}</>;
 }
@@ -155,7 +155,7 @@ function FileHistory({ data, selected, onSelect, onClose, onConsole }) {
   </section>;
 }
 
-function HistoryWorkspace({ repository, active, mod, platform, editor, filterRef, onConsole, onRepositoryChanged, onOpenWorkspace, onWorkspace, referencesRevision = 0, commitColors = 'lanes', toolbarSlot, toolbarBusyReason }) {
+function HistoryWorkspace({ repository, active, platform, editor, filterRef, onConsole, onRepositoryChanged, onOpenWorkspace, onWorkspace, referencesRevision = 0, commitColors = 'lanes', toolbarSlot, toolsSlot, refreshSlot, toolbarBusyReason }) {
   const [data, setData] = useState(() => ({ commits: [], lanes: [], refs: [], nextSkip: 0, width: 1, oids: new Set() }));
   const dataRef = useRef(data);
   const layout = useRef(createLaneLayout());
@@ -1220,9 +1220,10 @@ function HistoryWorkspace({ repository, active, mod, platform, editor, filterRef
     unstage: file => void runStaging(
       () => window.twig.unstageFile(repository.id, file.path, Boolean(repository.status?.branch?.unborn)),
       () => `Unstaged ${file.path}.`),
-    stageAll: scope => void runStaging(() => window.twig.stageAll(repository.id, scope),
+    // `only`: the files a filter left on screen; null is the whole section.
+    stageAll: (scope, only = null) => void runStaging(() => window.twig.stageAll(repository.id, scope, only),
       count => `Staged ${plural(count, scope === 'untracked' ? 'new path' : 'file')}.`),
-    unstageAll: () => void runStaging(() => window.twig.unstageAll(repository.id),
+    unstageAll: (only = null) => void runStaging(() => window.twig.unstageAll(repository.id, only),
       count => `Unstaged ${plural(count, 'file')}.`),
     // A .gitignore rule is an edit to one file, not a Git command: it runs like
     // staging (status re-read, history left alone) and Undo takes it back out.
@@ -1321,16 +1322,22 @@ function HistoryWorkspace({ repository, active, mod, platform, editor, filterRef
       <Button className="tool bughunter-tool" icon={Bug} reason={hunterReason}
         title={hunterCommit ? `🌱 BugHunter (git bisect): start from ${hunterCommit.oid.slice(0, 7)}, a commit where the bug is present` : '🌱 BugHunter (git bisect)'}
         onClick={() => { if (!hunterReason) void performBisect('start', hunterCommit.oid); }}>BugHunter</Button>, toolbarSlot)}
+    {active && toolsSlot && createPortal(<>
+      <Button className="tool" icon={FileInput}
+        reason={working ? 'Wait for the current action' : operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : undefined}
+        title="Apply patch: a .patch or .mbox file — commits through git am, a plain diff through git apply" onClick={() => void openPatch()}>Patch</Button></>, toolsSlot)}
+    {active && refreshSlot && createPortal(
+      <Button className="repo-refresh" icon={RefreshCw} aria-label="Refresh" reason={loading ? 'History is loading' : undefined} title="Refresh: re-read the history, branches and working tree"
+        onClick={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }} />, refreshSlot)}
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} aria-label="Repository navigation">
       {collapsed ? <Button icon={PanelLeftOpen} aria-label="Expand repository sidebar" onClick={() => setCollapsed(false)} /> : <>
         <div className="sidebar-filter"><Search /><input ref={filterRef} aria-label="Search commits and references" placeholder="Search" value={filter} onChange={event => setFilter(event.target.value)} />
-          {!filter && <kbd className="sidebar-filter-key" aria-hidden="true">{mod}+F</kbd>}
           {filter && <button className="sidebar-filter-clear" aria-label="Clear search" onClick={() => setFilter('')}><X /></button>}</div>
         <nav className="sidebar-nav" aria-label="Repository screens">
           <button className={`real-branch ${screen === 'branches' ? 'selected' : ''}`} onClick={() => choose('branches')}>
             <GitBranch /><span>Branches and tags</span><small>{data.refs.length}</small></button>
           <button className={`real-branch ${screen === 'stashes' ? 'selected' : ''}`} onClick={() => choose('stashes')}>
-            <Archive /><span>Stashes</span><small>{stashes.length}</small></button>
+            <StashBox /><span>Stashes</span><small>{stashes.length}</small></button>
           <button className={`real-branch ${screen === 'reflog' ? 'selected' : ''}`} onClick={() => choose('reflog')} title="Where HEAD and each branch have been — recover lost work">
             <History /><span>Reflog</span></button>
           <button className={`real-branch ${screen === 'worktrees' ? 'selected' : ''}`} onClick={() => choose('worktrees')} title="Other checkouts of this repository, each in its own folder">
@@ -1352,7 +1359,7 @@ function HistoryWorkspace({ repository, active, mod, platform, editor, filterRef
               onRename={ref => { if (operation.kind === 'none' && !working) refHandlers(ref).renameBranch(ref.name); }} />}
             {open && !visibleRefs.some(ref => ref.type === type) && <p className="section-empty">No matching {label.toLowerCase()} refs</p>}
           </details>;
-        })}</div><div className="sidebar-footer"><span {...(headRef ? { tabIndex: 0, title: `${headRef.name} · Right-click or Shift+F10 for actions`,
+        })}</div><div className="sidebar-footer"><span {...(headRef ? { tabIndex: 0, title: `${headRef.name} · Right-click for actions`,
           ...contextMenuProps((x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ ref: headRef, x, y }); }) } : {})}><strong>{repository.status?.branch?.name || 'Detached HEAD'}</strong>
           {headRef && <small className="sidebar-upstream">{headRef.upstream
             ? <>→ {headRef.upstream}{headRef.ahead || headRef.behind ? ` · ${[headRef.ahead && `${headRef.ahead} to push`, headRef.behind && `${headRef.behind} to pull`].filter(Boolean).join(', ')}` : ' · in sync'}</>
@@ -1361,14 +1368,11 @@ function HistoryWorkspace({ repository, active, mod, platform, editor, filterRef
     </aside>
     {!collapsed && <Splitter side="left" width={sidebarWidth} onWidth={setSidebarWidth} label="Repository sidebar width" />}
     <main className="graph-panel" aria-label="Repository history">
-      <header className="graph-heading"><div><GitBranch /><strong>History</strong><span className="count">{data.commits.length} loaded</span></div><div>{!detail && <Button icon={PanelRightOpen} aria-label="Show commit details" onClick={() => setDetail(true)} />}<Button icon={FileInput}
-        reason={working ? 'Wait for the current action' : operation.kind !== 'none' ? `Finish or abort the ${operation.kind} first` : undefined}
-        title="Apply a .patch or .mbox file: commits through git am, a plain diff through git apply" onClick={() => void openPatch()}>Apply patch…</Button><Button icon={RefreshCw} reason={loading ? 'History is loading' : undefined}
-        onClick={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }}>Refresh</Button></div></header>
+      <header className="graph-heading"><div><GitBranch /><strong>History</strong><span className="count">{data.commits.length} loaded</span></div><div>{!detail && <Button icon={PanelRightOpen} aria-label="Show commit details" onClick={() => setDetail(true)} />}</div></header>
       {error && <div className="history-error" role="alert">{error}<button onClick={onConsole}>Show output</button></div>}
       {drag.state && <div className="git-drag-status" role="status">
         <span>Source <strong>{endpointLabel(drag.state.source)}</strong> → Target <strong>{drag.state.target ? endpointLabel(drag.state.target) : 'Choose a branch or commit'}</strong></span>
-        <small>{sameEndpoint(drag.state.source, drag.state.target) ? 'Choose a different target' : drag.state.phase === 'menu' ? 'Choose an action below' : 'Drop for actions · Alt+D to pick up · Alt+Enter to drop · Esc to cancel'}</small>
+        <small>{sameEndpoint(drag.state.source, drag.state.target) ? 'Choose a different target' : drag.state.phase === 'menu' ? 'Choose an action below' : 'Drop on a branch or commit to see the actions'}</small>
         <Button onClick={drag.cancel}>Cancel</Button>
       </div>}
       {dropRunning && <div className="git-drag-status" role="status">Running Git action… <Button onClick={() => void window.twig.cancelSync(repository.id)}>Cancel operation</Button></div>}

@@ -133,7 +133,7 @@ try {
   await page.getByRole('button', { name: 'Show output' }).click();
   const focused = page.locator('.console-entry.focused');
   await focused.waitFor();
-  assert.match(await focused.locator('code').first().innerText(), /branch -d -- feature\/old/, 'the failed command is the one revealed');
+  assert.match(await focused.locator('code').first().innerText(), /branch -d feature\/old/, 'the failed command is the one revealed');
   assert.match(await focused.locator('.console-output').innerText(), /not fully merged/i, 'its output is already expanded');
   await shot('console-focus');
   await page.locator('.console-status').click();
@@ -175,7 +175,7 @@ try {
   assert.equal(await hunterTool.isDisabled(), true, 'the branch screen has no selected commit');
 
   // --- bisect ----------------------------------------------------------------
-  await page.locator('.console-status').click();
+  if (await page.getByRole('textbox', { name: 'Search command log' }).isVisible()) await page.locator('.console-status').click();
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   const history = page.getByRole('listbox', { name: 'Commit history', exact: true });
   await history.waitFor();

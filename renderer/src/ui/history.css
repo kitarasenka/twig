@@ -144,8 +144,6 @@
 .search-results .history { flex: 1; min-height: 0; }
 .sidebar-filter-clear { position: absolute; right: var(--space-1); padding: var(--space-1); min-height: 0; color: var(--muted); background: none; border: 0; }
 .sidebar-filter-clear svg { width: 14px; height: 14px; }
-.sidebar-filter-key { position: absolute; right: var(--space-2); padding: 0 var(--space-1); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); color: var(--muted); font-size: 10px; pointer-events: none; }
 .real-branch { display: flex; width: 100%; justify-content: flex-start; min-height: var(--row-height); border-radius: 0; padding-inline: var(--space-3); font-size: var(--text-sm); }
 .real-branch span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .real-branch small { color: var(--muted); margin-left: auto; }
@@ -177,8 +175,8 @@
 .menu.drop-action-menu button span, .menu.drop-action-menu button small { white-space: normal; overflow-wrap: anywhere; }
 .branch-folder, .file-folder { margin: 0; padding-left: var(--space-3); }
 .branch-folder summary, .file-folder summary { text-transform: none; letter-spacing: 0; }
-.file-folder summary { padding-block: calc(var(--space-2) / 3); }
-.commit-file { display: flex; width: 100%; justify-content: flex-start; min-height: 22px; font-size: var(--text-xs); padding-inline: 0; }
+.file-folder summary { padding-block: 1px; }
+.commit-file { display: flex; width: 100%; justify-content: flex-start; min-height: 20px; font-size: var(--text-xs); padding-block: 1px; padding-inline: 0; }
 .commit-file > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-status { flex: none; align-self: center; display: inline-flex; align-items: center; justify-content: center;
   width: 1.15rem; height: 1.15rem; margin-right: var(--space-2); border-radius: var(--radius-sm);

@@ -27,7 +27,7 @@ export function buildRefMenu({ ref, head = {}, remotes = [], operation = { kind:
   if (ref.type === 'local') {
     items.push({ key: 'checkout', icon: GitCommitHorizontal, text: `Check out ${ref.name}`,
       reason: reason || (current ? 'Already checked out' : undefined), run: () => handlers.checkoutBranch(ref.name) });
-    if (rename) items.push({ ...rename, hint: 'F2' });
+    if (rename) items.push(rename);
     // A second checkout in its own folder: work on this branch without
     // putting the current work away. Git itself refuses a branch another
     // worktree already has checked out, and says which.

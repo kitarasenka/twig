@@ -126,13 +126,71 @@ try {
   await page.getByRole('textbox', { name: 'Search command log' }).waitFor();
   // It opens on "My": the startup Git check is 🌱 Twig's own command, so it is
   // in Full History only.
-  const versionCheck = page.getByText(/git --no-pager -c color.ui=false -c log.showSignature=false -c core.fsmonitor=false --version/);
+  // Short is on by default: the line reads as typed, the exact argv is its
+  // hover. 🌱 starts what 🌱 Twig ran on its own, `$` what the person asked for.
+  const versionCheck = page.locator('.console-entry code', { hasText: /^🌱 : git --version$/ });
   assert.equal(await page.getByRole('button', { name: 'My', exact: true }).getAttribute('aria-pressed'), 'true', 'the console opens on My');
   assert.equal(await versionCheck.count(), 0, 'the startup check is not one of the user actions');
   await page.getByRole('button', { name: 'Full History', exact: true }).click();
   await versionCheck.first().waitFor();
-  await page.keyboard.press(`${info.platform === 'darwin' ? 'Meta' : 'Control'}+j`);
-  assert.equal(await page.getByRole('textbox', { name: 'Search command log' }).isVisible(), false);
+  assert.match(await versionCheck.first().getAttribute('title'), /^\$ git --no-pager -c color\.ui=false .* --version\n\(cwd: /, 'the hover gives the exact command and its folder');
+  // The folder is hidden until asked for, and the choice is remembered.
+  const folders = page.locator('.console-entry-summary > span');
+  assert.equal(await folders.count(), 0, 'no folder on the lines by default');
+  await page.locator('.console-path').click();
+  await folders.first().waitFor();
+  assert.match(await folders.first().innerText(), /^\(cwd: /);
+  assert.equal(await page.evaluate(() => localStorage.getItem('twig:console-path')), 'show');
+  await page.locator('.console-path').click();
+  assert.equal(await folders.count(), 0);
+  // Off shows the exact command in the list, and the choice is remembered.
+  await page.locator('.console-short').click();
+  assert.equal(await page.getByRole('checkbox', { name: 'Short' }).isChecked(), false);
+  const fullCheck = page.getByText(/git --no-pager -c color.ui=false -c log.showSignature=false -c core.fsmonitor=false --version/);
+  await fullCheck.first().waitFor();
+  assert.equal(await versionCheck.count(), 0);
+  assert.equal(await page.evaluate(() => localStorage.getItem('twig:console-commands')), 'full');
+  await page.locator('.console-short').click();
+  await versionCheck.first().waitFor();
+  const modKey = info.platform === 'darwin' ? 'Meta' : 'Control';
+  const consoleShown = () => page.getByRole('textbox', { name: 'Search command log' }).isVisible();
+  await page.keyboard.press(`${modKey}+j`);
+  assert.equal(await consoleShown(), false);
+  // Keys live in Settings → Keyboard shortcuts, not in the window's labels.
+  assert.equal(await page.locator('kbd').count(), 0, 'no key is printed in the window');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Keyboard shortcuts', exact: true }).click();
+  const shortcutsDialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  const consoleKey = shortcutsDialog.getByRole('button', { name: /^Show or hide the console:/ });
+  assert.match(await consoleKey.innerText(), /^(Cmd|Ctrl)\+J$/);
+  // Esc while listening stops listening and leaves the dialog open.
+  await consoleKey.click();
+  assert.equal(await consoleKey.innerText(), 'Press keys…');
+  await page.keyboard.press('Escape');
+  assert.match(await consoleKey.innerText(), /^(Cmd|Ctrl)\+J$/);
+  assert.equal(await shortcutsDialog.isVisible(), true, 'Esc did not close the dialog');
+  // A key another action has is refused with its name; a free one is taken.
+  await consoleKey.click();
+  await page.keyboard.press(`${modKey}+f`);
+  await shortcutsDialog.getByRole('alert').filter({ hasText: 'Search branches and commits' }).waitFor();
+  await page.keyboard.press(`${modKey}+Shift+k`);
+  assert.match(await consoleKey.innerText(), /^(Cmd|Ctrl)\+Shift\+K$/);
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('twig:shortcuts'))), { console: 'Mod+Shift+K' });
+  await page.keyboard.press('Escape');
+  await shortcutsDialog.waitFor({ state: 'detached' });
+  // The new key works at once; the old one does nothing.
+  await page.keyboard.press(`${modKey}+j`);
+  assert.equal(await consoleShown(), false, 'the old key is free');
+  await page.keyboard.press(`${modKey}+Shift+k`);
+  await page.getByRole('textbox', { name: 'Search command log' }).waitFor();
+  await page.keyboard.press(`${modKey}+Shift+k`);
+  assert.equal(await consoleShown(), false);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Keyboard shortcuts', exact: true }).click();
+  await shortcutsDialog.getByRole('button', { name: 'Reset all shortcuts' }).click();
+  assert.match(await consoleKey.innerText(), /^(Cmd|Ctrl)\+J$/);
+  await page.keyboard.press('Escape');
+  await shortcutsDialog.waitFor({ state: 'detached' });
   // The update check is manual: the button is there, and nothing presses it for
   // the person. It stays unclicked here — this run must make no network call.
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
