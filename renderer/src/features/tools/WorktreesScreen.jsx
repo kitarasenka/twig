@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ExternalLink, FolderGit2, Plus, RefreshCw, Scissors, Trash2 } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import OperationNote from '../../ui/OperationNote.jsx';
 import { folderLabel, worktreeBadges, worktreeLine, worktreeRemoveCommand, worktreeRemoveReason } from './tools-view.js';
 
 /**
@@ -32,8 +33,8 @@ export default function WorktreesScreen({ repository, busy, refreshKey = 0, onBa
       const result = await window.twig.removeWorktree(repository.id, entry.path, force);
       if (result.ok) { setNote(`Worktree ${folderLabel(entry.path)} removed.`); onWorkspace(result.workspace); }
       else if (result.dirty && !force) confirmRemove(entry, true);
-      else { setNote(result.message); onConsole(); }
-    } catch (failure) { setNote(failure.message || 'Could not remove the worktree.'); onConsole(); }
+      else { setNote({ text: result.message, failed: true }); }
+    } catch (failure) { setNote({ text: failure.message || 'Could not remove the worktree.', failed: true }); }
     finally { setWorking(false); void refresh(); }
   }
   function confirmRemove(entry, force = false) {
@@ -50,9 +51,8 @@ export default function WorktreesScreen({ repository, busy, refreshKey = 0, onBa
     setWorking(true); setNote('');
     try {
       const result = await window.twig.pruneWorktrees(repository.id);
-      setNote(result.ok ? 'Worktrees with missing folders forgotten.' : result.message);
-      if (!result.ok) onConsole();
-    } catch (failure) { setNote(failure.message || 'Could not prune.'); onConsole(); }
+      setNote(result.ok ? 'Worktrees with missing folders forgotten.' : { text: result.message, failed: true });
+    } catch (failure) { setNote({ text: failure.message || 'Could not prune.', failed: true }); }
     finally { setWorking(false); void refresh(); }
   }
 
@@ -69,7 +69,7 @@ export default function WorktreesScreen({ repository, busy, refreshKey = 0, onBa
       </div>
     </header>
     <p className="tool-intro muted">Each worktree is a checkout of this repository in its own folder, on its own branch. Fix something on another branch without stashing what you are doing here.</p>
-    {note && <div className="operation-note" role="status"><span>{note}</span><button onClick={() => setNote('')} aria-label="Dismiss">×</button></div>}
+    <OperationNote note={note} onConsole={onConsole} onDismiss={() => setNote('')} />
     {error && <p className="history-error" role="alert">{error}<button onClick={onConsole}>Show output</button></p>}
     {loading && <div className="loading-shell" aria-label="Loading worktrees">{Array.from({ length: 3 }, (_, index) => <div className="skeleton" key={index} />)}</div>}
     <ul className="tool-list" aria-label="Worktrees">

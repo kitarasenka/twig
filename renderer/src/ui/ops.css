@@ -48,6 +48,13 @@
 .operation-note { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-4);
   background: var(--accent-bg); color: var(--text); font-size: var(--text-xs); }
 .operation-note button { margin-left: auto; background: none; border: 0; color: var(--text); cursor: pointer; }
+.operation-note .note-output + button { margin-left: 0; }
+/* A failure: red tint with a red bar, a warning icon, and Show output as a real button. */
+.operation-note.failed { background: var(--danger-bg); box-shadow: inset 3px 0 var(--danger); padding-block: var(--space-2); }
+.operation-note .note-icon { color: var(--danger); }
+.operation-note .note-output { gap: var(--space-1); min-height: 26px; padding: 2px var(--space-2); border: 1px solid var(--danger);
+  background: var(--surface-raised); font-weight: 500; }
+.operation-note .note-output:hover { background: var(--surface-hover); }
 
 .operation-banner { border-bottom: 1px solid var(--border); background: var(--surface); }
 .operation-headline { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-4); }

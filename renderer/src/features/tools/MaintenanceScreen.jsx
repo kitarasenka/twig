@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Gauge, RefreshCw, Sparkles, Wrench } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import OperationNote from '../../ui/OperationNote.jsx';
 import { formatBytes, maintenanceAdvice, maintenanceCommands, maintenanceText } from '../../../../main/git/maintenance-plan.js';
 
 const count = value => value.toLocaleString('en');
@@ -55,8 +56,8 @@ export default function MaintenanceScreen({ repository, busy, onBack, onDialog, 
       const result = await window.twig.runMaintenance(repository.id, task);
       if (result.after) setStats(result.after);
       if (result.ok) setNote(outcomeText(task, result));
-      else { setNote(result.message); if (!result.cancelled) onConsole(); }
-    } catch (failure) { setNote(failure.message || 'Maintenance did not run.'); onConsole(); }
+      else { setNote({ text: result.message, failed: !result.cancelled }); }
+    } catch (failure) { setNote({ text: failure.message || 'Maintenance did not run.', failed: true }); }
     finally { setRunning(null); void refresh(); }
   }
 
@@ -80,7 +81,7 @@ export default function MaintenanceScreen({ repository, busy, onBack, onDialog, 
       </div>
     </header>
     <p className="tool-intro muted">Git stores every version as objects under .git. Over time they pile up as loose files and many small packs; packing them keeps history fast and the folder small.</p>
-    {note && <div className="operation-note" role="status"><span>{note}</span><button onClick={() => setNote('')} aria-label="Dismiss">×</button></div>}
+    <OperationNote note={note} onConsole={onConsole} onDismiss={() => setNote('')} />
     {error && <p className="history-error" role="alert">{error}<button onClick={onConsole}>Show output</button></p>}
     {!stats && !error && <div className="loading-shell" aria-label="Measuring repository"><div className="skeleton" /></div>}
     <div className="maintenance-body">

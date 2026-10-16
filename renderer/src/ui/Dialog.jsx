@@ -9,6 +9,8 @@ export default function Dialog({ title, onClose, wide = false, closeReason, chil
     const dialog = ref.current;
     const previous = document.activeElement;
     dialog.showModal();
+    // showModal focuses the header's close button; a dialog can name the button Enter should press.
+    dialog.querySelector('[data-autofocus]')?.focus();
     return () => { dialog.close(); previous?.focus(); };
   }, []);
   return <dialog ref={ref} className={wide ? 'wide' : undefined} aria-labelledby="dialog-title" onCancel={event => { if (closeReason) event.preventDefault(); else onClose(); }}>

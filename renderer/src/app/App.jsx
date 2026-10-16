@@ -59,6 +59,8 @@ export default function App() {
   const [refreshSlot, setRefreshSlot] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [dialogBusy, setDialogBusy] = useState(false);
+  // The tab the 'Close tab' dialog asks about: { id, name, sandbox }.
+  const [closeTarget, setCloseTarget] = useState(null);
   const [info, setInfo] = useState(null);
   // The external editor lives in main (it names a program to run); this is
   // only its description, for the Settings row and the file menus.
@@ -280,7 +282,7 @@ export default function App() {
           setPushGate({ steps: result.steps, result: result.blocked ? 'blocked' : result.ok ? 'passed' : 'failed', blocked: result.blocked });
           if (!result.blocked) setTimeout(() => { setPushGate(null); pushGateResolve.current = null; resolve(true); }, result.ok ? 900 : 1600);
         })
-        .catch(() => { setPushGate(null); pushGateResolve.current = null; showConsole(); resolve(true); });
+        .catch(() => { setPushGate(null); pushGateResolve.current = null; resolve(true); });
     });
   }
   function closePushGate(proceed, bypass = false) {
@@ -298,13 +300,11 @@ export default function App() {
     try {
       const result = await window.twig.runSync(repository.id, mode, branchName);
       setSyncNote(result.ok ? `${mode} finished.` : result.message);
-      if (!result.ok) showConsole();
       const next = await window.twig.selectRepository(repository.id);
       setWorkspace(next);
       setWorktreeVersion(value => value + 1);
     } catch (error) {
       setSyncNote(error.message || 'The operation failed.');
-      showConsole();
     } finally { setSyncing(null); }
   }
   async function runStash(action) {
@@ -319,7 +319,6 @@ export default function App() {
       setWorktreeVersion(value => value + 1);
     } catch (error) {
       setSyncNote(error.message || 'The operation failed.');
-      showConsole();
     } finally { setSyncing(null); }
   }
 
@@ -356,7 +355,6 @@ export default function App() {
       setSyncNote('Demo workspace reset to its sample history.');
     } catch (error) {
       setSyncNote(error.message || 'Could not reset the demo workspace.');
-      showConsole();
     } finally { setResetting(false); }
   }
 
@@ -365,7 +363,6 @@ export default function App() {
    * nothing on startup — and it deletes nothing: showing it again reopens the
    * same sandbox with its history intact.
    */
-  const demoVisibleRef = useRef(null);
   async function setDemoVisible(visible) {
     try {
       const next = await window.twig.setDemoWorkspaceVisible(visible);
@@ -383,13 +380,9 @@ export default function App() {
       }
     } catch (error) {
       setSyncNote(error.message || 'Could not change the demo workspace.');
-      showConsole();
     }
   }
 
-  // Cmd+W fires from a subscription that must not be torn down on every render,
-  // so it reaches this handler through a ref rather than the dependency list.
-  demoVisibleRef.current = setDemoVisible;
 
   const syncReason = !repositoryActive || !repository?.available ? unavailable
     : syncing ? `${syncing} is running` : undefined;
@@ -475,10 +468,10 @@ export default function App() {
     }
     catch (failure) {
       setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
-      setSyncNote(failure.message || 'The action could not be reversed.'); showConsole();
+      setSyncNote(failure.message || 'The action could not be reversed.');
     }
     finally { setUndoMoving(false); }
-  }, [repositoryActive, repositoryId, refreshRepository, showConsole, undoMoving]);
+  }, [repositoryActive, repositoryId, refreshRepository, undoMoving]);
   useEffect(() => {
     const keydown = event => {
       const direction = matchesShortcut(event, 'redo') ? 'redo' : matchesShortcut(event, 'undo') ? 'undo' : null;
@@ -496,7 +489,7 @@ export default function App() {
       const next = await window.twig.openRepository();
       setWorkspace(next);
       if (next.activeId) setActive(`repository:${next.activeId}`);
-    } catch (error) { setStartupError(error.message || 'Could not open this repository.'); showConsole(); }
+    } catch (error) { setStartupError(error.message || 'Could not open this repository.'); }
   }
   async function selectRepository(id) {
     const request = ++selectionRequest.current;
@@ -521,6 +514,20 @@ export default function App() {
     if (openRepositories.length > 0) setActive(`repository:${openRepositories[0].id}`);
     else if (sandboxId) setActive(`repository:${sandboxId}`);
     else openEmpty();
+  }
+  /** Closing a tab is asked first: the tab button and the shortcut both land here. */
+  function askCloseTab(item) {
+    if (!item) return;
+    setCloseTarget({ id: item.id, name: item.name, sandbox: Boolean(item.sandbox) });
+    setDialog('Close tab');
+  }
+  function confirmCloseTab() {
+    const target = closeTarget;
+    setDialog(null);
+    setCloseTarget(null);
+    if (!target) return;
+    if (target.sandbox) void setDemoVisible(false);
+    else closeRepositoryTab(target.id);
   }
   function acceptWorkspace(next, open = false) {
     ++selectionRequest.current;
@@ -565,19 +572,15 @@ export default function App() {
       if (matchesShortcut(event, 'closeTab')) {
         event.preventDefault();
         if (active === 'new') { setEmptyOpen(false); if (sandboxId) setActive(`repository:${sandboxId}`); }
-        else if (repositoryActive && active.slice(11) === sandboxId) void demoVisibleRef.current(false);
         else if (repositoryActive) {
-          const id = active.slice(11);
-          setClosedTabs(current => new Set(current).add(id));
-          const remaining = (workspace?.repositories || []).filter(item => item.id !== id && !closedTabs.has(item.id));
-          setActive(remaining[0] ? `repository:${remaining[0].id}` : sandboxId ? `repository:${sandboxId}` : 'new');
-          if (!remaining[0] && !sandboxId) setEmptyOpen(true);
+          const item = workspace?.repositories.find(entry => entry.id === active.slice(11));
+          if (item) { setCloseTarget({ id: item.id, name: item.name, sandbox: Boolean(item.sandbox) }); setDialog('Close tab'); }
         }
       }
     }
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
-  }, [dialog, active, repositoryActive, sandboxId, workspace, closedTabs, focusSearch]);
+  }, [dialog, active, repositoryActive, sandboxId, workspace, focusSearch]);
 
   // Restarting ends whatever Git runs: wait for the running action first.
   const updateBusy = syncing ? `Wait for ${syncing} to finish` : undoMoving ? 'Wait for Undo to finish' : dialogBusy || resetting ? 'Wait for the action to finish' : undefined;
@@ -592,7 +595,7 @@ export default function App() {
   return <div className="app-shell">
     <header className="tab-bar"><div className="brand"><img className="brand-logo" src="./twig-logo.png" alt="" width="36" height="36" /><strong>🌱 Twig</strong></div>
       <nav className="tabs" aria-label="Repository tabs" ref={tabsRef} onWheel={scrollTabs}>
-        {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{item.sandbox ? <small>DEMO</small> : !item.available && <small>OFFLINE</small>}</button><Button icon={X} aria-label={`Close ${item.name} tab`} title={item.sandbox ? 'Close the demo workspace' : `Close ${item.name}`} onClick={() => { if (item.sandbox) void setDemoVisible(false); else closeRepositoryTab(item.id); }} /></div>)}
+        {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{item.sandbox ? <small>DEMO</small> : !item.available && <small>OFFLINE</small>}</button><Button icon={X} aria-label={`Close ${item.name} tab`} title={item.sandbox ? 'Close the demo workspace' : `Close ${item.name}`} onClick={() => askCloseTab(item)} /></div>)}
         {emptyOpen && <div className={`tab ${active === 'new' ? 'active' : ''}`}><button aria-current={active === 'new' ? 'page' : undefined} onClick={() => setActive('new')}><FolderOpen />New repository</button><Button icon={X} aria-label="Close new tab" onClick={() => { setEmptyOpen(false); if (sandboxId) setActive(`repository:${sandboxId}`); }} /></div>}
         <Button icon={Plus} aria-label="New repository tab" title="New repository tab" onClick={openEmpty} />
       </nav>
@@ -713,6 +716,13 @@ export default function App() {
           <li>Your own connected repositories and automation pipelines are not touched.</li>
         </ul>
         <div className="dialog-actions"><Button onClick={() => setDialog('Settings')} reason={resetting ? 'Resetting…' : undefined}>Cancel</Button><Button className="danger" icon={RefreshCw} onClick={resetDemo} reason={resetting ? 'Resetting the demo workspace…' : undefined}>Reset demo workspace</Button></div>
+      </div>}
+      {dialog === 'Close tab' && closeTarget && <div className="confirm-dialog">
+        <p>Close the <strong>{closeTarget.name}</strong> tab?</p>
+        <p className="muted">{closeTarget.sandbox
+          ? 'The demo sandbox stays on disk with its history. Settings brings the tab back.'
+          : 'Nothing is deleted: the repository stays connected and its files stay on disk. Choose it under REPOSITORY to open the tab again.'}</p>
+        <div className="dialog-actions"><Button onClick={() => { setDialog(null); setCloseTarget(null); }}>Cancel</Button><Button className="primary" icon={X} data-autofocus onClick={confirmCloseTab}>Yes, close</Button></div>
       </div>}
       {dialog === 'Keyboard shortcuts' && <ShortcutsSettings platform={info?.platform} />}
       {dialog === 'AI agents (MCP)' && <McpSettings onBusyChange={setDialogBusy} onChange={setMcpSettings} />}

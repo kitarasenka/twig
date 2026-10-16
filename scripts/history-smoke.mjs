@@ -90,7 +90,12 @@ try {
   await page.getByRole('button', { name: 'Modified hello.txt', exact: true }).click();
   await page.getByRole('region', { name: 'File diff' }).waitFor().catch(() => {});
   await page.getByText('+Hello real history', { exact: true }).waitFor();
+  // The open file stays lit in the commit panel until its diff is closed.
+  const openFileRow = page.getByRole('button', { name: 'Modified hello.txt', exact: true });
+  assert.equal(await openFileRow.getAttribute('aria-pressed'), 'true', 'the open file is highlighted');
+  assert.notEqual(await openFileRow.evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)', 'the highlight is visible');
   await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  assert.equal(await openFileRow.getAttribute('aria-pressed'), 'false', 'closing the diff drops the highlight');
   // File history: the changed-file context menu lists every commit that touched
   // it. hello.txt changed twice — once at the root, once at the tip.
   await page.getByRole('button', { name: 'Modified hello.txt', exact: true }).click({ button: 'right' });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, GitBranch, Globe, Link2, Pencil, Search, ShieldCheck, Tag, Trash2, Upload } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, GitBranch, Globe, Link2, Pencil, Search, ShieldCheck, SquareTerminal, Tag, Trash2, Upload } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
 import { pushRefCommand, splitRemoteRef } from './remote-ref.js';
@@ -195,12 +195,12 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
           {remotes.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}
         </select></label>}
     </div>
-    {type === 'tag' && tagError && <p className="operation-note" role="alert">{tagError}<button onClick={onConsole}>Show output</button></p>}
+    {type === 'tag' && tagError && <p className="operation-note failed" role="alert"><AlertTriangle className="note-icon" aria-hidden="true" /><span>{tagError}</span><button className="note-output" onClick={onConsole}><SquareTerminal aria-hidden="true" />Show output</button></p>}
     {notice && <p className="operation-note" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss">×</button></p>}
-    {unmerged && <p className="operation-note" role="alert">
-      <span>Git refused to delete {unmerged}: it is not fully merged.</span>
+    {unmerged && <p className="operation-note failed" role="alert">
+      <AlertTriangle className="note-icon" aria-hidden="true" /><span>Git refused to delete {unmerged}: it is not fully merged.</span>
       <Button className="danger" onClick={() => forceDelete(unmerged)}>Delete anyway</Button>
-      <button onClick={() => { setUnmerged(null); onConsole(); }} aria-label="Show output">Show output</button>
+      <button className="note-output" onClick={() => { setUnmerged(null); onConsole(); }}><SquareTerminal aria-hidden="true" />Show output</button>
     </p>}
     <div className="refs-rows" role="list">
       {rows.length === 0 && <p className="empty-inline">No {TABS.find(([value]) => value === type)[1].toLowerCase()} match this search.</p>}

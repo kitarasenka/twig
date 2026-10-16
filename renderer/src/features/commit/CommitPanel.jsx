@@ -67,7 +67,7 @@ function SignatureLine({ signature }) {
   </p>;
 }
 
-export default function CommitPanel({ repositoryId, commit, loading, error, onClose, onParent, onFile, onFileMenu, onConsole, range, commitColors = 'lanes', remotes = [], mark = null, onSetMark, onClearMark }) {
+export default function CommitPanel({ repositoryId, commit, loading, error, onClose, onParent, onFile, openPath = null, onFileMenu, onConsole, range, commitColors = 'lanes', remotes = [], mark = null, onSetMark, onClearMark }) {
   const [tree, setTree] = useState(false);
   const [all, setAll] = useState(false);
   const [sort, setSort] = useState('path');
@@ -109,6 +109,9 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
     [remotes, commit?.oid, commit?.author?.email]
   );
   const email = commit?.author?.email || '';
+  // The file whose diff is open in the centre stays lit, as in the uncommitted panel.
+  const fileButton = (file, label) => <button className="commit-file" key={file.path} aria-pressed={file.path === openPath}
+    onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{label}</span></button>;
   return <aside className="commit-detail" aria-label="Commit details">
     <header className="panel-heading">
       <span>{range ? 'COMPARE' : 'COMMIT'} <code>{commit?.oid.slice(0, 8) || '…'}</code></span>
@@ -164,7 +167,7 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
         <div className="file-controls"><input aria-label="Filter commit files" placeholder="Filter files" value={filter} onChange={e => setFilter(e.target.value)} /><select aria-label="Sort commit files" value={sort} onChange={e => setSort(e.target.value)}>{FILE_SORTS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
         {fileError && <p role="alert">{fileError}<button onClick={onConsole}>Show output</button></p>}
         {all && !allFiles && !range ? <div className="skeleton" aria-label="Loading files" /> : tree ? <FileTree files={files} startOpen={files.length <= FILE_STEP} resetKey={files}
-          renderFile={file => <button className="commit-file" key={file.path} onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{baseName(file.path)}</span></button>} /> : <>{files.slice(0, fileLimit).map(file => <button className="commit-file" key={file.path} onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{file.path}</span></button>)}
+          renderFile={file => fileButton(file, baseName(file.path))} /> : <>{files.slice(0, fileLimit).map(file => fileButton(file, file.path))}
           {files.length > fileLimit && <button type="button" className="text-button" onClick={() => setFileLimit(files.length)}>Show all {files.length} files</button>}</>}
         {!files.length && (!all || allFiles) && <p className="muted">No matching files.</p>}
       </>}

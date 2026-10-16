@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Play, Copy, Trash2, Pencil, Plus, ShieldAlert, FileWarning } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import OperationNote from '../../ui/OperationNote.jsx';
 import { HOOK_EVENTS, eventLabel } from './event-labels.js';
 import { makeId, normalizeConfig } from './schema.js';
 import { TEMPLATES, buildTemplate } from './templates.js';
@@ -55,8 +56,8 @@ export default function AutomationsScreen({ repository, refreshKey, busy, onBack
       const saved = await window.twig.saveAutomationConfig(repository.id, clean);
       setData(current => ({ ...current, config: saved }));
       onChanged?.();
-    } catch (failure) { setNotice(failure.message || 'Could not save.'); onConsole(); }
-  }, [repository.id, onChanged, onConsole]);
+    } catch (failure) { setNotice({ text: failure.message || 'Could not save.', failed: true }); }
+  }, [repository.id, onChanged]);
 
   if (error) return <section className="automations-screen"><header className="panel-heading">
     <Button icon={ArrowLeft} onClick={onBack}>Back to history</Button></header>
@@ -91,7 +92,7 @@ export default function AutomationsScreen({ repository, refreshKey, busy, onBack
       </div>
     </header>
 
-    {notice && <p className="operation-note" role="status"><span>{notice}</span><button onClick={() => setNotice('')} aria-label="Dismiss">×</button></p>}
+    <OperationNote note={notice} onConsole={onConsole} onDismiss={() => setNotice('')} />
 
     {tab === 'history' ? <ExecutionLog repositoryId={repository.id} refreshKey={refreshKey} onConsole={onConsole} /> : <>
       <div className="automations-toolbar">
@@ -149,7 +150,7 @@ export default function AutomationsScreen({ repository, refreshKey, busy, onBack
     {trustOpen && <TrustPrompt repo={data.repo} onClose={() => setTrustOpen(false)}
       onTrust={async trust => {
         try { const saved = await window.twig.trustAutomations(repository.id, trust); setData(current => ({ ...current, trust: saved })); await load(); }
-        catch (failure) { setNotice(failure.message || 'Could not enable.'); onConsole(); }
+        catch (failure) { setNotice({ text: failure.message || 'Could not enable.', failed: true }); }
       }} />}
   </section>;
 }

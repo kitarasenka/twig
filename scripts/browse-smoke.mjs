@@ -130,7 +130,7 @@ try {
   await expect('Git refused to delete feature/old: it is not fully merged.', 'the refusal is explained');
 
   // "Show output" must land on the command that failed, not just open the journal.
-  await page.getByRole('button', { name: 'Show output' }).click();
+  await page.getByRole('alert').filter({ hasText: 'not fully merged' }).getByRole('button', { name: 'Show output' }).click();
   const focused = page.locator('.console-entry.focused');
   await focused.waitFor();
   assert.match(await focused.locator('code').first().innerText(), /branch -d feature\/old/, 'the failed command is the one revealed');

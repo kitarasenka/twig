@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Boxes, Download, ExternalLink, RefreshCw } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import OperationNote from '../../ui/OperationNote.jsx';
 import { submoduleAction, submoduleConsequence, submoduleState, submoduleUpdateCommand } from './tools-view.js';
 
 /**
@@ -30,9 +31,8 @@ export default function SubmodulesScreen({ repository, busy, refreshKey = 0, onB
     setRunning(true); setNote('');
     try {
       const result = await window.twig.updateSubmodules(repository.id, all ? null : entries.map(entry => entry.path));
-      setNote(result.ok ? (all ? 'Submodules updated to their pinned commits.' : `${entries[0].path} is at its pinned commit.`) : result.message);
-      if (!result.ok && !result.cancelled) onConsole();
-    } catch (failure) { setNote(failure.message || 'Could not update the submodules.'); onConsole(); }
+      setNote(result.ok ? (all ? 'Submodules updated to their pinned commits.' : `${entries[0].path} is at its pinned commit.`) : { text: result.message, failed: !result.cancelled });
+    } catch (failure) { setNote({ text: failure.message || 'Could not update the submodules.', failed: true }); }
     finally { setRunning(false); void refresh(); onChanged(); }
   }
   function confirmUpdate(entries, all = false) {
@@ -57,7 +57,7 @@ export default function SubmodulesScreen({ repository, busy, refreshKey = 0, onB
       </div>
     </header>
     <p className="tool-intro muted">A submodule is another repository pinned at one commit inside this one. The pin is part of your commits; what is checked out inside it may differ.</p>
-    {note && <div className="operation-note" role="status"><span>{note}</span><button onClick={() => setNote('')} aria-label="Dismiss">×</button></div>}
+    <OperationNote note={note} onConsole={onConsole} onDismiss={() => setNote('')} />
     {error && <p className="history-error" role="alert">{error}<button onClick={onConsole}>Show output</button></p>}
     {loading && <div className="loading-shell" aria-label="Loading submodules">{Array.from({ length: 3 }, (_, index) => <div className="skeleton" key={index} />)}</div>}
     {!loading && !error && submodules.length === 0 && <p className="empty-inline">This repository has no submodules.</p>}

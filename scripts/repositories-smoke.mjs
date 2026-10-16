@@ -74,6 +74,7 @@ try {
   const tabs = () => page.getByRole('navigation', { name: 'Repository tabs', exact: true });
   assert.equal(await tabs().evaluate(element => getComputedStyle(element).scrollbarWidth), 'none');
   await tabs().getByRole('button', { name: 'Close twig-clone tab', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Close tab', exact: true }).getByRole('button', { name: 'Yes, close', exact: true }).click();
   await tabs().getByRole('button', { name: 'twig-clone', exact: true }).waitFor({ state: 'detached' });
   await app.close(); app = await electron.launch({ args, env });
   page = await app.firstWindow(); page.setDefaultTimeout(20000);

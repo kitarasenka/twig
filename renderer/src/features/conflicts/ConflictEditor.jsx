@@ -130,7 +130,7 @@ export default function ConflictEditor({ repositoryId, file, onClose, onResolved
     setBusy(true); setError(''); setConfirmMarkers(false);
     try {
       const result = await window.twig.saveConflict(repositoryId, file, text, data.mtimeMs, data.size);
-      if (!result.ok) { setError(result.message || 'Could not save this file.'); onConsole(); return; }
+      if (!result.ok) { setError(result.message || 'Could not save this file.'); return; }
       onResolved(result.state);
     } catch (failure) {
       setError(failure.message || 'Could not save this file.');
@@ -140,7 +140,7 @@ export default function ConflictEditor({ repositoryId, file, onClose, onResolved
     setBusy(true); setError('');
     try {
       const result = await window.twig.takeConflictSide(repositoryId, file, side);
-      if (!result.ok) { setError(result.message || 'Could not take that side.'); onConsole(); return; }
+      if (!result.ok) { setError(result.message || 'Could not take that side.'); return; }
       onResolved(result.state);
     } catch (failure) {
       setError(failure.message || 'Could not take that side.');

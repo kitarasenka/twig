@@ -148,7 +148,7 @@ export default function BlameView({ repository, seed, onClose, onJump, onConsole
       const key = cacheKey({ repositoryId: repository.id, mode: 'blame', oid: result.oid, path: result.path, endOid: '' });
       writeCache(key, result);
       push({ mode: 'blame', oid: result.oid, path: result.path, mapping: result.mapping, via: result.via });
-    } catch { setNotice({ kind: 'warn', text: 'Could not step back from this line. Show output in the console.' }); onConsole(); }
+    } catch { setNotice({ kind: 'warn', text: 'Could not step back from this line. Show output in the console.' }); }
   };
 
   const toReverse = () => {

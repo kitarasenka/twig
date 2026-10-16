@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AlignLeft, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow, Wrench } from 'lucide-react';
 import { StashBox } from '../../ui/stash-icons.js';
 import Button from '../../ui/Button.jsx';
+import OperationNote from '../../ui/OperationNote.jsx';
 import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
 import Splitter from '../../ui/Splitter.jsx';
@@ -520,7 +521,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       // Git does with divergent work. The banner below says so in full, so
       // there is no note to add and no reason to throw the console open; that
       // is reserved for a command that genuinely could not run.
-      if (!result.ok && (!state || state.kind === 'none')) { setNote(result.message || 'The operation did not finish.'); onConsole(); }
+      if (!result.ok && (!state || state.kind === 'none')) { setNote({ text: result.message || 'The operation did not finish.', failed: true }); }
       if (state && state.conflicts.length === 0) setConflict(null);
       await reload({ select: result.ok ? select : null });
       // Success is reported once the graph shows it: "Branch deleted" next to
@@ -529,12 +530,11 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       onRepositoryChanged?.();
       return result;
     } catch (failure) {
-      setNote(failure.message || 'The operation failed.');
-      onConsole();
+      setNote({ text: failure.message || 'The operation failed.', failed: true });
       await refreshOperation();
       return null;
     } finally { setWorking(false); }
-  }, [reload, refreshOperation, onConsole, onRepositoryChanged]);
+  }, [reload, refreshOperation, onRepositoryChanged]);
 
   /**
    * `git lfs pull`: downloads the LFS content of checked-out files in place of
@@ -546,14 +546,14 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     try {
       const result = await window.twig.pullLfs(repository.id);
       if (result.ok) setNote('Git LFS files downloaded.');
-      else { setNote(result.message); if (!result.cancelled) onConsole(); }
-    } catch (failure) { setNote(failure.message || 'git lfs pull failed.'); onConsole(); }
+      else { setNote({ text: result.message, failed: !result.cancelled }); }
+    } catch (failure) { setNote({ text: failure.message || 'git lfs pull failed.', failed: true }); }
     finally {
       setLfsPulling(false);
       setLfs(await window.twig.getLfsStatus(repository.id).catch(() => null));
       onRepositoryChanged?.();
     }
-  }, [repository.id, onConsole, onRepositoryChanged]);
+  }, [repository.id, onRepositoryChanged]);
 
   /**
    * Bisect answers with the marks Git left behind, not with an operation state,
@@ -565,17 +565,16 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     try {
       const result = await window.twig.runBisect(repository.id, step, oid);
       setBisect(result.bisect);
-      if (!result.ok) { setNote(result.message || 'BugHunter did not finish.'); onConsole(); }
+      if (!result.ok) { setNote({ text: result.message || 'BugHunter did not finish.', failed: true }); }
       await reload();
       // As with every action: the note once the graph shows the new test commit.
       if (result.ok) setNote(step === 'start' ? '🌱 BugHunter (bisect) started.' : step === 'reset' ? 'BugHunter ended.' : `Revision marked ${step}.`);
       onRepositoryChanged?.();
     } catch (failure) {
-      setNote(failure.message || 'BugHunter failed.');
-      onConsole();
+      setNote({ text: failure.message || 'BugHunter failed.', failed: true });
       await refreshOperation();
     } finally { setWorking(false); }
-  }, [repository.id, reload, refreshOperation, onConsole, onRepositoryChanged]);
+  }, [repository.id, reload, refreshOperation, onRepositoryChanged]);
 
   /**
    * Runs the automation pipelines bound to a Git event. For a `pre-*` event the
@@ -595,8 +594,8 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       setExecution(current => current && { ...current, steps: result.steps, result: result.blocked ? 'blocked' : result.ok ? 'passed' : 'failed', blocked: result.blocked });
       if (result.blocked) return; // wait for a button
       setTimeout(() => { setExecution(null); onDone(true); }, result.ok ? 900 : 1600);
-    } catch { setExecution(null); onConsole(); onDone(true); }
-  }, [repository.id, onConsole]);
+    } catch { setExecution(null); setNote({ text: 'The automations could not run; the operation went ahead.', failed: true }); onDone(true); }
+  }, [repository.id]);
 
   const runAutomation = useCallback((event, options = {}) => new Promise(resolve => {
     gateResolver.current = resolve;
@@ -633,12 +632,12 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
   // their own state without a reload.
   const applyMark = useCallback(async (oid, color, noteText) => {
     try { setMarks(await window.twig.setMark(repository.id, oid, color, noteText)); }
-    catch { setNote('Could not save the mark.'); onConsole(); }
-  }, [repository.id, onConsole]);
+    catch { setNote({ text: 'Could not save the mark.', failed: true }); }
+  }, [repository.id]);
   const removeMark = useCallback(async (oid) => {
     try { setMarks(await window.twig.clearMark(repository.id, oid)); }
-    catch { setNote('Could not remove the mark.'); onConsole(); }
-  }, [repository.id, onConsole]);
+    catch { setNote({ text: 'Could not remove the mark.', failed: true }); }
+  }, [repository.id]);
 
   const headBranch = repository.status?.branch?.name || null;
   const headOid = repository.status?.branch?.oid || null;
@@ -743,7 +742,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       }),
       deleteRemoteBranch: ref => {
         const split = splitRemoteRef(ref.fullName, remotes.map(item => item.name));
-        if (!split) { setNote('The remote of this branch is no longer configured. Reload the remotes first.'); onConsole(); return; }
+        if (!split) { setNote({ text: 'The remote of this branch is no longer configured. Reload the remotes first.', failed: true }); return; }
         setDialog({
           type: 'confirm', title: `Delete ${split.branch} on ${split.remote}`,
           command: pushRefCommand({ remote: split.remote, ref: split.ref, remove: true }),
@@ -845,8 +844,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     openInEditor: async path => {
       try {
         const result = await window.twig.openInEditor(repository.id, path);
-        setNote(result.ok ? `Opened ${path} in ${result.editor}.` : result.message);
-        if (!result.ok && result.reason === 'failed') onConsole();
+        setNote(result.ok ? `Opened ${path} in ${result.editor}.` : { text: result.message, failed: result.reason === 'failed' });
       } catch { setNote('Could not open that file.'); }
     },
     reveal: async path => {
@@ -896,8 +894,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         'Rewrite and replay',
         text => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, parent, buildRewordPlan(commits, commit.oid, text)), 'Message rewritten.'));
     } catch (failure) {
-      setNote(failure.message || 'Could not read the commits to replay.');
-      onConsole();
+      setNote({ text: failure.message || 'Could not read the commits to replay.', failed: true });
     } finally { setWorking(false); }
   }
 
@@ -934,8 +931,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
           `Squashed ${count} commits into one.`)
       });
     } catch (failure) {
-      setNote(failure.message || 'Could not read the commits to squash.');
-      onConsole();
+      setNote({ text: failure.message || 'Could not read the commits to squash.', failed: true });
     } finally { setWorking(false); }
   }
 
@@ -951,12 +947,12 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     setWorking(true); setNote('');
     try {
       const result = await window.twig.addWorktree(repository.id, request);
-      if (!result.ok) { setNote(result.message); onConsole(); return; }
+      if (!result.ok) { setNote({ text: result.message, failed: true }); return; }
       setNote(`Worktree for ${request.branch} created in ${result.path}.`);
       setToolsRefresh(value => value + 1);
       if (request.create) void reload();
       onOpenWorkspace?.(result.workspace);
-    } catch (failure) { setNote(failure.message || 'Could not add the worktree.'); onConsole(); }
+    } catch (failure) { setNote({ text: failure.message || 'Could not add the worktree.', failed: true }); }
     finally { setWorking(false); }
   }
 
@@ -967,8 +963,8 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       const result = await window.twig.exportPatches(repository.id, oids);
       if (result.cancelled) return;
       if (result.ok) setNote(`${result.count === 1 ? 'Patch' : `${result.count} patches`} saved to ${result.path}.`);
-      else { setNote(result.message); onConsole(); }
-    } catch (failure) { setNote(failure.message || 'Could not export the patch.'); onConsole(); }
+      else { setNote({ text: result.message, failed: true }); }
+    } catch (failure) { setNote({ text: failure.message || 'Could not export the patch.', failed: true }); }
   }
 
   /** Pick a patch file in the native dialog; main says what it holds before anything runs. */
@@ -1011,8 +1007,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       const commits = await window.twig.getRebaseCandidates(repository.id, oid);
       setDialog({ type: 'rebase', oid, commits });
     } catch (failure) {
-      setNote(failure.message || 'Could not read the commits to rebase.');
-      onConsole();
+      setNote({ text: failure.message || 'Could not read the commits to rebase.', failed: true });
     } finally { setWorking(false); }
   }
 
@@ -1387,7 +1382,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         <Button onClick={drag.cancel}>Cancel</Button>
       </div>}
       {dropRunning && <div className="git-drag-status" role="status">Running Git action… <Button onClick={() => void window.twig.cancelSync(repository.id)}>Cancel operation</Button></div>}
-      {note && <div className="operation-note" role="status"><span>{note}</span><button onClick={() => setNote('')} aria-label="Dismiss">×</button></div>}
+      <OperationNote note={note} onConsole={onConsole} onDismiss={() => setNote('')} />
       <OperationBanner state={operation} busy={working} onOpenConflict={setConflict}
         onStep={step => perform(() => window.twig.runSequencer(repository.id, operation.kind, step), `${operation.kind} ${step === 'abort' ? 'aborted' : step === 'skip' ? 'skipped a commit' : 'finished'}.`)} />
       <BisectBanner state={bisect} busy={working}
@@ -1468,7 +1463,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       actions={stagingActions} error={stagingError} onConsole={onConsole} onDismissError={() => setStagingError('')}
       onFile={openWorktreeFile} onStaging={() => choose('worktree')} onClose={() => setDetail(false)} />}
     {showDetail && !fileHistory && !blame && !uncommitted && <CommitPanel repositoryId={repository.id} {...commitState} onClose={() => setDetail(false)} onParent={jump} onFile={openFile}
-      onFileMenu={(path, x, y) => setFileMenu({ path, x, y })} onConsole={onConsole} range={range} commitColors={commitColors} remotes={remotes}
+      openPath={diff && !diff.section ? diff.file : null} onFileMenu={(path, x, y) => setFileMenu({ path, x, y })} onConsole={onConsole} range={range} commitColors={commitColors} remotes={remotes}
       mark={commitState.commit ? marks[commitState.commit.oid] || null : null} onSetMark={applyMark} onClearMark={removeMark} />}
     {fileMenu && <Menu x={fileMenu.x} y={fileMenu.y} label={`Actions for ${fileMenu.path}`} onClose={() => setFileMenu(null)}
       items={buildFileMenu({

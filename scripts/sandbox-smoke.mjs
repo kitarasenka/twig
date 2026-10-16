@@ -65,7 +65,16 @@ try {
 
   // Closing the demo tab: it is the only tab here, so the app falls back to the
   // New repository screen and Settings is where it comes back from.
+  // Closing asks first: Cancel keeps the tab, Yes, close closes it.
+  const closeDialog = page.getByRole('dialog', { name: 'Close tab', exact: true });
   await page.getByRole('button', { name: 'Close workspace-demo tab', exact: true }).click();
+  await closeDialog.getByText('The demo sandbox stays on disk').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Yes, close', 'the confirm button has focus');
+  await closeDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await closeDialog.waitFor({ state: 'detached' });
+  assert.equal(await page.getByRole('button', { name: 'Close workspace-demo tab', exact: true }).count(), 1, 'Cancel keeps the tab');
+  await page.getByRole('button', { name: 'Close workspace-demo tab', exact: true }).click();
+  await closeDialog.getByRole('button', { name: 'Yes, close', exact: true }).click();
   await page.getByRole('heading', { name: 'A clear view of your code.' }).waitFor();
   await page.getByText('Demo workspace closed. Settings brings it back.').waitFor();
   assert.equal(await page.getByRole('button', { name: 'Close workspace-demo tab' }).count(), 0, 'the demo tab is gone');

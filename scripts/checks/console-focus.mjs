@@ -45,6 +45,25 @@ const app = await read('renderer/src/app/App.jsx');
 assert.ok(app.includes('pickFailedEntry(entriesRef.current)'), 'App picks the failed entry from the freshest journal');
 assert.ok(!/onConsole=\{\(\) => setConsoleOpen\(true\)\}/.test(app), 'every "Show output" path goes through showConsole');
 
+// A failure does not throw the console open: it leaves a note with "Show output",
+// and the console opens only when a person presses that or the status line.
+const { readdir } = await import('node:fs/promises');
+const sources = (await readdir(path.join(root, 'renderer/src'), { recursive: true })).filter(name => name.endsWith('.jsx'));
+for (const name of sources) {
+  const lines = (await read(`renderer/src/${name}`)).split('\n');
+  lines.forEach((line, index) => {
+    if (!/\b(onConsole|showConsole)\(\)/.test(line)) return;
+    const pressed = /onClick|onConsole=\{\(\) =>/.test(line) || /function showManagerOutput/.test(lines[index - 1] || '');
+    assert.ok(pressed, `renderer/src/${name}:${index + 1} opens the console without a press`);
+  });
+}
+for (const name of ['features/graph/HistoryWorkspace.jsx', 'features/tools/MaintenanceScreen.jsx', 'features/tools/SubmodulesScreen.jsx',
+  'features/tools/WorktreesScreen.jsx', 'features/automations/AutomationsScreen.jsx']) {
+  assert.ok((await read(`renderer/src/${name}`)).includes('<OperationNote note={'), `${name}: notes go through OperationNote`);
+  assert.ok((await read(`renderer/src/${name}`)).includes('onConsole={onConsole}'), `${name}: the note can open the console`);
+}
+assert.ok((await read('renderer/src/ui/OperationNote.jsx')).includes('className="note-output" onClick={onConsole}>'), 'a failure note offers Show output');
+
 // --- what the "My" filter keeps -------------------------------------------
 // Commands a person asked for.
 for (const label of ['Console command', 'Commit', 'Amend the last commit', 'Check out branch', 'Check out commit',
