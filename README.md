@@ -5,7 +5,7 @@ line-level staging, rebase and Undo. Claude Code, Codex or Cursor connect to the
 same repositories over MCP: they see what you selected, spend fewer tokens than
 with `git`, and can only *propose* a commit — you press Commit in 🌱 Twig.
 
-**Current version: 0.20.1.** Released 2026-10-15 — see [CHANGELOG.md](CHANGELOG.md).
+**Current version: 0.20.2.** Released 2026-10-17 — see [CHANGELOG.md](CHANGELOG.md).
 macOS, Windows and Linux · [Website](https://kitarasenka.github.io/twig/) ·
 [Download](https://github.com/kitarasenka/twig/releases/latest) · [MCP docs](docs/mcp.md)
 
