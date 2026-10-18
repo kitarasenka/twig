@@ -14,7 +14,7 @@ macOS, Windows and Linux · [Website](https://kitarasenka.github.io/twig/) ·
   <img src="site/assets/shots/workspace.webp" alt="The 🌱 Twig workspace on the demo sandbox: refs on the left, the commit graph in the center with the Uncommitted changes strip on top and two color-marked commits, and the open commit with its green mark and note on the right.">
 </picture>
 
-[![A 44-second real run: select a commit in 🌱 Twig, Claude Code explains it over MCP, proposes a commit, you press Commit, and Undo takes it back.](site/assets/video/twig-demo-play.webp)](https://kitarasenka.github.io/twig/#demo)
+[![A 44-second real run: select a commit in 🌱 Twig, Claude Code explains it over MCP, proposes a commit, you press Commit, and Undo takes it back.](site/assets/video/twig-demo-play.webp)](https://kitarasenka.github.io/twig/how-it-works.html#demo)
 
 **Watch the 44-second demo** — a real run of 🌱 Twig with Claude Code over MCP: the agent sees the commit you selected, proposes a commit, you press Commit, and Undo takes it back.
 

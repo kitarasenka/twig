@@ -5,6 +5,7 @@ import { TOOLS } from '../main/mcp/protocol.mjs';
 
 const base = 'http://127.0.0.1:5190';
 const builtPage = new URL('dist/index.html', import.meta.url).href;
+const builtHow = new URL('dist/how-it-works.html', import.meta.url).href;
 const builtRoot = new URL('dist/', import.meta.url).href;
 const artifacts = new URL('../artifacts/', import.meta.url);
 const manifest = JSON.parse(await readFile(new URL('dist/downloads.json', import.meta.url), 'utf8'));
@@ -49,13 +50,6 @@ try {
     for (const src of [await loop.getAttribute('poster'), await loop.locator('source').getAttribute('src')]) {
       assert.equal((await page.request.get(new URL(src, base + '/').href)).ok(), true, `${src} is served`);
     }
-    // The demo video: local file, nothing loads or plays until asked.
-    const video = page.locator('#demo video');
-    assert.deepEqual(await video.evaluate((element) => [element.autoplay, element.preload, element.controls]), [false, 'none', true]);
-    for (const src of [await video.getAttribute('poster'), await video.locator('source').getAttribute('src')]) {
-      const response = await page.request.get(new URL(src, base + '/').href);
-      assert.equal(response.ok(), true, `${src} is served`);
-    }
     for (const img of await page.locator('img').all()) {
       await img.scrollIntoViewIfNeeded();
       assert.equal(await img.evaluate((element) => element.complete && element.naturalWidth > 0), true);
@@ -76,8 +70,29 @@ try {
     assert.equal(download.suggestedFilename(), filename);
     await download.cancel();
   }
-  assert.equal(await page.locator('.demo-panel:visible').count(), 3);
-  assert.equal(await page.locator('.demo-tabs:visible').count(), 0);
+  // how-it-works.html: the captioned demo video and the agent scenarios, linked
+  // from the landing's navigation and its first screen. Without JS over HTTP.
+  assert.equal(await page.locator('.cinema-final a[href="how-it-works.html"]').count(), 1, 'the first screen links to How it works');
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 960 });
+    await page.goto(`${base}/how-it-works.html`);
+    await page.evaluate(() => globalThis.document.fonts.ready);
+    assert.equal(await page.locator('h1').count(), 1);
+    const overflow = await page.evaluate(() => [...globalThis.document.querySelectorAll('body *')].filter((element) => element.getBoundingClientRect().right > globalThis.innerWidth + 1).map((element) => element.className));
+    assert.equal(await page.evaluate(() => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth), false, `how-it-works.html overflow at ${width}px: ${overflow.join(', ')}`);
+    // The demo video: local file, nothing loads or plays until asked.
+    const video = page.locator('#demo video');
+    assert.deepEqual(await video.evaluate((element) => [element.autoplay, element.preload, element.controls]), [false, 'none', true]);
+    for (const src of [await video.getAttribute('poster'), await video.locator('source').getAttribute('src')]) {
+      assert.equal((await page.request.get(new URL(src, base + '/').href)).ok(), true, `${src} is served`);
+    }
+    // Without JS every scenario is shown, one under another.
+    assert.equal(await page.locator('.demo-panel:visible').count(), 3);
+    assert.equal(await page.locator('.demo-tabs:visible').count(), 0);
+    const brokenAnchors = await page.evaluate(() => [...globalThis.document.querySelectorAll('a[href^="#"]')].map(a => a.getAttribute('href').slice(1)).filter(id => id && !globalThis.document.getElementById(id)));
+    assert.deepEqual(brokenAnchors, []);
+    await page.screenshot({ path: new URL(`site-how-nojs-${width}.png`, artifacts).pathname, fullPage: true });
+  }
   const interactive = await browser.newContext({ reducedMotion: 'reduce' });
   const demo = await interactive.newPage();
   demo.on('pageerror', error => errors.push(error.message));
@@ -85,7 +100,7 @@ try {
   demo.on('request', request => { if (!request.url().startsWith(builtRoot) && !isDownload(request.url())) external.push(request.url()); });
   for (const width of [375, 768, 1024, 1440]) {
     await demo.setViewportSize({ width, height: 960 });
-    await demo.goto(builtPage);
+    await demo.goto(builtHow);
     await demo.evaluate(() => globalThis.document.fonts.ready);
     assert.equal(await demo.locator('[role="tabpanel"]:visible').count(), 1, errors.join('\n'));
     const heights = [];
@@ -112,6 +127,10 @@ try {
     await demo.keyboard.press('Home');
     await demo.keyboard.press('Tab');
     assert.equal(await demo.locator(':focus').getAttribute('id'), 'demo-selection');
+    await demo.screenshot({ path: new URL(`site-how-${width}.png`, artifacts).pathname, fullPage: true });
+    await demo.goto(builtPage);
+    await demo.evaluate(() => globalThis.document.fonts.ready);
+    assert.equal(await demo.evaluate(() => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth), false, `Interactive overflow at ${width}px on the landing`);
     const brokenAnchors = await demo.evaluate(() => [...globalThis.document.querySelectorAll('a[href^="#"]')].map(a => a.getAttribute('href').slice(1)).filter(id => id && !globalThis.document.getElementById(id)));
     assert.deepEqual(brokenAnchors, []);
     await demo.locator('h1').click();
@@ -135,10 +154,11 @@ try {
   assert.equal(await demo.evaluate(() => globalThis.document.querySelector('.hero-copy').style.opacity), '0', 'the title has made way for the buttons');
   await demo.locator('.cinema-final .primary').click();
   assert.equal(new URL(demo.url()).hash, '#download');
-  await demo.locator('#tab-search').click();
-  assert.ok(await demo.locator('#demo-search').evaluate(element => element.getAnimations({ subtree: true }).length > 0), 'Selected scenario animates');
   await demo.locator('#features').scrollIntoViewIfNeeded();
   await demo.waitForFunction(() => !!globalThis.document.querySelector('#features .is-revealed'));
+  await demo.goto(builtHow);
+  await demo.locator('#tab-search').click();
+  assert.ok(await demo.locator('#demo-search').evaluate(element => element.getAnimations({ subtree: true }).length > 0), 'Selected scenario animates');
   await demo.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await demo.evaluate(() => globalThis.document.getAnimations().length), 0, 'Changing motion preference stops animations');
   // mcp.html: the page about 🌱 Twig as an MCP server, linked from the main
@@ -181,7 +201,7 @@ try {
   if (!/javascript/.test(scriptResponse.headers()['content-type'] || '')) console.warn('Preview server needs a restart to serve site.js. Interactive checks use the built file directly.');
   assert.deepEqual(errors, []);
   assert.deepEqual(external, []);
-  console.log(`Site checks passed: 375/768/1024/1440px without JS over HTTP and with JS from built HTML, no overflow, local assets, anchors, keyboard tabs, version and release notes, stable demo height, motion preferences, FAQ, ${manifest.downloads.length} download links; mcp.html at the same widths, its anchors and links. Installer responses are test fixtures.`);
+  console.log(`Site checks passed: 375/768/1024/1440px without JS over HTTP and with JS from built HTML, no overflow, local assets, anchors, keyboard tabs, version and release notes, stable demo height, motion preferences, FAQ, ${manifest.downloads.length} download links; mcp.html and how-it-works.html at the same widths, their anchors and links. Installer responses are test fixtures.`);
 } finally {
   await browser.close();
 }

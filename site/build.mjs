@@ -69,10 +69,11 @@ const cards = Object.entries(platforms).map(([platform, title]) => {
 }).join('\n');
 
 await mkdir(new URL('assets/', output), { recursive: true });
-// index.html is the landing; mcp.html is the page about 🌱 Twig as an MCP server.
-// Both share the stylesheet, the script and the version placeholders.
+// index.html is the landing; mcp.html is the page about 🌱 Twig as an MCP server;
+// how-it-works.html carries the captioned demo video and the agent scenarios.
+// All share the stylesheet, the script and the version placeholders.
 const agentCard = (await readFile(new URL('partials/agent-card.html', source), 'utf8')).trim();
-for (const page of ['index.html', 'mcp.html']) {
+for (const page of ['index.html', 'mcp.html', 'how-it-works.html']) {
   const template = await readFile(new URL(page, source), 'utf8');
   const html = template
     .replaceAll('{{version}}', escape(pkg.version))

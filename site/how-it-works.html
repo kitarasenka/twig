@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <meta name="description" content="Как AI-агент работает через 🌱 Twig: видит выделенный коммит, читает его одним вызовом, предлагает коммит — а Commit нажимаете вы, и Undo его отменит. Видео настоящего прогона с Claude Code и три сценария.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Как работает 🌱 Twig — агент предлагает, Commit нажимаете вы">
+  <meta property="og:description" content="Видео настоящего прогона 🌱 Twig с Claude Code через MCP и три сценария: выделение, поиск по истории, коммит.">
+  <title>Как работает 🌱 Twig</title>
+  <link rel="icon" type="image/png" href="assets/twig-small.png">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="style.css">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">К содержимому</a>
+  <header class="header wrap">
+    <a class="brand" href="index.html" aria-label="🌱 Twig — на главную"><img src="assets/twig-small.png" width="40" height="40" alt=""><span>🌱 Twig</span></a>
+    <nav aria-label="Навигация по странице"><a href="index.html">Главная</a><a href="#demo">Видео</a><a href="#scenarios">Сценарии</a><a href="mcp.html">MCP</a><a class="nav-download" href="index.html#download">Скачать <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main id="main">
+    <section class="how-hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> <span>КАК РАБОТАЕТ · v{{version}}</span></p>
+        <h1 id="hero-title">Агент предлагает.<br><span>Commit нажимаете вы.</span></h1>
+        <p class="hero-description">Вы выделяете коммит в 🌱 Twig — агент видит его через MCP и читает одним вызовом. Просите закоммитить — 🌱 Twig показывает файлы и сообщение агента, вы правите и нажимаете Commit. Undo отменит и этот коммит.</p>
+      </div>
+    </section>
+    <section class="preview wrap section-space" id="demo" aria-labelledby="demo-title">
+      <div class="section-heading compact"><div><p class="eyebrow">ВИДЕО · 44 СЕКУНДЫ</p><h2 id="demo-title">Настоящий прогон,<br><span>без монтажа.</span></h2></div><p>🌱 Twig на демо-репозитории и Claude Code,<br>подключённый через MCP-мост самого 🌱 Twig.</p></div>
+      <figure class="app-frame" data-reveal><video controls preload="none" playsinline width="1920" height="1080" poster="assets/video/twig-demo.webp" aria-describedby="demo-description"><source src="assets/video/twig-demo.mp4" type="video/mp4"><a href="assets/video/twig-demo.mp4">Скачать видео (MP4, 2,7&nbsp;МБ)</a></video><figcaption><span id="demo-description">Выделили коммит → Claude объясняет его → предлагает коммит → вы нажимаете Commit → Undo откатывает</span><span>Без звука · подписи на английском</span></figcaption></figure>
+    </section>
+    <section class="hero how-scenarios wrap" id="scenarios" aria-labelledby="scenarios-title">
+      <div class="hero-intro">
+        <p class="eyebrow">ТРИ СЦЕНАРИЯ</p>
+        <h2 id="scenarios-title">Что агент делает<br><span>через 🌱 Twig.</span></h2>
+        <p class="hero-description">Видит, что выделено в окне, ищет по истории в разы дешевле <code>git</code> и предлагает коммит, который подтверждаете вы. Выберите сценарий.</p>
+      </div>
+      <div class="product-demo" aria-label="Как AI-агент работает через 🌱 Twig">
+        <div class="demo-titlebar"><span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Агент · 🌱 Twig MCP</span><span class="demo-badge">ПРИМЕР</span></div>
+        <div class="demo-tabs" role="tablist" aria-label="Что агент делает через 🌱 Twig" hidden>
+          <button id="tab-selection" type="button" role="tab" aria-selected="true" aria-controls="demo-selection">01 Выделение</button>
+          <button id="tab-search" type="button" role="tab" aria-selected="false" aria-controls="demo-search" tabindex="-1">02 Поиск</button>
+          <button id="tab-commit" type="button" role="tab" aria-selected="false" aria-controls="demo-commit" tabindex="-1">03 Коммит</button>
+        </div>
+        <div class="demo-panel" id="demo-selection">
+          <div class="demo-panel-heading"><span class="eyebrow">ЧТО ВЫДЕЛЕНО В 🌱 TWIG</span><span class="branch-pill">get_ui_context</span></div>
+          <h2>«Объясни этот коммит»</h2>
+          <p class="demo-description">Хэш копировать не нужно — агент видит выделенное.</p>
+          <div class="marked-row selected-row step-enter"><code>a4f891c</code><strong>fix: restore search results</strong></div>
+          <div class="pipeline-step step-enter"><span class="step-icon">→</span><div><strong>Что выделено?</strong><small>коммит a4f891c, файл search.js</small></div><code>get_ui_context</code></div>
+          <div class="pipeline-step step-enter"><span class="step-icon">→</span><div><strong>Коммит целиком</strong><small>сообщение и патчи одним вызовом</small></div><code>get_commit</code></div>
+          <div class="demo-result neutral step-enter"><span class="step-icon">✓</span><div><strong>Ответ — про коммит на вашем экране</strong><span>Два вызова и ни одного хэша в чате.</span></div></div>
+        </div>
+        <div class="demo-panel" id="demo-search">
+          <div class="demo-panel-heading"><span class="eyebrow">ЗАМЕР · CLAUDE OPUS 5.5</span><span class="branch-pill">search_history</span></div>
+          <h2>«Когда добавили или убрали requestAnimationFrame?»</h2>
+          <p class="demo-description">9 коммитов в истории. Сколько токенов прочитал агент.</p>
+          <div class="meter step-enter"><div class="meter-row"><code>git log -S… -p</code><strong>189 272</strong></div><svg viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="bar-git" width="100" height="6"/></svg></div>
+          <div class="meter step-enter"><div class="meter-row"><code>git log -S… -p | grep -C3</code><strong>4 745</strong></div><svg viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="bar-track" width="100" height="6"/><rect class="bar-git" width="2.5" height="6"/></svg></div>
+          <div class="meter is-twig step-enter"><div class="meter-row"><code>search_history</code><strong>2 992</strong></div><svg viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true"><rect class="bar-track" width="100" height="6"/><rect class="bar-twig" width="1.6" height="6"/></svg></div>
+          <div class="demo-result neutral step-enter"><span class="step-icon">↓</span><div><strong>−98 % токенов, один вызов</strong><span>Строки вокруг совпадений, а не все диффы. На пяти запросах — в 3–63 раза меньше.</span></div></div>
+        </div>
+        <div class="demo-panel" id="demo-commit">
+          <div class="demo-panel-heading"><span class="eyebrow">ОКНО 🌱 TWIG</span><span class="branch-pill">propose_commit</span></div>
+          <h2>Агент предлагает.<br>Коммитите вы.</h2>
+          <p class="demo-description">Файлы, сообщение, версия и тег — перед глазами. Undo отменит и этот коммит.</p>
+          <div class="command-preview step-enter"><span>2 файла · сообщение можно поправить</span><code><b>M</b> README.md +1 −0</code><code><b>A</b> docs/connect.md +24 −0</code><code>docs: explain how to connect an agent</code></div>
+          <div class="choice-row step-enter"><span>Версия <b>0.2.0 → 0.2.1</b></span><span>Тег <b>v0.2.1</b></span></div>
+          <div class="choice-row step-enter"><span>Cancel</span><span>Commit</span><span class="is-primary">Commit &amp; Push</span></div>
+        </div>
+        <p class="demo-caption">Иллюстрация · цифры поиска — из замера на странице MCP</p>
+      </div>
+    </section>
+    <section class="downloads mcp-cta wrap section-space" aria-labelledby="cta-title">
+      <div class="download-heading"><div><p class="eyebrow">MACOS / WINDOWS / LINUX</p><h2 id="cta-title">Попробуйте<br>на своём репозитории</h2><p class="download-intro">MCP-сервер встроен в приложение: включается кнопкой MCP, команда для агента копируется в один клик.</p></div></div>
+      <div class="hero-actions"><a class="button primary" href="index.html#download">Скачать 🌱 Twig <span aria-hidden="true">↓</span></a><a class="text-link" href="mcp.html">Инструменты MCP и замер токенов <span aria-hidden="true">→</span></a></div>
+    </section>
+    <footer class="footer wrap"><a class="brand" href="index.html" aria-label="🌱 Twig — на главную"><img src="assets/twig-small.png" width="36" height="36" alt=""><span>🌱 Twig</span></a><p>Git-клиент со встроенным MCP · macOS, Windows, Linux</p><a class="footer-link" href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a href="#main">Наверх <span aria-hidden="true">↑</span></a></footer>
+  </main>
+</body>
+</html>
