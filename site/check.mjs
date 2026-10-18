@@ -73,6 +73,7 @@ try {
   // how-it-works.html: the captioned demo video and the agent scenarios, linked
   // from the landing's navigation and its first screen. Without JS over HTTP.
   assert.equal(await page.locator('.cinema-final a[href="how-it-works.html"]').count(), 1, 'the first screen links to How it works');
+  assert.equal(await page.locator('.cinema-step', { hasText: 'Агент предлагает коммит' }).locator('a[href="how-it-works.html"]').count(), 1, 'the proposal step has its How it works button');
   for (const width of [375, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 960 });
     await page.goto(`${base}/how-it-works.html`);

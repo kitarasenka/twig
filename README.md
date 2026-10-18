@@ -3,9 +3,9 @@
 **A desktop Git client with a built-in MCP server.** You work with the graph,
 line-level staging, rebase and Undo. Claude Code, Codex or Cursor connect to the
 same repositories over MCP: they see what you selected, spend fewer tokens than
-with `git`, and can only *propose* a commit — you press Commit in 🌱 Twig.
+with `git`, and can only *propose* a commit; you press Commit in 🌱 Twig.
 
-**Current version: 0.20.2.** Released 2026-10-17 — see [CHANGELOG.md](CHANGELOG.md).
+**Current version: 0.20.2.** Released 2026-10-17; see [CHANGELOG.md](CHANGELOG.md).
 macOS, Windows and Linux · [Website](https://kitarasenka.github.io/twig/) ·
 [Download](https://github.com/kitarasenka/twig/releases/latest) · [MCP docs](docs/mcp.md)
 
@@ -16,7 +16,7 @@ macOS, Windows and Linux · [Website](https://kitarasenka.github.io/twig/) ·
 
 [![A 44-second real run: select a commit in 🌱 Twig, Claude Code explains it over MCP, proposes a commit, you press Commit, and Undo takes it back.](site/assets/video/twig-demo-play.webp)](https://kitarasenka.github.io/twig/how-it-works.html#demo)
 
-**Watch the 44-second demo** — a real run of 🌱 Twig with Claude Code over MCP: the agent sees the commit you selected, proposes a commit, you press Commit, and Undo takes it back.
+**Watch the 44-second demo:** a real run of 🌱 Twig with Claude Code over MCP: the agent sees the commit you selected, proposes a commit, you press Commit, and Undo takes it back.
 
 ## Why 🌱 Twig
 
@@ -25,9 +25,9 @@ or what `git` can't give at all:
 
 | Task | Agent with `git` | Agent with 🌱 Twig |
 | --- | --- | --- |
-| When did this code appear or disappear? | `git log -S … -p` — every hunk of every matching file: 3,969–189,272 tokens | `search_history` — the lines around each match: 893–9,202 tokens, **3–63× less** |
-| Who changed these lines, and why? | `git blame`, then `git log -1` per commit: 3–9 calls, 5,120–19,922 tokens | `get_blame` — one call, 414–1,017 tokens, **−92…−95 %** |
-| What changed? | `git status` + `git diff --stat`: 295–1,112 tokens | `list_changes` — one call, 102–555 tokens, **2–3× less** |
+| When did this code appear or disappear? | `git log -S … -p` returns every hunk of every matching file: 3,969–189,272 tokens | `search_history` returns the lines around each match: 893–9,202 tokens, **3–63× less** |
+| Who changed these lines, and why? | `git blame`, then `git log -1` per commit: 3–9 calls, 5,120–19,922 tokens | `get_blame`: one call, 414–1,017 tokens, **−92…−95 %** |
+| What changed? | `git status` + `git diff --stat`: 295–1,112 tokens | `list_changes`: one call, 102–555 tokens, **2–3× less** |
 | Explain the commit I'm looking at | you paste the hash | it sees what is selected in 🌱 Twig |
 | A 12 MB lock file in the diff | all of it lands in the context | one line: its size and the command that reads it |
 | Commit and push | the agent runs them | the agent proposes; you press Commit, and Undo works |
@@ -36,17 +36,17 @@ or what `git` can't give at all:
 Measured with Claude Opus 5.5 on real changes from two repositories, 8–9 October 2026
 ([method and full tables](https://kitarasenka.github.io/twig/mcp.html#tokens)). To be
 fair: diffs aren't compressed, so reading every change for a commit message saves only
-4–10 % — mostly by taking 2–5 calls instead of 5–9. Against `git log -S … -p | grep -C3`,
+4–10 %, mostly by taking 2–5 calls instead of 5–9. Against `git log -S … -p | grep -C3`,
 search is still 16–37 % smaller. The six read tools' descriptions cost 2,563 tokens once
 per session.
 
 As a Git client, 🌱 Twig keeps you in charge:
 
-- **Nothing hidden.** Every Git command it runs — for you or for the agent — is in the
+- **Nothing hidden.** Every Git command it runs, for you or for the agent, is in the
   console with its exact argv, folder, output, exit code and time.
 - **Undo for Git.** Commit, merge, cherry-pick, checkout, stash, even discarded changes
   (copied into Git first). What can't be undone says why.
-- **Checks before commit and push** — tests, branch and message rules, a secret scan —
+- **Checks before commit and push:** tests, branch and message rules, a secret scan,
   without hand-written hooks.
 - **Local, no account, no telemetry.** The MCP server is off until you turn it on, then
   listens on a private local socket with no network port.
@@ -58,10 +58,10 @@ As a Git client, 🌱 Twig keeps you in charge:
 | `get_workspace_context` | branch, upstream, an operation in progress, file counts, the other connected repositories |
 | `list_changes` | changed files as `M +2 -1 path`; with `diffs: true`, every patch in one call |
 | `get_commit` | the message and every file's patch in one call |
-| `search_history` | when code appeared or disappeared (`-S`, `-G`), or commits by message or author — only the lines around each match |
+| `search_history` | when code appeared or disappeared (`-S`, `-G`), or commits by message or author; only the lines around each match |
 | `get_blame` | runs of lines per commit, each commit's subject once |
 | `get_ui_context` | what is open in 🌱 Twig: commit, range, file |
-| `propose_commit`, `new_version` | a dialog in 🌱 Twig with the files, the message, a version bump and a tag — you commit, push or cancel |
+| `propose_commit`, `new_version` | a dialog in 🌱 Twig with the files, the message, a version bump and a tag; you commit, push or cancel |
 | `await_commit` | your answer, if you take longer than ~45 s |
 
 Turn it on with **MCP** in the toolbar and copy the ready command for Claude Code, Codex
@@ -72,26 +72,26 @@ cut in the middle. More: [docs/mcp.md](docs/mcp.md).
 
 ## For you: the Git client
 
-- **History** — a virtualized graph that names every branch and tag; search by message,
+- **History:** a virtualized graph that names every branch and tag; search by message,
   hash, author, path or code (`-S`, `-G`); blame, "blame before this change" and reverse
   blame; file history across renames; reflog with lost commits marked and recoverable.
-  When the checked-out branch is not the top row — behind its remote or another
-  branch — a dashed line on the left leads down to its commit.
-- **Changes** — stage files, hunks or single lines; lists by path or as a folder tree,
+  When the checked-out branch is not the top row (behind its remote or another
+  branch), a dashed line on the left leads down to its commit.
+- **Changes:** stage files, hunks or single lines; lists by path or as a folder tree,
   filtered by name or file type, and with a filter on, Stage/Unstage take only what is
   shown; discard with Undo; amend, co-authors, `.gitignore` from the menu.
-- **Diffs** — numbered on both sides, intra-line and word modes, syntax highlighting;
+- **Diffs:** numbered on both sides, intra-line and word modes, syntax highlighting;
   images side by side, swipe, onion skin or difference, with the changed areas boxed.
-- **Rewriting history** — a context menu with everything that applies; interactive
+- **Rewriting history:** a context menu with everything that applies; interactive
   rebase by drag; squash a selection; reword; a three-way conflict editor; drag a branch
-  onto another to merge, rebase, cherry-pick or push — the exact commands are shown first.
-- **Tools** — 🌱 BugHunter (guided `git bisect`), color marks and notes on commits (local
+  onto another to merge, rebase, cherry-pick or push, with the exact commands shown first.
+- **Tools:** 🌱 BugHunter (guided `git bisect`), color marks and notes on commits (local
   only), worktrees, submodules, signed commits, patches, Git LFS, tags, maintenance,
   opt-in background fetch.
-- **Automations** — trigger → conditions → actions around commit, push, merge and more,
+- **Automations:** trigger → conditions → actions around commit, push, merge and more,
   for operations run in 🌱 Twig; pipelines from the repository don't run until you
   review them.
-- **Everyday** — picks up commits made in a terminal by itself (no polling), a demo
+- **Everyday:** picks up commits made in a terminal by itself (no polling), a demo
   sandbox that is a real repository, dark and light themes, full keyboard control
   with every shortcut reassignable in Settings and working in any keyboard layout.
 
@@ -100,13 +100,13 @@ cut in the middle. More: [docs/mcp.md](docs/mcp.md).
 | | |
 | --- | --- |
 | ![Uncommitted changes: main is one commit behind origin/main, so a dashed line runs from the top row down to main; the strip over the graph says 1 staged, 3 changed, 1 untracked, and the right panel lists them as a folder tree with a plus or minus on each file.](site/assets/shots/uncommitted.webp) | ![The AI agents (MCP) window over the demo sandbox: MCP server On and listening, what the agent gets, three connection steps and the Claude Code command with Copy.](site/assets/shots/mcp.webp) |
-| **Uncommitted changes** — as a tree or filtered by type; the dashed line shows which branch they are on. | **MCP** — turn it on and copy the command for your agent. |
+| **Uncommitted changes:** as a tree or filtered by type; the dashed line shows which branch they are on. | **MCP:** turn it on and copy the command for your agent. |
 | ![A merge stopped on app/App.jsx: the conflict editor with Ours, Base and Theirs columns, lines picked from both sides, and the result that will be written to disk.](site/assets/shots/conflict.webp) | ![An automation pipeline blocking a commit to main: Commit blocked, 0 passed, 1 failed, with Fix and retry, Run again and Bypass once.](site/assets/shots/automations-blocked.webp) |
-| **Conflict editor** — pick lines from each side in the order you choose. | **Automations** — a pre-commit pipeline stops a direct commit to `main`. |
+| **Conflict editor:** pick lines from each side in the order you choose. | **Automations:** a pre-commit pipeline stops a direct commit to `main`. |
 | ![BugHunter testing a commit in the middle of the range, with about two more tests to go and Bug absent / Bug present / Cannot test · Skip.](site/assets/shots/bughunter.webp) | ![Blame of app/App.jsx grouped by commit, with the selected line's commit and its diff of this file on the right.](site/assets/shots/blame.webp) |
-| **BugHunter** — a guided `git bisect`. | **Blame** — who changed a line, and the version before that change. |
+| **BugHunter:** a guided `git bisect`. | **Blame:** who changed a line, and the version before that change. |
 | ![File history of app/App.jsx: every commit that touched it, and the numbered diff of the selected one with intra-line highlights.](site/assets/shots/file-history.webp) | ![The console expanded on My: a typed git log --oneline --graph with its cwd, timing and output, and the read-only input line below.](site/assets/shots/console.webp) |
-| **File history** — per-commit diffs of one file, following renames. | **Console** — every command exactly as it ran. |
+| **File history:** per-commit diffs of one file, following renames. | **Console:** every command exactly as it ran. |
 
 ## Install
 
@@ -137,7 +137,7 @@ Running, checks, packaging, releases, macOS signing and the landing site:
 ## Security
 
 - The renderer is sandboxed and context-isolated. Git runs only through one logged
-  `spawn` executor, never a shell; user automations are the only other process runner —
+  `spawn` executor, never a shell; user automations are the only other process runner,
   also without a shell, logged, with a timeout.
 - The console input accepts read-only Git only. Line staging sends line indices and the
   diff's digest, never patch text; commit messages reach Git on stdin.
@@ -147,15 +147,15 @@ Running, checks, packaging, releases, macOS signing and the landing site:
   click.
 - Network: Git itself, the update check (at launch and daily in the installed app; it
   can be turned off) and background fetch if you enable it. No telemetry. An installer
-  is accepted only from this repository's release with matching size and SHA-256 — on
-  macOS, also with our Developer ID signature.
+  is accepted only from this repository's release with matching size and SHA-256, and on
+  macOS also with our Developer ID signature.
 
 ## License
 
 Copyright (c) 2026 Kiryl Tarasenka.
 
 🌱 Twig is distributed under the Functional Source License, Version 1.1, with an
-Apache 2.0 future license (`FSL-1.1-ALv2`) — see [LICENSE.md](LICENSE.md). You
+Apache 2.0 future license (`FSL-1.1-ALv2`); see [LICENSE.md](LICENSE.md). You
 may use, modify and redistribute it for any purpose that is not a competing
 commercial product or service, and every version becomes Apache 2.0 two years
 after it is made available.

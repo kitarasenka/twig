@@ -490,6 +490,7 @@ figcaption { display: flex; justify-content: space-between; gap: 12px; color: va
 .cinema h1 { font-size: clamp(44px, 6.6vw, 108px); letter-spacing: -0.045em; line-height: 1; margin-top: 22px; }
 .cinema-line { font-size: clamp(34px, 5vw, 80px); font-weight: 700; letter-spacing: -0.04em; line-height: 1.04; }
 .cinema-line span { color: var(--accent); }
+.cinema-more { margin-top: 30px; }
 .cinema .hero-description { font-size: clamp(16px, 1.35vw, 20px); color: var(--text); opacity: .85; max-width: 52ch; margin-top: 0; }
 .cinema-cue { position: absolute; z-index: 1; left: 50%; bottom: 26px; transform: translateX(-50%); font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); display: none; gap: 8px; }
 .cinema-toggle { position: absolute; z-index: 2; right: 24px; bottom: 22px; min-height: 40px; padding: 8px 16px; border-radius: 999px; border: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 70%, transparent); color: var(--text); font-size: 12px; }
