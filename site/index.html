@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#000000">
   <meta name="description" content="🌱 Twig — Git-клиент со встроенным MCP-сервером. Вы работаете с графом, staging и rebase, а Claude Code, Codex и Cursor видят тот же репозиторий, тратят меньше токенов и коммитят только по вашей кнопке. macOS, Windows, Linux.">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'">
   <meta property="og:type" content="website">
   <meta property="og:title" content="🌱 Twig — Git-клиент для вас и вашего AI-агента">
   <meta property="og:description" content="Встроенный MCP: агент видит выделенный коммит, ищет по истории в 3–63 раза дешевле git и коммитит только по вашей кнопке. Без аккаунта и телеметрии.">
@@ -19,7 +19,7 @@
   <a class="skip-link" href="#main">К содержимому</a>
   <header class="header wrap">
     <a class="brand" href="#" aria-label="🌱 Twig — на главную"><img src="assets/twig-small.png" width="40" height="40" alt=""><span>🌱 Twig</span></a>
-    <nav aria-label="Главная навигация"><a href="#why">Почему 🌱 Twig</a><a href="mcp.html">MCP</a><a href="#features">Возможности</a><a href="#screens">Экраны</a><a href="#whats-new">Что нового</a><a href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#download">Скачать <span aria-hidden="true">↗</span></a></nav>
+    <nav aria-label="Главная навигация"><a href="#demo">Видео</a><a href="#why">Почему 🌱 Twig</a><a href="mcp.html">MCP</a><a href="#features">Возможности</a><a href="#screens">Экраны</a><a href="#whats-new">Что нового</a><a href="https://github.com/kitarasenka/twig">GitHub <span aria-hidden="true">↗</span></a><a class="nav-download" href="#download">Скачать <span aria-hidden="true">↗</span></a></nav>
   </header>
   <main id="main">
     <section class="hero wrap" aria-labelledby="hero-title">
@@ -67,6 +67,10 @@
       </div>
     </section>
     <div class="facts wrap"><span><span class="status-dot" aria-hidden="true"></span> Без аккаунта и телеметрии</span><span>MCP выключен, пока вы не включите</span><span>Локальный сокет, без сетевого порта</span><a href="mcp.html#security">Модель безопасности <span aria-hidden="true">↗</span></a></div>
+    <section class="preview demo-video wrap section-space" id="demo" aria-labelledby="demo-title">
+      <div class="section-heading compact"><div><p class="eyebrow">ВИДЕО · 44 СЕКУНДЫ</p><h2 id="demo-title">Агент предлагает.<br><span>Commit нажимаете вы.</span></h2></div><p>Настоящий прогон: 🌱 Twig и Claude Code<br>через MCP на демо-репозитории.</p></div>
+      <figure class="app-frame" data-reveal><video controls preload="none" playsinline width="1920" height="1080" poster="assets/video/twig-demo.webp" aria-describedby="demo-description"><source src="assets/video/twig-demo.mp4" type="video/mp4"><a href="assets/video/twig-demo.mp4">Скачать видео (MP4, 2,7&nbsp;МБ)</a></video><figcaption><span id="demo-description">Выделили коммит → Claude объясняет его → предлагает коммит → вы нажимаете Commit → Undo откатывает</span><span>Без звука · подписи на английском</span></figcaption></figure>
+    </section>
     <section class="preview wrap section-space" id="workspace" aria-labelledby="workspace-title">
       <div class="section-heading compact"><div><p class="eyebrow">ДЛЯ ВАС · GIT-КЛИЕНТ</p><h2 id="workspace-title">Граф, изменения и команды — рядом.</h2></div><p>Все ветки и теги коммита — по именам.<br>Снято в самом 🌱 Twig, не нарисовано.</p></div>
       <figure class="app-frame" data-reveal><a href="assets/shots/workspace.webp" target="_blank" rel="noopener" aria-label="Открыть скриншот 🌱 Twig в полном размере (новая вкладка)"><img src="assets/shots/workspace.webp" width="2880" height="1760" alt="🌱 Twig: демо-песочница с 12 коммитами и тремя ветками. Над графом — полоса незакоммиченных изменений, две строки помечены цветом; справа открыт коммит с зелёной маркой и заметкой." loading="lazy"></a><figcaption><span>🌱 Twig {{version}} · реальная Git-песочница · тёмная тема</span><span>Нажмите, чтобы рассмотреть <span aria-hidden="true">↗</span></span></figcaption></figure>

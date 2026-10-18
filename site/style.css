@@ -109,6 +109,8 @@ h2 > span { color: var(--muted); }
 .app-frame a { display: block; }
 .app-frame a:focus-visible { outline-offset: -5px; }
 .app-frame img { width: 100%; }
+.app-frame video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
+.demo-video + .preview { padding-top: 0; }
 figcaption { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); padding: 12px 18px; font-size: 11px; border-top: 1px solid var(--border); }
 /* Gallery of real screenshots: two columns, each a framed image over a short caption. */
 .screens { padding-top: 12px; }

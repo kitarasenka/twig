@@ -43,6 +43,13 @@ try {
     assert.ok(await page.locator('#whats-new .release-notes li').count() > 0, 'The release lists what appeared in it');
     await page.locator('.release-history summary').click();
     assert.equal(await page.locator('.release-history').getAttribute('open'), '');
+    // The demo video: local file, nothing loads or plays until asked.
+    const video = page.locator('#demo video');
+    assert.deepEqual(await video.evaluate((element) => [element.autoplay, element.preload, element.controls]), [false, 'none', true]);
+    for (const src of [await video.getAttribute('poster'), await video.locator('source').getAttribute('src')]) {
+      const response = await page.request.get(new URL(src, base + '/').href);
+      assert.equal(response.ok(), true, `${src} is served`);
+    }
     for (const img of await page.locator('img').all()) {
       await img.scrollIntoViewIfNeeded();
       assert.equal(await img.evaluate((element) => element.complete && element.naturalWidth > 0), true);

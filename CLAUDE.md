@@ -17,6 +17,20 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Демо-видео на лендинге и в README (2026-10-18, вне вех; по запросу
+пользователя, к запуску на Product Hunt): 44 с, 1080p,
+`site/assets/video/twig-demo.mp4` + постер `twig-demo.webp`; в README —
+`twig-demo-play.webp` (кадр с ▶) ссылкой на `#demo` сайта (GitHub не играет mp4
+из репозитория). Настоящий прогон: 🌱 Twig на демо-песочнице и `claude -p`
+(Sonnet) через MCP-мост — выделение → `get_ui_context`/`get_commit` →
+`list_changes`/`propose_commit` → Commit → Undo. Скрипты не в git:
+`artifacts/product-hunt/video/record.mjs` (CDP screencast окна + журнал событий)
+и `render.mjs` (кадры из журнала: окно, расшифровка терминала, подписи → ffmpeg).
+Лендинг: секция `#demo` перед `#workspace`, пункт «Видео» в навигации,
+`<video preload="none">` без автозапуска, CSP + `media-src 'self'`,
+`build.mjs` копирует `assets/video` (без `-play`), `preview.mjs` знает `.mp4`,
+`site/check.mjs` проверяет атрибуты и что файл и постер отдаются. Версия не менялась.
+
 Открытый файл подсвечен в панели коммита (2026-10-17, вне вех; по запросу
 пользователя): строка файла, чей дифф открыт в центре, получает
 `aria-pressed` и тот же тинт `--accent-bg`/`--accent`, что уже был в панели

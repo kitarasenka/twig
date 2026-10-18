@@ -93,6 +93,11 @@ await mkdir(new URL('assets/shots/', output), { recursive: true });
 for (const file of (await readdir(new URL('assets/shots/', source))).filter((name) => name.endsWith('.webp'))) {
   await copyFile(new URL(`assets/shots/${file}`, source), new URL(`assets/shots/${file}`, output));
 }
+// The demo video comes from artifacts/product-hunt/video (a recorded run of the real app with Claude Code).
+await mkdir(new URL('assets/video/', output), { recursive: true });
+for (const file of (await readdir(new URL('assets/video/', source))).filter((name) => /\.(mp4|webp)$/.test(name) && !name.includes('-play'))) {
+  await copyFile(new URL(`assets/video/${file}`, source), new URL(`assets/video/${file}`, output));
+}
 await copyFile(new URL('renderer/public/twig-logo.png', root), new URL('assets/twig-small.png', output));
 await copyFile(new URL('assets/twig.png', source), new URL('assets/twig.png', output));
 for (const weight of [400, 500, 600, 700]) {
