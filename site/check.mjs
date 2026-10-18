@@ -47,7 +47,7 @@ try {
     // The background loop: muted, looping, local; its poster is served too.
     const loop = page.locator('.cinema-video');
     assert.deepEqual(await loop.evaluate((element) => [element.autoplay, element.muted, element.loop, element.playsInline]), [true, true, true, true]);
-    for (const src of [await loop.getAttribute('poster'), await loop.locator('source').getAttribute('src')]) {
+    for (const src of [await loop.getAttribute('poster'), ...await loop.locator('source').evaluateAll((sources) => sources.map((source) => source.getAttribute('src')))]) {
       assert.equal((await page.request.get(new URL(src, base + '/').href)).ok(), true, `${src} is served`);
     }
     for (const img of await page.locator('img').all()) {

@@ -509,7 +509,6 @@ figcaption { display: flex; justify-content: space-between; gap: 12px; color: va
 @media (prefers-reduced-motion: reduce) { .cinema-video { display: none; } }
 @media (max-width: 800px) {
   .cinema-copy { gap: 34px; padding-block: 110px 72px; }
-  .cinema-video { object-position: 28% 50%; }
   .cinema-shade { background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 40%, transparent) 0%, color-mix(in srgb, var(--bg) 72%, transparent) 28%, color-mix(in srgb, var(--bg) 94%, transparent) 50%, var(--bg) 100%); }
   .cinema h1 { font-size: clamp(34px, 9.6vw, 60px); }
   .cinema.is-scrolly { height: 380vh; }
@@ -517,4 +516,12 @@ figcaption { display: flex; justify-content: space-between; gap: 12px; color: va
   .cinema h1 { letter-spacing: -0.04em; }
   .cinema-toggle { right: 16px; bottom: 16px; }
   .cinema-cue { bottom: 22px; }
+}
+/* A tall screen (a portrait monitor, a phone): the 16:9 frame is shown whole as a
+   band near the top instead of being blown up to the full height, and the words
+   stand on black below it. */
+@media (max-aspect-ratio: 1/1) {
+  .cinema-stage { background-position: 50% 30%; background-size: contain; }
+  .cinema-video { object-fit: contain; object-position: 50% 30%; }
+  .cinema-shade { background: linear-gradient(180deg, transparent 0%, transparent 42%, color-mix(in srgb, var(--bg) 85%, transparent) 58%, var(--bg) 70%); }
 }

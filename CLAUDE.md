@@ -19,8 +19,11 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 Первый экран лендинга — фоновое видео в духе страниц Apple (2026-10-18, вне
 вех; по запросу пользователя). Секция `.cinema` вместо прежнего `.hero`: видео
-`site/assets/video/twig-hero.mp4` (720p, 2,8 МБ, muted/loop/autoplay, постер
-`twig-hero.webp`) — тот же живой прогон, что и демо, но окно 🌱 Twig на весь кадр с
+`site/assets/video/twig-hero.mp4` (720p, 2,8 МБ) и `twig-hero-1080.mp4` (4,3 МБ,
+первым `<source>` с `media` для ≥ 1600 px или ≥ 1000 px при 2dppx), muted/loop/autoplay,
+постер `twig-hero.webp` — общий план с карточкой агента (кадр 11 с); на
+`max-aspect-ratio: 1/1` (вертикальный монитор, телефон) кадр `contain` полосой
+на 30 % высоты, своё затемнение ниже неё, текст на чёрном — тот же живой прогон, что и демо, но окно 🌱 Twig на весь кадр с
 наездами «камеры» и карточкой терминала, без подписей (`render-hero.mjs` рядом с
 `render.mjs`, не в git). С JS и без reduced motion `site.js` (`setupCinema`)
 ставит `.is-scrolly`: секция 420vh (380vh ≤ 800px), сцена `sticky`, пять шагов
