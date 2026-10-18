@@ -114,10 +114,16 @@ cut in the middle. More: [docs/mcp.md](docs/mcp.md).
 or Intel, signed and notarized), Windows x64, Debian / Ubuntu, or any Linux as an
 AppImage. Git must be installed. Updates arrive in the app and are checked against the
 release's SHA-256. Gentoo: community ebuilds
-[`dev-vcs/twig`](https://github.com/vitaly-zdanevich/gentoo-overlay/tree/main/dev-vcs/twig)
-and [`dev-vcs/twig-bin`](https://github.com/vitaly-zdanevich/gentoo-overlay/tree/main/dev-vcs/twig-bin)
+[`dev-vcs/twig-bin`](https://github.com/vitaly-zdanevich/gentoo-overlay/tree/main/dev-vcs/twig-bin) (prebuilt)
+and [`dev-vcs/twig`](https://github.com/vitaly-zdanevich/gentoo-overlay/tree/main/dev-vcs/twig) (from source)
 in [Vitaly Zdanevich's overlay](https://github.com/vitaly-zdanevich/gentoo-overlay#add-the-overlay)
-(amd64, glibc).
+(amd64, glibc); the overlay is community-maintained and may lag behind the latest release:
+
+```sh
+eselect repository add vitaly-zdanevich-overlay git https://github.com/vitaly-zdanevich/gentoo-overlay.git
+emaint sync -r vitaly-zdanevich-overlay
+emerge -a twig-bin
+```
 
 ## Develop
 

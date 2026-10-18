@@ -109,8 +109,15 @@
         <p class="release-note-link">Полный список выпусков есть в <a href="https://github.com/kitarasenka/twig/blob/main/CHANGELOG.md">CHANGELOG</a> и на странице <a href="https://github.com/kitarasenka/twig/releases">Releases</a>.</p>
       </section>
       <section class="downloads wrap section-space" id="download" aria-labelledby="download-title">
-        <div class="download-heading"><div><p class="eyebrow">MACOS / WINDOWS / LINUX</p><h2 id="download-title">Скачать 🌱 Twig</h2><p class="download-intro">MCP-сервер уже внутри, отдельно ставить ничего не нужно.<br>Демо-репозиторий открывается при первом запуске.</p></div><p class="release-label"><span class="status-dot" aria-hidden="true"></span> Версия {{version}}<small>Предварительная версия</small></p></div>
+        <div class="download-heading"><div><p class="eyebrow">MACOS / WINDOWS / LINUX / GENTOO</p><h2 id="download-title">Скачать 🌱 Twig</h2><p class="download-intro">MCP-сервер уже внутри, отдельно ставить ничего не нужно.<br>Демо-репозиторий открывается при первом запуске.</p></div><p class="release-label"><span class="status-dot" aria-hidden="true"></span> Версия {{version}}<small>Предварительная версия</small></p></div>
         <div class="download-grid">{{downloads}}</div>
+        <article class="download-card gentoo-card" aria-labelledby="gentoo-title">
+          <div><span class="platform-label">LINUX / GENTOO</span><h3 id="gentoo-title">Gentoo</h3><p class="gentoo-intro">Ebuild'ы в оверлее сообщества <a href="https://github.com/vitaly-zdanevich/gentoo-overlay">vitaly-zdanevich/gentoo-overlay</a> (amd64, glibc). Его ведёт сообщество, версия в нём может отставать от последнего выпуска.</p>
+          <p class="gentoo-links"><a href="https://github.com/vitaly-zdanevich/gentoo-overlay/tree/main/dev-vcs/twig-bin"><code>dev-vcs/twig-bin</code> готовая сборка <span aria-hidden="true">↗</span></a><a href="https://github.com/vitaly-zdanevich/gentoo-overlay/tree/main/dev-vcs/twig"><code>dev-vcs/twig</code> сборка из исходников <span aria-hidden="true">↗</span></a></p></div>
+          <pre class="gentoo-commands"><code>eselect repository add vitaly-zdanevich-overlay git https://github.com/vitaly-zdanevich/gentoo-overlay.git
+emaint sync -r vitaly-zdanevich-overlay
+emerge -a twig-bin</code></pre>
+        </article>
         <p class="download-note">Нужен установленный Git. На Mac: Apple Silicon для чипов серии M, Intel для процессоров Intel.</p>
         <details class="install-help"><summary>Установка и подпись</summary><p>Сборка для macOS подписана сертификатом Apple Developer ID и нотаризована, поэтому предупреждения «не удаётся проверить разработчика» не будет. Установщик Windows пока без цифровой подписи: SmartScreen может предупредить при первом запуске. Git устанавливается отдельно.</p><p>macOS: откройте <code>.dmg</code> и перенесите приложение в «Программы». Windows: запустите установщик <code>.exe</code>. Debian / Ubuntu: установите пакет <code>.deb</code>. Другие Linux: сделайте <code>.AppImage</code> исполняемым (<code>chmod +x</code>) и запустите: установка не нужна. Дальше обновления приходят в самом приложении.</p></details>
       </section>

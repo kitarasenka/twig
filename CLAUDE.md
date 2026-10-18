@@ -17,6 +17,15 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Gentoo на сайте и в README (2026-10-18, вне вех; по запросу пользователя):
+в `#download` под карточками — `.gentoo-card` «LINUX / GENTOO»: оверлей сообщества
+`vitaly-zdanevich/gentoo-overlay` (amd64, glibc), ссылки на `dev-vcs/twig-bin`
+(готовая сборка) и `dev-vcs/twig` (из исходников), три команды установки
+(`eselect repository add …`, `emaint sync -r …`, `emerge -a twig-bin`) и оговорка,
+что версия в оверлее может отставать (на 2026-10-18 там 0.14.0). Ссылки — не
+`.download-link`, счёт установщиков в `site/check.mjs` не меняется. README —
+те же ссылки и блок команд. Свои ebuild'ы 🌱 Twig не собирает.
+
 Первый экран лендинга — фоновое видео в духе страниц Apple (2026-10-18, вне
 вех; по запросу пользователя). Секция `.cinema` вместо прежнего `.hero`: видео
 `site/assets/video/twig-hero.mp4` (720p, 2,8 МБ) и `twig-hero-1080.mp4` (4,3 МБ,
