@@ -43,6 +43,12 @@ try {
     assert.ok(await page.locator('#whats-new .release-notes li').count() > 0, 'The release lists what appeared in it');
     await page.locator('.release-history summary').click();
     assert.equal(await page.locator('.release-history').getAttribute('open'), '');
+    // The background loop: muted, looping, local; its poster is served too.
+    const loop = page.locator('.cinema-video');
+    assert.deepEqual(await loop.evaluate((element) => [element.autoplay, element.muted, element.loop, element.playsInline]), [true, true, true, true]);
+    for (const src of [await loop.getAttribute('poster'), await loop.locator('source').getAttribute('src')]) {
+      assert.equal((await page.request.get(new URL(src, base + '/').href)).ok(), true, `${src} is served`);
+    }
     // The demo video: local file, nothing loads or plays until asked.
     const video = page.locator('#demo video');
     assert.deepEqual(await video.evaluate((element) => [element.autoplay, element.preload, element.controls]), [false, 'none', true]);
@@ -114,7 +120,21 @@ try {
     if (width === 1440) await demo.screenshot({ path: new URL('site-desktop.png', artifacts).pathname });
     await demo.screenshot({ path: new URL(`site-${width}.png`, artifacts).pathname, fullPage: true });
   }
+  // Reduced motion: the first screen is a plain stack over the poster, the loop does not play.
+  assert.deepEqual(await demo.evaluate(() => [globalThis.document.querySelector('.cinema').classList.contains('is-scrolly'), globalThis.document.querySelector('.cinema-video').paused]), [false, true]);
+  assert.equal(await demo.locator('.cinema-toggle').isHidden(), true);
   await demo.emulateMedia({ reducedMotion: 'no-preference' });
+  // With motion: the stage is pinned and the steps come in one at a time; at the end the buttons are on top.
+  await demo.setViewportSize({ width: 1440, height: 960 });
+  await demo.evaluate(() => globalThis.scrollTo(0, 0));
+  await demo.waitForFunction(() => globalThis.document.querySelector('.cinema').classList.contains('is-scrolly'));
+  assert.equal(await demo.locator('.cinema-toggle').isVisible(), true);
+  await demo.waitForFunction(() => globalThis.getComputedStyle(globalThis.document.querySelector('.cinema-final')).opacity === '0');
+  await demo.evaluate(() => { const section = globalThis.document.querySelector('.cinema'); globalThis.scrollTo(0, section.offsetTop + section.offsetHeight - globalThis.innerHeight); });
+  await demo.waitForFunction(() => globalThis.getComputedStyle(globalThis.document.querySelector('.cinema-final')).opacity === '1');
+  assert.equal(await demo.evaluate(() => globalThis.document.querySelector('.hero-copy').style.opacity), '0', 'the title has made way for the buttons');
+  await demo.locator('.cinema-final .primary').click();
+  assert.equal(new URL(demo.url()).hash, '#download');
   await demo.locator('#tab-search').click();
   assert.ok(await demo.locator('#demo-search').evaluate(element => element.getAnimations({ subtree: true }).length > 0), 'Selected scenario animates');
   await demo.locator('#features').scrollIntoViewIfNeeded();
