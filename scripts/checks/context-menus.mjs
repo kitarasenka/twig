@@ -115,13 +115,20 @@ assert.equal(absolutePath('\\\\server\\share\\repo', 'a/b.txt'), '\\\\server\\sh
 {
   const { calls, handlers } = recorder();
   const items = buildFileMenu({ path: 'src/app.js', platform: 'darwin', editor: 'Zed', blameOid: A, handlers });
-  assert.deepEqual(keys(items), ['open-editor', 'reveal', 'copy-path', 'copy-full-path', 'file-history', 'blame']);
+  assert.deepEqual(keys(items), ['open-editor', 'reveal', 'view-file', 'copy-path', 'copy-full-path', 'file-history', 'blame']);
   assert.equal(byKey(items, 'open-editor').text, 'Open in Zed');
   assert.equal(byKey(items, 'reveal').text, 'Reveal in Finder');
+  assert.equal(byKey(items, 'view-file').text, 'View full file');
+  assert.equal(byKey(items, 'view-file').hint, 'As of this commit');
   for (const item of items.filter(entry => !entry.separator)) item.run();
-  assert.deepEqual(calls.map(call => call[0]), ['openInEditor', 'reveal', 'copyPath', 'copyFullPath', 'fileHistory', 'blame']);
+  assert.deepEqual(calls.map(call => call[0]), ['openInEditor', 'reveal', 'viewFile', 'copyPath', 'copyFullPath', 'fileHistory', 'blame']);
+  assert.deepEqual(calls[2], ['viewFile', 'src/app.js']);
   assert.deepEqual(calls.at(-1), ['blame', 'src/app.js', A], 'blame reads the committed version the row belongs to');
 }
+// The whole file is offered only where a view can show it, and an uncommitted
+// row's is the file as it is now.
+assert.equal(byKey(buildFileMenu({ path: 'a', platform: 'darwin', handlers: {} }), 'view-file'), undefined);
+assert.equal(byKey(buildFileMenu({ path: 'a', platform: 'darwin', move: 'stage', tracked: false, handlers: { viewFile() {} } }), 'view-file').hint, 'As it is now');
 assert.equal(byKey(buildFileMenu({ path: 'a', platform: 'win32', handlers: {} }), 'reveal').text, 'Show in Explorer');
 assert.equal(byKey(buildFileMenu({ path: 'a', platform: 'linux', handlers: {} }), 'reveal').text, 'Show in file manager');
 assert.equal(byKey(buildFileMenu({ path: 'a', platform: 'linux', editor: 'System default', handlers: {} }), 'open-editor').text, 'Open in default editor');

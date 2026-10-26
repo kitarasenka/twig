@@ -73,5 +73,11 @@ export function registerHistoryIpc(getWindow, entryUrl, { repositories, journal 
     const { loadImagePair } = await import('./git/image-blob.js');
     return loadImagePair({ ...options, file, source });
   });
+  // Both versions of a file as text, for the whole-file view: the same sides
+  // as the image viewer, read the same way.
+  handler('history:file-text', 3, async (options, file, source) => {
+    const { loadTextPair } = await import('./git/file-text.js');
+    return loadTextPair({ ...options, file, source });
+  });
   handler('history:compare', 3, (options, base, oid) => loadRangeFiles({ ...options, base, oid }));
 }

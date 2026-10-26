@@ -69,28 +69,34 @@ export function parseBatchOutput(buffer) {
   return objects;
 }
 
-async function readGitSides({ cwd, log, names }) {
+/**
+ * The sides Git holds, by `<rev>:<path>` name. `what` names the reads in the
+ * journal and in the error ("image" for the image viewer, "file" for the
+ * whole-file view); a side over `maxBytes` is reported by its size, unread.
+ */
+export async function readGitSides({ cwd, log, names, maxBytes = MAX_IMAGE_BYTES, what = 'image' }) {
   const wanted = Object.entries(names).filter(([, name]) => name !== null);
   const sides = {};
   if (wanted.length === 0) return sides;
+  const failed = `Git could not read this ${what}. See the command console.`;
   const check = await runGit({ cwd, log, argv: ['cat-file', '--batch-check=%(objectname) %(objecttype) %(objectsize)'],
-    stdin: `${wanted.map(([, name]) => name).join('\n')}\n`, operation: 'Read image versions' });
-  if (check.code !== 0) throw new Error('Git could not read this image. See the command console.');
+    stdin: `${wanted.map(([, name]) => name).join('\n')}\n`, operation: `Read ${what} versions` });
+  if (check.code !== 0) throw new Error(failed);
   const lines = check.stdout.split('\n');
   const reads = [];
   wanted.forEach(([side], index) => {
     const found = parseBatchCheckLine(lines[index] ?? '');
     if (!found) sides[side] = { state: 'missing' };
     else if (found.type !== 'blob') sides[side] = { state: 'other', reason: 'Git holds something other than a file here.' };
-    else if (found.size > MAX_IMAGE_BYTES) sides[side] = { state: 'large', size: found.size };
+    else if (found.size > maxBytes) sides[side] = { state: 'large', size: found.size };
     else { sides[side] = { state: 'ok', size: found.size, oid: found.oid }; reads.push(found); }
   });
   if (reads.length === 0) return sides;
   const unique = [...new Map(reads.map(item => [item.oid, item])).values()];
   const total = unique.reduce((sum, item) => sum + item.size + 160, 0);
   const result = await runGit({ cwd, log, argv: ['cat-file', '--batch'], stdin: `${unique.map(item => item.oid).join('\n')}\n`,
-    operation: 'Read image bytes', binary: true, maxBytes: total });
-  if (result.code !== 0 || result.truncated) throw new Error('Git could not read this image. See the command console.');
+    operation: `Read ${what} bytes`, binary: true, maxBytes: total });
+  if (result.code !== 0 || result.truncated) throw new Error(failed);
   const objects = parseBatchOutput(result.stdout);
   for (const side of Object.keys(sides)) {
     if (sides[side].state !== 'ok') continue;
@@ -101,7 +107,7 @@ async function readGitSides({ cwd, log, names }) {
 }
 
 /** The file as it is on disk now — never through a symbolic link, never outside the working tree. */
-export async function readDiskSide(cwd, file) {
+export async function readDiskSide(cwd, file, maxBytes = MAX_IMAGE_BYTES) {
   const root = await realpath(cwd);
   const absolute = path.resolve(root, ...file.split('/'));
   const relative = path.relative(root, absolute);
@@ -117,7 +123,7 @@ export async function readDiskSide(cwd, file) {
   const real = await realpath(absolute);
   const inside = path.relative(root, real);
   if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) throw new TypeError('Invalid file path');
-  if (stats.size > MAX_IMAGE_BYTES) return { state: 'large', size: stats.size };
+  if (stats.size > maxBytes) return { state: 'large', size: stats.size };
   const bytes = await readFile(real);
   return { state: 'ok', size: bytes.length, bytes };
 }

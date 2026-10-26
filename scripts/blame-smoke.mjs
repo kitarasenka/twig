@@ -82,6 +82,23 @@ try {
   const detail = page.getByRole('complementary', { name: 'Blame details', exact: true });
   await detail.getByRole('heading', { name: 'Rewrite beta, append tail', exact: true }).waitFor();
 
+  // The detail shows the whole file as the line's commit left it — the two
+  // lines it rewrote and appended lit — and, switch off, as it was before.
+  await detail.getByRole('button', { name: 'Full file', exact: true }).click();
+  const wholeFile = detail.locator('.file-lines');
+  await wholeFile.getByText(/tail/).waitFor();
+  assert.deepEqual(await wholeFile.locator('[data-diff-row] > span:last-child').allTextContents(),
+    [' alpha', '+BETA rewritten', ' doomed line', '+tail'], 'every line, the changed ones marked +');
+  assert.equal(await wholeFile.locator('.diff-added').count(), 2);
+  assert.equal(await detail.locator('.file-changes').textContent(), '2 changes');
+  await detail.locator('.file-toolbar .switch').click();
+  await wholeFile.getByText(/^-beta$/).waitFor();
+  assert.equal(await wholeFile.locator('[data-diff-row]').count(), 3);
+  assert.equal(await wholeFile.locator('.diff-deleted').count(), 1, 'before: the line the commit rewrote');
+  await detail.locator('.file-toolbar .switch').click();
+  await detail.getByRole('button', { name: 'Changes', exact: true }).click();
+  await detail.getByText('+tail', { exact: true }).waitFor();
+
   // Blame before this change: step onto the version before the "beta" rewrite.
   await page.getByRole('button', { name: 'Blame before this change', exact: true }).click();
   await blame.getByText('Add code.txt', { exact: false }).first().waitFor().catch(() => {});

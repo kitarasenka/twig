@@ -270,6 +270,21 @@
 .diff-toolbar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-3);
   border-bottom: 1px solid var(--border); background: var(--surface-raised); }
 .diff-language { color: var(--muted); font-size: var(--text-xs); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* Changes / Full file sits with Blame and Close on the right of the heading. */
+.diff-heading-actions { flex: none; display: flex; align-items: center; gap: var(--space-2); }
+.file-view-switch button { font-size: var(--text-xs); }
+.files-heading .file-view-switch { margin-left: auto; }
+/* The whole-file view: which version on the left, the change arrows and the
+   before/after switch on the right; in a narrow panel the right side wraps. */
+.file-toolbar { flex-wrap: wrap; }
+.file-toolbar-actions { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+.file-toolbar-actions .switch { font-size: var(--text-xs); white-space: nowrap; }
+.file-toolbar-actions button { min-height: 22px; padding: 0 var(--space-1); }
+.file-toolbar-actions button svg { width: 14px; height: 14px; }
+.file-changes { color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
+.diff-line-file { width: calc(var(--diff-new-digits, 1) * 1ch); }
+/* The blame panel scrolls as a whole; a whole file inside it scrolls on its own. */
+.blame-detail .file-lines { max-height: 70vh; }
 .worktree-summary { overflow: auto; }
 .worktree-summary > p { padding: var(--space-4); }
 .worktree-file { display: flex; gap: var(--space-3); padding: var(--space-1) var(--space-4); overflow-wrap: anywhere; }

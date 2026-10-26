@@ -103,6 +103,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   getCommitFiles: (id, oid) => ipcRenderer.invoke('history:files', id, oid),
   getFileDiff: (id, oid, file, base = null) => ipcRenderer.invoke('history:diff', id, oid, file, base),
   getImagePair: (id, file, source) => ipcRenderer.invoke('history:image', id, file, source),
+  getFileText: (id, file, source) => ipcRenderer.invoke('history:file-text', id, file, source),
   compareCommits: (id, base, oid) => ipcRenderer.invoke('history:compare', id, base, oid),
   getReflog: (id, branch = null, skip = 0) => ipcRenderer.invoke('reflog:read', id, branch, skip),
   moveBranchTo: (id, branch, oid, expected) => ipcRenderer.invoke('reflog:move-branch', id, branch, oid, expected),

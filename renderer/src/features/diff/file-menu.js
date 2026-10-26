@@ -1,4 +1,4 @@
-import { AlignLeft, ClipboardCopy, EyeOff, FilePenLine, FolderOpen, History, Minus, Plus, Trash2, Undo2 } from 'lucide-react';
+import { AlignLeft, ClipboardCopy, EyeOff, FilePenLine, FileText, FolderOpen, History, Minus, Plus, Trash2, Undo2 } from 'lucide-react';
 import { ignoreChoices } from '../../../../main/git/ignore-plan.js';
 
 /** What the file manager is called here, for menu text. */
@@ -44,13 +44,16 @@ export function ignoreMenuItems({ path, run, reason }) {
  * direction of an uncommitted row, and `discard` ('changes' | 'untracked')
  * its destructive counterpart, which always confirms before it runs. An
  * untracked row (`discard: 'untracked'`) also offers the .gitignore rules when
- * `handlers.ignore` is given.
+ * `handlers.ignore` is given, and every row "View full file" when
+ * `handlers.viewFile` is: the version this list shows — the commit's, or the
+ * uncommitted one — whole, not as a diff.
  */
 export function buildFileMenu({ path, platform, editor = 'System default', blameOid = null, tracked = true, move = null, discard = null, handlers }) {
   const editorText = !editor || editor === 'System default' ? 'Open in default editor' : `Open in ${editor}`;
   const items = [
     { key: 'open-editor', icon: FilePenLine, text: editorText, run: () => handlers.openInEditor(path) },
     { key: 'reveal', icon: FolderOpen, text: platform === 'darwin' ? 'Reveal in Finder' : `Show in ${fileManagerName(platform)}`, run: () => handlers.reveal(path) },
+    handlers.viewFile && { key: 'view-file', icon: FileText, text: 'View full file', hint: move ? 'As it is now' : 'As of this commit', run: () => handlers.viewFile(path) },
     { separator: true },
     { key: 'copy-path', icon: ClipboardCopy, text: 'Copy path', hint: 'relative', run: () => handlers.copyPath(path) },
     { key: 'copy-full-path', icon: ClipboardCopy, text: 'Copy full path', run: () => handlers.copyFullPath(path) }
@@ -77,5 +80,5 @@ export function buildFileMenu({ path, platform, editor = 'System default', blame
         reason: blameOid ? undefined : 'Select a committed version first', run: () => handlers.blame(path, blameOid) }
     );
   }
-  return items;
+  return items.filter(Boolean);
 }

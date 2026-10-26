@@ -5,7 +5,7 @@ line-level staging, rebase and Undo. Claude Code, Codex or Cursor connect to the
 same repositories over MCP: they see what you selected, spend fewer tokens than
 with `git`, and can only *propose* a commit; you press Commit in 🌱 Twig.
 
-**Current version: 0.20.2.** Released 2026-10-17; see [CHANGELOG.md](CHANGELOG.md).
+**Current version: 0.21.0.** Released 2026-10-26; see [CHANGELOG.md](CHANGELOG.md).
 macOS, Windows and Linux · [Website](https://kitarasenka.github.io/twig/) ·
 [Download](https://github.com/kitarasenka/twig/releases/latest) · [MCP docs](docs/mcp.md)
 
@@ -74,7 +74,9 @@ cut in the middle. More: [docs/mcp.md](docs/mcp.md).
 
 - **History:** a virtualized graph that names every branch and tag; search by message,
   hash, author, path or code (`-S`, `-G`); blame, "blame before this change" and reverse
-  blame; file history across renames; reflog with lost commits marked and recoverable.
+  blame; file history across renames; any file in full as a commit left it or as it
+  was just before, the lines that commit touched lit; reflog with lost commits marked
+  and recoverable.
   When the checked-out branch is not the top row (behind its remote or another
   branch), a dashed line on the left leads down to its commit.
 - **Changes:** stage files, hunks or single lines; lists by path or as a folder tree,

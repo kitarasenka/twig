@@ -96,6 +96,27 @@ try {
   await preview.getByText('Not staged', { exact: true }).waitFor();
   await preview.locator('.diff-added').first().waitFor();
   assert.ok((await preview.locator('.diff-deleted').count()) > 0, 'the panel previews the real patch, both sides of it');
+  // The whole file as it is now on disk, its two edited rows lit; switch off,
+  // the copy in the index those edits are measured against.
+  await preview.getByRole('button', { name: 'Full file', exact: true }).click();
+  const wholeFile = preview.locator('.file-lines');
+  await wholeFile.getByText(/ROW10/).waitFor();
+  assert.equal(await wholeFile.locator('[data-diff-row]').count(), 10);
+  assert.deepEqual(await wholeFile.locator('.diff-added > span:last-child').allTextContents(), ['+ROW01', '+ROW10']);
+  assert.match(await preview.locator('.diff-language').textContent(), /· on disk$/);
+  await preview.locator('.file-toolbar .switch').click();
+  await wholeFile.getByText(/row10/).waitFor();
+  assert.equal(await wholeFile.getByText(/ROW01/).count(), 0);
+  assert.match(await preview.locator('.diff-language').textContent(), /· in the index$/);
+  await preview.locator('.file-toolbar .switch').click();
+  // An untracked file has a whole file to show, though no diff, and no switch.
+  await panelFile('Untracked files', 'fresh.txt').click();
+  await wholeFile.getByText(/brand new/).waitFor();
+  assert.equal(await preview.locator('.file-toolbar .switch').count(), 0);
+  assert.match(await preview.locator('.diff-language').textContent(), /· on disk$/);
+  assert.equal(await git(['status', '--porcelain', '--', 'fresh.txt']), '?? fresh.txt', 'viewing does not track it');
+  await preview.getByRole('button', { name: 'Changes', exact: true }).click();
+  await preview.getByText(/Git has no diff for this file/).waitFor();
   await page.getByRole('button', { name: 'Close diff', exact: true }).click();
 
   // The plus and the minus move whole files between the lists, and the index

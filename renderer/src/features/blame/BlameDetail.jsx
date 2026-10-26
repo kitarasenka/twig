@@ -1,20 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GitBranch } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
-import DiffLines from '../diff/DiffLines.jsx';
+import DiffLines, { FileViewSwitch } from '../diff/DiffLines.jsx';
+import FileView from '../diff/FileView.jsx';
 
 /**
  * The right-hand panel for the blame screen: the commit a selected line (or
- * block) is attributed to, plus that file's diff in the commit. Self-fetching
- * and request-guarded so a fast click-through never shows a stale commit.
+ * block) is attributed to, plus that file's diff in the commit — or the whole
+ * file as that commit left it, or as it was just before. Self-fetching and
+ * request-guarded so a fast click-through never shows a stale commit.
  */
-export default function BlameDetail({ repositoryId, sel, onJump, onConsole }) {
+export default function BlameDetail({ repositoryId, sel, view, onJump, onConsole }) {
   const [commit, setCommit] = useState(null);
   const [diff, setDiff] = useState(null);
   const [error, setError] = useState('');
   const request = useRef(0);
   const oid = sel?.oid;
   const path = sel?.path;
+  const source = useMemo(() => (oid ? { kind: 'commit', oid, base: null } : null), [oid]);
 
   useEffect(() => {
     if (!oid) { setCommit(null); setDiff(null); setError(''); return; }
@@ -52,9 +55,12 @@ export default function BlameDetail({ repositoryId, sel, onJump, onConsole }) {
           <dt>Line</dt><dd>{sel.line} in <code>{sel.path}</code></dd>
           <dt>Parents</dt><dd>{commit.parents.length ? commit.parents.map(oid => <button key={oid} className="text-button" onClick={() => onJump(oid)}>{oid.slice(0, 8)}</button>) : 'Root commit'}</dd>
         </dl>
-        <div className="files-heading"><strong>Diff of {sel.path.split('/').at(-1)}</strong></div>
+        <div className="files-heading"><strong>{view.full ? '' : 'Diff of '}{sel.path.split('/').at(-1)}</strong>
+          {!diff?.binary && <FileViewSwitch full={view.full} onFull={view.setFull} />}</div>
         {diff?.loading ? <div className="skeleton" aria-label="Loading diff" />
           : diff?.binary ? <p className="muted">Binary file — no text diff.</p>
+          : view.full ? <FileView repositoryId={repositoryId} file={path} source={source} patch={diff?.patch || ''}
+            withChanges={view.withChanges} onWithChanges={view.setWithChanges} onConsole={onConsole} />
           : diff?.patch ? <DiffLines patch={diff.patch} path={path} />
           : <p className="muted">This commit did not change {sel.path.split('/').at(-1)} against its first parent.</p>}
       </>}

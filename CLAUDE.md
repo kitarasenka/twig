@@ -17,6 +17,50 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Файл целиком в любой версии (2026-10-26, вне вех; по запросу пользователя):
+у каждого диффа файла — в центре (файл коммита, сравнение двух коммитов,
+незакоммиченное staged/unstaged/untracked), в правой панели истории файла и в
+панели blame (коммит выбранной строки) — переключатель **Changes / Full file**.
+Full file показывает весь файл с номерами строк и подсветкой синтаксиса, а
+переключатель **With this commit’s changes** (staged/unstaged/сравнение — свои
+слова) меняет версию «после» на «до»: коммит ↔ его первый родитель, сравнение —
+коммит ↔ base, staged — индекс ↔ HEAD, unstaged — диск ↔ индекс; у untracked
+переключателя нет (только диск). Строки, которые изменение добавляет/переписывает
+(«после») или удаляет/переписывает («до»), подкрашены `diff-added`/`diff-deleted`
+и помечены +/−; номера берутся из уже открытого патча (`annotatePatch`), git
+ради них не запускается. Стрелки Previous/Next change идут от строки на трети
+экрана (ручная прокрутка учитывается), по кругу. Нет версии — словами («This
+commit deletes the file.», «The file did not exist before this commit.») и
+кнопкой «Show it before …/at …»; бинарный — без текста, больше 5 МБ — размер.
+Выбор Changes/Full file и до/после — состояние `HistoryWorkspace`
+(`fullFile`/`withChanges`), держится, пока открываются файл за файлом, не
+переживает перезапуск. В меню файла (панель коммита и незакоммиченного) — пункт
+**View full file** (`handlers.viewFile`, подсказка «As of this commit» / «As it
+is now»). Main: канал `history:file-text` (`main/git/file-text.js`,
+`loadTextPair`) — те же стороны и те же два `cat-file`, что у просмотрщика
+картинок (`readGitSides`/`readDiskSide` из `image-blob.js` получили `maxBytes` и
+`what`; записи журнала «Read file versions/bytes», код 0, байты не пишутся),
+`MAX_TEXT_BYTES` = 5 МиБ, бинарный — NUL в первых 8000 байт, как у Git, не-UTF-8
+→ U+FFFD; диск — без симлинков и выхода из дерева. Мост `getFileText`. Renderer:
+чистый `features/diff/file-view.js` (`fileLines`, `changedLines`,
+`changeStarts`, `stepChange`, `versionLabels`, `versionProblem`,
+`changeSummary`), `FileView.jsx` — отдельный чанк (5,6 КБ, основной бандл
++2 КБ); прокрутка с виртуализацией вынесена из `DiffLines` в общий
+`RowScroller` (`gutter="file"` — один столбец номеров), `FileViewSwitch` —
+рядом с `DiffToolbar`. В панели blame файл прокручивается сам (`max-height:
+70vh`). Проверки: `scripts/checks/file-view.mjs` (в `npm test`: строки, CRLF,
+подсвеченные строки обеих сторон против настоящего `git show`, слова, и на
+настоящем Git — root, merge, сравнение, staged/unstaged/untracked, удаление,
+бинарный, > 5 МБ, симлинк и выход из дерева, отказы, журнал без текста файла),
+`context-menus.mjs` (View full file), `smoke.mjs` (мост), `history-smoke.mjs`
+(меню → удалённый файл → «Show it before», до/после hello.txt с метками,
+добавленный файл, 5 отказов IPC; снимок `artifacts/full-file.png` просмотрен),
+`blame-smoke.mjs` (полный файл коммита строки до/после),
+`worktree-smoke.mjs` (диск/индекс, untracked без переключателя и без трекинга).
+`npm test` и смоуки smoke, history, blame, worktree, image, everyday, browse,
+ops зелёные. Версия 0.20.2 → **0.21.0** (minor, по поручению пользователя):
+тегом `twig-v0.21.0` уезжает эта правка.
+
 Gentoo на сайте и в README (2026-10-18, вне вех; по запросу пользователя):
 в `#download` под карточками — `.gentoo-card` «LINUX / GENTOO»: оверлей сообщества
 `vitaly-zdanevich/gentoo-overlay` (amd64, glibc), ссылки на `dev-vcs/twig-bin`

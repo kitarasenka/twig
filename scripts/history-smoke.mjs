@@ -204,6 +204,52 @@ try {
   await assert.rejects(page.evaluate(() => window.twig.setEditor('/bin/sh')), /Invalid editor/);
   await assert.rejects(page.evaluate(() => window.twig.openInEditor('not-a-repository', 'hello.txt')), /Unknown repository/);
 
+  // Full file, from the file menu: every line of a file as the selected commit
+  // left it, or — switch off — as it was just before. The tip deletes
+  // "old [name].txt": it has no "after", and one click shows the "before",
+  // with the line the commit removes lit.
+  await page.getByRole('button', { name: 'Deleted old [name].txt', exact: true }).click({ button: 'right' });
+  await page.getByRole('menu', { name: 'Actions for old [name].txt' }).getByRole('menuitem', { name: /^View full file/ }).click();
+  const centreDiff = page.getByRole('region', { name: 'File diff', exact: true });
+  await centreDiff.getByText('This commit deletes the file.').waitFor();
+  assert.equal(await centreDiff.getByRole('button', { name: 'Full file', exact: true }).getAttribute('aria-pressed'), 'true');
+  await centreDiff.getByRole('button', { name: /^Show it before [0-9a-f]{8}$/ }).click();
+  const wholeFile = centreDiff.locator('.file-lines');
+  await wholeFile.getByText(/Rename history content/).waitFor();
+  assert.equal(await centreDiff.getByRole('checkbox', { name: 'With this commit’s changes' }).isChecked(), false);
+  assert.equal(await wholeFile.locator('.diff-deleted').count(), 1, 'the line the commit removes is lit');
+  assert.match(await centreDiff.locator('.diff-language').textContent(), /^Plain text · 1 line · before [0-9a-f]{8}$/);
+  // The view and the switch stay as they are for the next file: hello.txt
+  // before the tip, then with the tip's change, its rewritten line lit and marked.
+  await page.getByRole('button', { name: 'Modified hello.txt', exact: true }).click();
+  await wholeFile.getByText(/Hello Twig/).waitFor();
+  assert.equal(await wholeFile.locator('.diff-deleted .diff-marker').textContent(), '-');
+  await centreDiff.locator('.file-toolbar .switch').click();
+  await wholeFile.getByText(/Hello real history/).waitFor();
+  assert.equal(await wholeFile.getByText(/Hello Twig/).count(), 0);
+  assert.equal(await wholeFile.locator('.diff-added .diff-marker').textContent(), '+');
+  assert.match(await centreDiff.locator('.diff-language').textContent(), /^Plain text · 1 line · at [0-9a-f]{8}$/);
+  assert.equal(await centreDiff.locator('.file-changes').textContent(), '1 change');
+  assert.match(await wholeFile.locator('.diff-line-file').first().innerText(), /^1$/, 'one line number per line');
+  // A file the tip adds has nothing before it.
+  await page.getByRole('button', { name: 'Added renamed.txt', exact: true }).click();
+  await wholeFile.getByText(/Rename history content/).waitFor();
+  await centreDiff.locator('.file-toolbar .switch').click();
+  await centreDiff.getByText('The file did not exist before this commit.').waitFor();
+  await centreDiff.getByRole('button', { name: /^Show it at [0-9a-f]{8}$/ }).click();
+  await wholeFile.getByText(/Rename history content/).waitFor();
+  await mkdir('artifacts', { recursive: true });
+  await page.screenshot({ path: 'artifacts/full-file.png' });
+  // Back to the diff: later diffs open as diffs again.
+  await centreDiff.getByRole('button', { name: 'Changes', exact: true }).click();
+  await centreDiff.getByText('+Rename history content', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  for (const [file, source] of [['../escape', { kind: 'commit', oid: tip, base: null }], ['hello.txt', { kind: 'commit', oid: 'HEAD', base: null }],
+    ['hello.txt', { kind: 'disk' }], ['hello.txt', null]]) {
+    await assert.rejects(page.evaluate(([id, f, s]) => window.twig.getFileText(id, f, s), [fixtureId, file, source]), /Invalid/, `${file} ${JSON.stringify(source)}`);
+  }
+  await assert.rejects(page.evaluate(oid => window.twig.getFileText('not-a-repository', 'hello.txt', { kind: 'commit', oid, base: null }), tip), /unavailable/);
+
   // Sidebar tree: closed by default, opened only down to the selected refs —
   // the tip is selected, so its four refs show and are marked, and the
   // feat/graph folder (nothing selected in it) stays closed.

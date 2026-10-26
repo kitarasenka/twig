@@ -38,7 +38,7 @@ import { createLaneLayout } from './layout.js';
 import { bisectMarkMap } from './bisect-marks.js';
 import useGitDrag, { refEndpoint } from './useGitDrag.js';
 import DropDialog from './DropDialog.jsx';
-import DiffLines from '../diff/DiffLines.jsx';
+import DiffLines, { FileViewSwitch } from '../diff/DiffLines.jsx';
 import { dropActions, endpointLabel, sameEndpoint } from '../../../../main/git/drop-plan.js';
 import { buildUiContext } from './ui-context-report.js';
 import lazyScreen from '../../ui/lazy-screen.jsx';
@@ -54,6 +54,7 @@ const AutomationsScreen = lazyScreen(() => import('../automations/AutomationsScr
 const RebaseDialog = lazyScreen(() => import('../rebase/RebaseDialog.jsx'));
 const BlameView = lazyScreen(() => import('../blame/BlameView.jsx'));
 const BlameDetail = lazyScreen(() => import('../blame/BlameDetail.jsx'));
+const FileView = lazyScreen(() => import('../diff/FileView.jsx'));
 
 const NOOP = () => {};
 const NO_STASHES = [];
@@ -127,13 +128,21 @@ function BranchTree({ refs, type, path = '', tree, onSelect, onCheckout, onMenu,
  */
 const showsImage = diff => Boolean(diff.source && imageType(diff.file) && (diff.binary || diff.source.kind === 'untracked'));
 
-function Diff({ diff, repositoryId, onClose, onCommit, onBlame }) {
+function Diff({ diff, repositoryId, onClose, onCommit, onBlame, view, onConsole }) {
+  // A binary file has no text to show whole; an image has its own viewer.
+  const textual = !diff.error && !diff.binary && !showsImage(diff);
+  const full = view.full && textual && Boolean(diff.source);
   return <section className="diff-view" aria-label="File diff"><header className="panel-heading"><code>{diff.file}</code>
     {diff.section && <span className="pill">{diff.section === 'staged' ? 'Staged' : diff.section === 'untracked' ? 'Untracked' : 'Not staged'}</span>}
-    {onBlame && <Button icon={AlignLeft} onClick={onBlame}>Blame</Button>}
-    <Button icon={X} aria-label="Close diff" onClick={onClose} /></header>
+    <div className="diff-heading-actions">
+      {textual && <FileViewSwitch full={view.full} onFull={view.setFull} />}
+      {onBlame && <Button icon={AlignLeft} onClick={onBlame}>Blame</Button>}
+      <Button icon={X} aria-label="Close diff" onClick={onClose} />
+    </div></header>
     {onCommit && <div className="file-history-diff-heading"><code>{diff.oid.slice(0, 8)}</code><Button icon={GitBranch} onClick={onCommit}>Go to commit</Button></div>}
-    {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : showsImage(diff) ? <ImageDiff repositoryId={repositoryId} file={diff.file} source={diff.source} /> : diff.note ? <p className="empty-inline">{diff.note}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : diff.patch ? <DiffLines patch={diff.patch} path={diff.file} /> : <p className="empty-inline">No changes for this file in this comparison.</p>}
+    {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : showsImage(diff) ? <ImageDiff repositoryId={repositoryId} file={diff.file} source={diff.source} />
+      : full ? <FileView repositoryId={repositoryId} file={diff.file} source={diff.source} patch={diff.patch} withChanges={view.withChanges} onWithChanges={view.setWithChanges} onConsole={onConsole} />
+      : diff.note ? <p className="empty-inline">{diff.note}</p> : diff.binary ? <p className="empty-inline">Binary file changed. A text diff is unavailable.</p> : diff.patch ? <DiffLines patch={diff.patch} path={diff.file} /> : <p className="empty-inline">No changes for this file in this comparison.</p>}
   </section>;
 }
 
@@ -202,6 +211,11 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
   // a changed path, or the code itself through Git's pickaxe (-S / -G).
   const [searchMode, setSearchMode] = useState('message');
   const [diff, setDiff] = useState(null);
+  // Changes or the full file, and which version of the file: kept while one
+  // file after another is opened, in the centre, file history and blame alike.
+  const [fullFile, setFullFile] = useState(false);
+  const [withChanges, setWithChanges] = useState(true);
+  const fileView = useMemo(() => ({ full: fullFile, setFull: setFullFile, withChanges, setWithChanges }), [fullFile, withChanges]);
   // The open diff, read by the staging handlers: they are asynchronous, so a
   // closure over `diff` would re-read whatever was open when the click landed.
   const diffRef = useRef(null);
@@ -1443,7 +1457,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         onRunEvent={(event, options) => void runAutomation(event, options)} />}
       {!conflict && blame && <BlameView repository={repository} seed={blame} onConsole={onConsole}
         onClose={closeBlame} onJump={oid => { closeBlame(); void jump(oid); }} onSelect={setBlameSel} />}
-      {!conflict && !blame && diff && !fileHistory && <Diff diff={diff} repositoryId={repository.id} onClose={() => { diffRequest.current++; setDiff(null); }}
+      {!conflict && !blame && diff && !fileHistory && <Diff diff={diff} repositoryId={repository.id} view={fileView} onConsole={onConsole} onClose={() => { diffRequest.current++; setDiff(null); }}
         onBlame={diff.file && (diff.oid || indexMap.has(selected)) ? () => openBlame(diff.file, diff.oid || selected) : undefined} />}
       {!conflict && !blame && fileHistory && <FileHistory data={fileHistory} selected={diff?.oid} onConsole={onConsole}
         onSelect={openHistoryDiff} onClose={() => { diffRequest.current++; setFileHistory(null); setDiff(null); }} />}
@@ -1451,10 +1465,10 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     {showDetail && (fileHistory || blame
       ? <Splitter width={fileHistoryWidth} onWidth={setFileHistoryWidth} size={FILE_HISTORY_PANEL_SIZE} label={blame ? 'Blame details width' : 'File history changes width'} />
       : <Splitter width={width} onWidth={setWidth} />)}
-    {showDetail && blame && <BlameDetail repositoryId={repository.id} sel={blameSel}
+    {showDetail && blame && <BlameDetail repositoryId={repository.id} sel={blameSel} view={fileView}
       onJump={oid => { closeBlame(); void jump(oid); }} onConsole={onConsole} />}
     {showDetail && !blame && fileHistory && <aside className="file-history-detail" aria-label="File history changes">
-      {diff ? <Diff diff={diff} repositoryId={repository.id} onClose={() => { diffRequest.current++; setDiff(null); }} onCommit={() => void jump(diff.oid)}
+      {diff ? <Diff diff={diff} repositoryId={repository.id} view={fileView} onConsole={onConsole} onClose={() => { diffRequest.current++; setDiff(null); }} onCommit={() => void jump(diff.oid)}
         onBlame={() => openBlame(diff.file, diff.oid)} />
         : <p className="empty-inline">Select a commit to view this file’s changes.</p>}
     </aside>}
@@ -1477,6 +1491,11 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         move: fileMenu.section ? (fileMenu.section === 'staged' ? 'unstage' : 'stage') : null,
         discard: fileMenu.section === 'unstaged' ? 'changes' : fileMenu.section === 'untracked' ? 'untracked' : null,
         handlers: { ...fileHandlers,
+          viewFile: () => {
+            setFullFile(true);
+            if (fileMenu.section) void openWorktreeFile({ path: fileMenu.path, status: fileMenu.status }, fileMenu.section);
+            else void openFile(fileMenu.path);
+          },
           discard: () => stagingActions.discard({ path: fileMenu.path, status: fileMenu.status }, fileMenu.section),
           ignore: choice => stagingActions.ignore({ path: fileMenu.path }, choice),
           ignoreReason: stageReason,
