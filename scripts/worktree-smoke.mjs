@@ -61,7 +61,7 @@ try {
     try {
       await page.getByText(text, { exact: true }).waitFor();
     } catch (failure) {
-      const shown = await page.locator('[role="alert"], [role="status"], .history-error, .worktree-notice, .sync-note').allInnerTexts();
+      const shown = await page.locator('[role="alert"], [role="status"], .history-error, .worktree-notice, .operation-note').allInnerTexts();
       throw new Error(`${description}: expected "${text}". On screen: ${JSON.stringify(shown)}. Page errors: ${JSON.stringify(errors)}. ${failure.message}`);
     }
   };
@@ -117,7 +117,7 @@ try {
   assert.equal(await git(['status', '--porcelain', '--', 'fresh.txt']), '?? fresh.txt', 'viewing does not track it');
   await preview.getByRole('button', { name: 'Changes', exact: true }).click();
   await preview.getByText(/Git has no diff for this file/).waitFor();
-  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
 
   // The plus and the minus move whole files between the lists, and the index
   // is checked with Git rather than with the panel's own count.
@@ -248,6 +248,14 @@ try {
   await push.click();
   await expect('push finished.', 'pushing');
   assert.equal(await git(['rev-parse', 'HEAD']), await git(['rev-parse', 'origin/main']), 'the commit reached the remote');
+  // The note rises right above the console instead of pushing the screen down,
+  // its cross is big enough to hit, and it leaves by itself.
+  const pushNote = page.locator('.note-stack .operation-note').filter({ hasText: 'push finished.' });
+  const [noteBox, consoleBox] = await Promise.all([pushNote.boundingBox(), page.locator('.console').boundingBox()]);
+  assert.ok(noteBox.y + noteBox.height <= consoleBox.y && consoleBox.y - (noteBox.y + noteBox.height) < 24, 'the note sits right above the console');
+  const dismissBox = await pushNote.getByRole('button', { name: 'Dismiss', exact: true }).boundingBox();
+  assert.ok(dismissBox.width >= 32 && dismissBox.height >= 32, `the cross is at least 32 px: ${dismissBox.width}×${dismissBox.height}`);
+  await pushNote.waitFor({ state: 'detached', timeout: 10_000 });
 
   // Amend: fold a newly staged file into the last commit, keeping its message.
   await page.getByRole('button', { name: 'Stage fresh.txt', exact: true }).click();

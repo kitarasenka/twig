@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowLeft, GitBranch, Globe, Link2, Pencil, Search, ShieldCheck, SquareTerminal, Tag, Trash2, Upload } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
+import OperationNote from '../../ui/OperationNote.jsx';
 import { pushRefCommand, splitRemoteRef } from './remote-ref.js';
 import { TAG_SORTS, readTagSort, sortTags, writeTagSort } from './tag-sort.js';
 
@@ -196,7 +197,7 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
         </select></label>}
     </div>
     {type === 'tag' && tagError && <p className="operation-note failed" role="alert"><AlertTriangle className="note-icon" aria-hidden="true" /><span>{tagError}</span><button className="note-output" onClick={onConsole}><SquareTerminal aria-hidden="true" />Show output</button></p>}
-    {notice && <p className="operation-note" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss">×</button></p>}
+    <OperationNote note={notice} onConsole={onConsole} onDismiss={() => setNotice('')} />
     {unmerged && <p className="operation-note failed" role="alert">
       <AlertTriangle className="note-icon" aria-hidden="true" /><span>Git refused to delete {unmerged}: it is not fully merged.</span>
       <Button className="danger" onClick={() => forceDelete(unmerged)}>Delete anyway</Button>

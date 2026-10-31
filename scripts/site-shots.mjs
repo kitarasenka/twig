@@ -151,7 +151,7 @@ try {
   await fileHistory.getByRole('listitem').first().getByRole('button').click();
   await page.getByRole('region', { name: 'File diff', exact: true }).locator('.diff-added').first().waitFor();
   await shot('file-history');
-  await page.getByRole('button', { name: 'Close file history' }).click().catch(() => page.keyboard.press('Escape'));
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click().catch(() => page.keyboard.press('Escape'));
 
   // Blame of the same file at the tip, a line picked so the detail shows.
   await history.waitFor();

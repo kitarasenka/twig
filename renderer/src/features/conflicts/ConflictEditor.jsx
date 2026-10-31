@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Info, Redo2, Save, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, Info, Redo2, Save, Undo2 } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import { hasConflictMarkers, parseConflictFile, resolveRegion } from './conflict-parser.js';
 import { matchesShortcut } from '../../app/shortcuts.js';
@@ -46,7 +46,7 @@ function SideColumn({ name, title, lines, picked, onToggle }) {
  * Undo and redo are local to this editor, as the brief requires — they are not
  * the application-wide history.
  */
-export default function ConflictEditor({ repositoryId, file, onClose, onResolved, onConsole }) {
+export default function ConflictEditor({ repositoryId, file, onBack, onResolved, onConsole }) {
   const [data, setData] = useState(null);
   const [text, setText] = useState('');
   const [picks, setPicks] = useState([]);
@@ -158,6 +158,7 @@ export default function ConflictEditor({ repositoryId, file, onClose, onResolved
 
   return <section className="conflict-editor" aria-label={`Resolve conflict in ${file}`} onKeyDown={keydown}>
     <header className="panel-heading">
+      <Button icon={ArrowLeft} onClick={onBack}>Back to history</Button>
       <code>{file}</code>
       <span className="pill">{parsed.broken ? 'markers are incomplete' : `${parsed.conflicts} conflict${parsed.conflicts === 1 ? '' : 's'} left`}</span>
       <div className="diff-actions">
@@ -166,7 +167,6 @@ export default function ConflictEditor({ repositoryId, file, onClose, onResolved
         <Button onClick={() => whole('ours')} reason={busy ? 'Working' : undefined} title="Take our side in every conflict of this file">Take all ours</Button>
         <Button onClick={() => whole('theirs')} reason={busy ? 'Working' : undefined} title="Take their side in every conflict of this file">Take all theirs</Button>
         <Button icon={Save} className="primary" onClick={() => save()} reason={busy || !data || data.binary ? busy ? 'Saving' : 'This file has no text to save' : undefined}>Save and mark resolved</Button>
-        <Button icon={X} aria-label="Close the conflict editor" onClick={onClose} />
       </div>
     </header>
     {error && <p role="alert" className="empty-inline">{error}<button onClick={onConsole}>Show output</button></p>}

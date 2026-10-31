@@ -62,7 +62,7 @@ try {
   await app.evaluate(({ dialog }, directory) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] }); }, cwd);
   const expect = async (text, description, timeout = undefined) => {
     try { await page.getByText(text, { exact: true }).first().waitFor({ timeout }); } catch (failure) {
-      const shown = await page.locator('[role="alert"], [role="status"], .history-error, .operation-note, .sync-note').allInnerTexts();
+      const shown = await page.locator('[role="alert"], [role="status"], .history-error, .operation-note').allInnerTexts();
       throw new Error(`${description}: expected "${text}". On screen: ${JSON.stringify(shown)}. Page errors: ${JSON.stringify(errors)}. ${failure.message}`);
     }
   };

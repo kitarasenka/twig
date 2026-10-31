@@ -62,7 +62,11 @@ for (const name of ['features/graph/HistoryWorkspace.jsx', 'features/tools/Maint
   assert.ok((await read(`renderer/src/${name}`)).includes('<OperationNote note={'), `${name}: notes go through OperationNote`);
   assert.ok((await read(`renderer/src/${name}`)).includes('onConsole={onConsole}'), `${name}: the note can open the console`);
 }
-assert.ok((await read('renderer/src/ui/OperationNote.jsx')).includes('className="note-output" onClick={onConsole}>'), 'a failure note offers Show output');
+const note = await read('renderer/src/ui/OperationNote.jsx');
+assert.ok(note.includes('className="note-output" onClick={onConsole}>'), 'a failure note offers Show output');
+// A note leaves by itself, but a failure stays until it is dismissed: its Show output is the way to the reason.
+assert.ok(note.includes('if (!note || failed || held || !region) return undefined;'), 'a failure note does not leave by itself');
+assert.ok(note.includes('createPortal('), 'notes rise above the console, not inside the screen');
 
 // --- what the "My" filter keeps -------------------------------------------
 // Commands a person asked for.

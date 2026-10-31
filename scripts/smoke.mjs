@@ -118,7 +118,7 @@ try {
   await page.getByLabel('Syntax highlighting').selectOption('on');
   await page.keyboard.press('Escape');
   await codeDiff.locator('.syn-keyword').first().waitFor();
-  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   // The console lives at the bottom and opens from its own status bar; the
   // toolbar has no second switch for it.
   assert.equal(await page.locator('.toolbar').getByRole('button', { name: /Terminal/ }).count(), 0);

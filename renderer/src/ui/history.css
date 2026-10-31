@@ -212,7 +212,10 @@
 .metadata dd .text-button { margin-right: var(--space-2); }
 .diff-view { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .diff-view .panel-heading code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.file-history .panel-heading { justify-content: flex-start; }
 .file-history .panel-heading > span { display: flex; align-items: baseline; min-width: 0; }
+/* Back to history leads a centre view's heading and never shrinks; the path takes what is left. */
+.diff-view .panel-heading > .button-wrap, .conflict-editor .panel-heading > .button-wrap { flex: none; }
 .file-history .panel-heading code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .file-history .panel-heading small { flex: none; color: var(--muted); }
 .file-history-list { flex: 1; overflow: auto; list-style: none; margin: 0; padding: var(--space-2); }
@@ -271,7 +274,7 @@
   border-bottom: 1px solid var(--border); background: var(--surface-raised); }
 .diff-language { color: var(--muted); font-size: var(--text-xs); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* Changes / Full file sits with Blame and Close on the right of the heading. */
-.diff-heading-actions { flex: none; display: flex; align-items: center; gap: var(--space-2); }
+.diff-heading-actions { flex: none; display: flex; align-items: center; gap: var(--space-2); margin-left: auto; }
 .file-view-switch button { font-size: var(--text-xs); }
 .files-heading .file-view-switch { margin-left: auto; }
 /* The whole-file view: which version on the left, the change arrows and the
@@ -302,7 +305,7 @@
 .blame-title > code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .blame-at { color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
 .blame-at em { font-style: normal; color: var(--accent); }
-.blame-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.blame-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-left: auto; }
 .blame-step { font-size: var(--text-xs); color: var(--muted); font-family: var(--font-mono); }
 .segmented.blame-mode button[aria-pressed='true'] { background: var(--accent-bg); color: var(--accent); }
 .blame-reverse-form { display: flex; align-items: flex-end; gap: var(--space-3); flex-wrap: wrap;

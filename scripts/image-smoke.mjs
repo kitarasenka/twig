@@ -140,14 +140,14 @@ try {
   await viewer.getByRole('button', { name: 'Side by side', exact: true }).click();
 
   // The first commit has no "before".
-  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   await list.getByRole('option').filter({ hasText: 'Add logo' }).first().click();
   await page.getByRole('button', { name: 'Added art/logo.png', exact: true }).click();
   await viewer.getByText('Added in this change').waitFor();
   assert.equal(await viewer.getByRole('group', { name: 'Image view' }).count(), 0, 'one version: no comparison modes');
 
   // --- Uncommitted: a resized image on disk and an untracked one -------------------------------
-  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   await page.getByRole('button', { name: /Uncommitted changes, 2 files\b/ }).click();
   const uncommitted = page.getByRole('complementary', { name: 'Uncommitted changes', exact: true });
   await uncommitted.getByRole('region', { name: 'Changed files', exact: true }).locator('.commit-file').filter({ hasText: 'logo.png' }).click();

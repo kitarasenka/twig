@@ -94,7 +94,15 @@ try {
   const openFileRow = page.getByRole('button', { name: 'Modified hello.txt', exact: true });
   assert.equal(await openFileRow.getAttribute('aria-pressed'), 'true', 'the open file is highlighted');
   assert.notEqual(await openFileRow.evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)', 'the highlight is visible');
-  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  // A diff in the centre stands in for the history: its heading leads back to it
+  // in words, at the left, instead of a bare cross at the far right.
+  const centreHeading = page.getByRole('region', { name: 'File diff' }).locator('.panel-heading');
+  assert.equal(await centreHeading.getByRole('button', { name: 'Close diff' }).count(), 0, 'no cross in the centre diff');
+  const backBox = await centreHeading.getByRole('button', { name: 'Back to history', exact: true }).boundingBox();
+  const pathBox = await centreHeading.locator('code').first().boundingBox();
+  assert.ok(backBox.x < pathBox.x, 'Back to history comes before the path');
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
+  await list.waitFor();
   assert.equal(await openFileRow.getAttribute('aria-pressed'), 'false', 'closing the diff drops the highlight');
   // File history: the changed-file context menu lists every commit that touched
   // it. hello.txt changed twice — once at the root, once at the tip.
@@ -243,7 +251,7 @@ try {
   // Back to the diff: later diffs open as diffs again.
   await centreDiff.getByRole('button', { name: 'Changes', exact: true }).click();
   await centreDiff.getByText('+Rename history content', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   for (const [file, source] of [['../escape', { kind: 'commit', oid: tip, base: null }], ['hello.txt', { kind: 'commit', oid: 'HEAD', base: null }],
     ['hello.txt', { kind: 'disk' }], ['hello.txt', null]]) {
     await assert.rejects(page.evaluate(([id, f, s]) => window.twig.getFileText(id, f, s), [fixtureId, file, source]), /Invalid/, `${file} ${JSON.stringify(source)}`);
@@ -377,7 +385,7 @@ try {
   await page.getByText(/Untracked — Git has no diff/).waitFor();
   // Reading an untracked file must not have tracked it behind our back.
   assert.equal(await git(['status', '--porcelain', '--', 'untracked.txt']), '?? untracked.txt');
-  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   await uncommitted.getByRole('button', { name: 'Open staging', exact: true }).click();
   await page.getByText(/Working tree · 0 staged, 1 not staged/).waitFor();
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();

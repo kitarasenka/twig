@@ -83,7 +83,7 @@ esac
   const stubSave = file => app.evaluate(({ dialog }, target) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: target }); }, file);
   const expect = async (text, description) => {
     try { await page.getByText(text).first().waitFor(); } catch (failure) {
-      const shown = await page.locator('[role="alert"], [role="status"], .history-error, .operation-note, .sync-note').allInnerTexts();
+      const shown = await page.locator('[role="alert"], [role="status"], .history-error, .operation-note').allInnerTexts();
       throw new Error(`${description}: expected ${text}. On screen: ${JSON.stringify(shown)}. Page errors: ${JSON.stringify(errors)}. ${failure.message}`);
     }
   };
@@ -109,7 +109,7 @@ esac
   await lfsCard.screenshot({ path: 'artifacts/tools-lfs-card.png' });
   await lfsCard.getByRole('button', { name: 'Show pointer text' }).click();
   await page.locator('.diff-lines').filter({ hasText: 'oid sha256:' }).first().waitFor();
-  await page.getByRole('button', { name: 'Close diff', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
 
   // --- Signature: verified against the allowed signers file; others say Not signed. ---
   if (signing) {

@@ -1,9 +1,9 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlignLeft, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow, Wrench } from 'lucide-react';
+import { AlignLeft, ArrowLeft, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow, Wrench } from 'lucide-react';
 import { StashBox } from '../../ui/stash-icons.js';
 import Button from '../../ui/Button.jsx';
-import OperationNote from '../../ui/OperationNote.jsx';
+import OperationNote, { NoteRegion } from '../../ui/OperationNote.jsx';
 import Menu from '../../ui/Menu.jsx';
 import CommitPanel from '../commit/CommitPanel.jsx';
 import Splitter from '../../ui/Splitter.jsx';
@@ -128,16 +128,20 @@ function BranchTree({ refs, type, path = '', tree, onSelect, onCheckout, onMenu,
  */
 const showsImage = diff => Boolean(diff.source && imageType(diff.file) && (diff.binary || diff.source.kind === 'untracked'));
 
-function Diff({ diff, repositoryId, onClose, onCommit, onBlame, view, onConsole }) {
+// In the centre a diff stands in for the history, so it offers the way back to it;
+// in the file-history side panel it only closes.
+function Diff({ diff, repositoryId, onBack, onClose, onCommit, onBlame, view, onConsole }) {
   // A binary file has no text to show whole; an image has its own viewer.
   const textual = !diff.error && !diff.binary && !showsImage(diff);
   const full = view.full && textual && Boolean(diff.source);
-  return <section className="diff-view" aria-label="File diff"><header className="panel-heading"><code>{diff.file}</code>
+  return <section className="diff-view" aria-label="File diff"><header className="panel-heading">
+    {onBack && <Button icon={ArrowLeft} onClick={onBack}>Back to history</Button>}
+    <code>{diff.file}</code>
     {diff.section && <span className="pill">{diff.section === 'staged' ? 'Staged' : diff.section === 'untracked' ? 'Untracked' : 'Not staged'}</span>}
     <div className="diff-heading-actions">
       {textual && <FileViewSwitch full={view.full} onFull={view.setFull} />}
       {onBlame && <Button icon={AlignLeft} onClick={onBlame}>Blame</Button>}
-      <Button icon={X} aria-label="Close diff" onClick={onClose} />
+      {onClose && <Button icon={X} aria-label="Close diff" onClick={onClose} />}
     </div></header>
     {onCommit && <div className="file-history-diff-heading"><code>{diff.oid.slice(0, 8)}</code><Button icon={GitBranch} onClick={onCommit}>Go to commit</Button></div>}
     {diff.loading ? <div className="loading-shell" aria-label="Loading diff"><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p> : showsImage(diff) ? <ImageDiff repositoryId={repositoryId} file={diff.file} source={diff.source} />
@@ -146,10 +150,10 @@ function Diff({ diff, repositoryId, onClose, onCommit, onBlame, view, onConsole 
   </section>;
 }
 
-function FileHistory({ data, selected, onSelect, onClose, onConsole }) {
+function FileHistory({ data, selected, onSelect, onBack, onConsole }) {
   return <section className="diff-view file-history" aria-label="File history">
-    <header className="panel-heading"><span>HISTORY <code>{data.path}</code>{data.commits ? <small> · {data.commits.length}</small> : null}</span>
-      <Button icon={X} aria-label="Close file history" onClick={onClose} /></header>
+    <header className="panel-heading"><Button icon={ArrowLeft} onClick={onBack}>Back to history</Button>
+      <span>HISTORY <code>{data.path}</code>{data.commits ? <small> · {data.commits.length}</small> : null}</span></header>
     {data.loading ? <div className="loading-shell" aria-label="Loading file history"><div className="skeleton" /></div>
       : data.error ? <p role="alert" className="empty-inline">{data.error} <button onClick={onConsole}>Show output</button></p>
       : !data.commits.length ? <p className="empty-inline">Git has no recorded history for this file.</p>
@@ -1329,6 +1333,8 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
   // every render re-rendered every visible row of every tab on each refresh.
   const latest = useRef(null);
   latest.current = { openMenu, checkoutOnDoubleClick, choose, selectInGraph };
+  // A hidden tab keeps its notes until it is shown again.
+  const noteRegion = useContext(NoteRegion);
   const rowHandlers = useMemo(() => ({
     select: (oid, options) => latest.current.selectInGraph(oid, options),
     selectOne: oid => latest.current.selectInGraph(oid),
@@ -1337,7 +1343,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     uncommitted: () => latest.current.choose(UNCOMMITTED),
     stashes: () => latest.current.choose('stashes')
   }), []);
-  return <div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${fileHistory || blame ? fileHistoryWidth : width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
+  return <NoteRegion.Provider value={active ? noteRegion : null}><div className={`workspace real-workspace ${collapsed ? 'sidebar-small' : ''} ${showDetail ? '' : 'no-detail'}`} style={{ '--detail-width': `${fileHistory || blame ? fileHistoryWidth : width}px`, '--sidebar-width': `${sidebarWidth}px` }}>
     {active && toolbarSlot && createPortal(
       <Button className="tool bughunter-tool" icon={Bug} reason={hunterReason}
         title={hunterCommit ? `🌱 BugHunter (git bisect): start from ${hunterCommit.oid.slice(0, 7)}, a commit where the bug is present` : '🌱 BugHunter (git bisect)'}
@@ -1434,7 +1440,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
             onSelect={rowHandlers.select} onMenu={rowHandlers.menu} onCheckout={rowHandlers.checkout} onPickRef={pickRef} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
             onUncommitted={rowHandlers.uncommitted} onStashes={rowHandlers.stashes} reveal={reveal} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} headLine />}
       </div>
-      {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onClose={() => setConflict(null)}
+      {conflict && <ConflictEditor repositoryId={repository.id} file={conflict} onConsole={onConsole} onBack={() => setConflict(null)}
         onResolved={state => { setConflict(null); setOperation(state); setNote(`${conflict} marked resolved.`); void reload(); onRepositoryChanged?.(); }} />}
       {!conflict && screen === 'branches' && <RefsScreen repository={repository} refs={data.refs} headBranch={headBranch} busy={working}
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} />}
@@ -1456,11 +1462,11 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onChanged={() => setAutomationRefresh(value => value + 1)}
         onRunEvent={(event, options) => void runAutomation(event, options)} />}
       {!conflict && blame && <BlameView repository={repository} seed={blame} onConsole={onConsole}
-        onClose={closeBlame} onJump={oid => { closeBlame(); void jump(oid); }} onSelect={setBlameSel} />}
-      {!conflict && !blame && diff && !fileHistory && <Diff diff={diff} repositoryId={repository.id} view={fileView} onConsole={onConsole} onClose={() => { diffRequest.current++; setDiff(null); }}
+        onBack={closeBlame} onJump={oid => { closeBlame(); void jump(oid); }} onSelect={setBlameSel} />}
+      {!conflict && !blame && diff && !fileHistory && <Diff diff={diff} repositoryId={repository.id} view={fileView} onConsole={onConsole} onBack={() => { diffRequest.current++; setDiff(null); }}
         onBlame={diff.file && (diff.oid || indexMap.has(selected)) ? () => openBlame(diff.file, diff.oid || selected) : undefined} />}
       {!conflict && !blame && fileHistory && <FileHistory data={fileHistory} selected={diff?.oid} onConsole={onConsole}
-        onSelect={openHistoryDiff} onClose={() => { diffRequest.current++; setFileHistory(null); setDiff(null); }} />}
+        onSelect={openHistoryDiff} onBack={() => { diffRequest.current++; setFileHistory(null); setDiff(null); }} />}
     </main>
     {showDetail && (fileHistory || blame
       ? <Splitter width={fileHistoryWidth} onWidth={setFileHistoryWidth} size={FILE_HISTORY_PANEL_SIZE} label={blame ? 'Blame details width' : 'File history changes width'} />
@@ -1554,7 +1560,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       steps={execution.steps} result={execution.result} blocked={execution.blocked} bypassed={execution.bypassed}
       onClose={() => resolveGate(false)} onRetry={() => resolveGate(false)} onBypass={() => resolveGate(false, true)}
       onRunAgain={rerunGate} />}
-  </div>;
+  </div></NoteRegion.Provider>;
 }
 
 // A tab re-renders when its own props or state change, not with every journal

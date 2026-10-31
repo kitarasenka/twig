@@ -55,6 +55,21 @@
 .operation-note .note-output { gap: var(--space-1); min-height: 26px; padding: 2px var(--space-2); border: 1px solid var(--danger);
   background: var(--surface-raised); font-weight: 500; }
 .operation-note .note-output:hover { background: var(--surface-hover); }
+.operation-note .note-dismiss { flex: none; width: 32px; height: 32px; padding: 0; color: var(--muted); }
+.operation-note .note-dismiss:hover { background: var(--surface-hover); color: var(--text); }
+.operation-note .note-dismiss svg { width: 18px; height: 18px; }
+/* Notes after an action rise from the bottom of the window, right above the console,
+   and float over the workspace instead of pushing the screen down. The dock has no
+   height; the stack grows upwards from it. Under menus, over everything else. */
+.note-dock { position: relative; flex: none; height: 0; z-index: calc(var(--z-menu) - 1); }
+.note-stack { position: absolute; right: var(--space-4); bottom: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2);
+  width: min(460px, calc(100% - 2 * var(--space-4))); pointer-events: none; }
+.note-stack .operation-note { pointer-events: auto; min-height: 48px; padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-md);
+  box-shadow: inset 3px 0 var(--accent), var(--shadow); font-size: var(--text-sm); animation: note-rise 220ms ease-out; }
+.note-stack .operation-note.failed { background: var(--danger-bg); box-shadow: inset 3px 0 var(--danger), var(--shadow); }
+.note-stack .note-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+@keyframes note-rise { from { opacity: 0; transform: translateY(16px); } }
 
 .operation-banner { border-bottom: 1px solid var(--border); background: var(--surface); }
 .operation-headline { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-4); }

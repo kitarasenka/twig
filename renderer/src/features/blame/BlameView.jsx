@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, ChevronsLeft, GitBranch, History, RotateCcw, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronsLeft, GitBranch, History, RotateCcw } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Menu from '../../ui/Menu.jsx';
 import { cacheKey, readCache, writeCache } from './blame-cache.js';
@@ -32,7 +32,7 @@ function colourMap(lines) {
  * <start>..<end>`, never the working tree. Back/Forward walk a local chain of
  * steps; that chain is independent of Git Undo/Redo (nothing here mutates).
  */
-export default function BlameView({ repository, seed, onClose, onJump, onConsole, onSelect }) {
+export default function BlameView({ repository, seed, onBack, onJump, onConsole, onSelect }) {
   const [chain, setChain] = useState(() => [{ mode: 'blame', oid: seed.oid, path: seed.path, endRef: null, mapping: null }]);
   const [pos, setPos] = useState(0);
   const [data, setData] = useState(null);
@@ -169,7 +169,7 @@ export default function BlameView({ repository, seed, onClose, onJump, onConsole
   }
 
   function keydown(event) {
-    if (event.key === 'Escape') { onClose(); return; }
+    if (event.key === 'Escape') { onBack(); return; }
     if (mode === 'blame' && matchesShortcut(event, 'blameBefore')) { event.preventDefault(); void blameBefore(active); return; }
     let line = active;
     const page = Math.max(1, Math.floor(viewport.height / ROW) - 1);
@@ -196,6 +196,7 @@ export default function BlameView({ repository, seed, onClose, onJump, onConsole
 
   return <section className="diff-view blame-view" aria-label="Blame">
     <header className="panel-heading blame-heading">
+      <Button icon={ArrowLeft} onClick={onBack}>Back to history</Button>
       <span className="blame-title">
         <History aria-hidden="true" />
         <code title={entry.path}>{entry.path}</code>
@@ -207,10 +208,9 @@ export default function BlameView({ repository, seed, onClose, onJump, onConsole
             disabled={mode === 'blame' || !(data?.startOid || /^[0-9a-f]{40,64}$/i.test(entry.oid))}>Blame</button>
           <button aria-pressed={mode === 'reverse'} onClick={toReverse} disabled={mode === 'reverse'}>Reverse blame</button>
         </div>
-        <Button icon={ArrowLeft} aria-label="Back" reason={pos === 0 ? 'No earlier step' : undefined} onClick={() => go(-1)} />
-        <Button icon={ArrowRight} aria-label="Forward" reason={pos === chain.length - 1 ? 'No later step' : undefined} onClick={() => go(1)} />
+        <Button icon={ArrowLeft} aria-label="Back" title="The previous blame in this chain" reason={pos === 0 ? 'No earlier step' : undefined} onClick={() => go(-1)} />
+        <Button icon={ArrowRight} aria-label="Forward" title="The next blame in this chain" reason={pos === chain.length - 1 ? 'No later step' : undefined} onClick={() => go(1)} />
         {chain.length > 1 && <span className="blame-step" aria-label={`Step ${pos + 1} of ${chain.length}`}>{pos + 1}/{chain.length}</span>}
-        <Button icon={X} aria-label="Close blame" onClick={onClose} />
       </div>
     </header>
 

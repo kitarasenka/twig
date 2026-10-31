@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, Bot, Bug, Download, FileInput, Folde
 import { StashPop, StashPush } from '../ui/stash-icons.js';
 import Button from '../ui/Button.jsx';
 import Dialog from '../ui/Dialog.jsx';
+import OperationNote, { NoteRegion } from '../ui/OperationNote.jsx';
 import { Console } from './Console.jsx';
 import { matchesShortcut } from './shortcuts.js';
 import ShortcutsSettings from '../features/settings/ShortcutsSettings.jsx';
@@ -114,6 +115,8 @@ export default function App() {
   const [stashCount, setStashCount] = useState(null);
   const [syncing, setSyncing] = useState(null);
   const [syncNote, setSyncNote] = useState('');
+  // The stack above the console where notes after an action rise from.
+  const [noteRegion, setNoteRegion] = useState(null);
   const [pushGate, setPushGate] = useState(null);
   const pushGateResolve = useRef(null);
   const [worktreeVersion, setWorktreeVersion] = useState(0);
@@ -299,12 +302,12 @@ export default function App() {
     setSyncing(mode); setSyncNote('');
     try {
       const result = await window.twig.runSync(repository.id, mode, branchName);
-      setSyncNote(result.ok ? `${mode} finished.` : result.message);
+      setSyncNote(result.ok ? `${mode} finished.` : { text: result.message, failed: !result.cancelled });
       const next = await window.twig.selectRepository(repository.id);
       setWorkspace(next);
       setWorktreeVersion(value => value + 1);
     } catch (error) {
-      setSyncNote(error.message || 'The operation failed.');
+      setSyncNote({ text: error.message || 'The operation failed.', failed: true });
     } finally { setSyncing(null); }
   }
   async function runStash(action) {
@@ -318,7 +321,7 @@ export default function App() {
       setWorkspace(next);
       setWorktreeVersion(value => value + 1);
     } catch (error) {
-      setSyncNote(error.message || 'The operation failed.');
+      setSyncNote({ text: error.message || 'The operation failed.', failed: true });
     } finally { setSyncing(null); }
   }
 
@@ -354,7 +357,7 @@ export default function App() {
       setDialog(null);
       setSyncNote('Demo workspace reset to its sample history.');
     } catch (error) {
-      setSyncNote(error.message || 'Could not reset the demo workspace.');
+      setSyncNote({ text: error.message || 'Could not reset the demo workspace.', failed: true });
     } finally { setResetting(false); }
   }
 
@@ -379,7 +382,7 @@ export default function App() {
         setSyncNote('Demo workspace closed. Settings brings it back.');
       }
     } catch (error) {
-      setSyncNote(error.message || 'Could not change the demo workspace.');
+      setSyncNote({ text: error.message || 'Could not change the demo workspace.', failed: true });
     }
   }
 
@@ -401,7 +404,7 @@ export default function App() {
       // null is main closing it (answered elsewhere, superseded). While this window is
       // committing it, or showing why that failed, the dialog stays: decideProposal closes it.
       const held = proposalRunRef.current.running || Boolean(proposalRunRef.current.failure);
-      if (view === null && held) return;
+      if (held) return;
       setProposalRun({ running: false, step: null, failure: '' });
       setProposal(view);
     };
@@ -468,7 +471,7 @@ export default function App() {
     }
     catch (failure) {
       setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
-      setSyncNote(failure.message || 'The action could not be reversed.');
+      setSyncNote({ text: failure.message || 'The action could not be reversed.', failed: true });
     }
     finally { setUndoMoving(false); }
   }, [repositoryActive, repositoryId, refreshRepository, undoMoving]);
@@ -592,7 +595,7 @@ export default function App() {
     onClick={() => { if (updateAction.action === 'settings') setDialog('Settings'); else void runUpdate(updateAction.action); }}>{updateAction.label}</Button>;
   const updateRunning = ['downloading', 'preparing'].includes(update?.status);
 
-  return <div className="app-shell">
+  return <NoteRegion.Provider value={noteRegion}><div className="app-shell">
     <header className="tab-bar"><div className="brand"><img className="brand-logo" src="./twig-logo.png" alt="" width="36" height="36" /><strong>🌱 Twig</strong></div>
       <nav className="tabs" aria-label="Repository tabs" ref={tabsRef} onWheel={scrollTabs}>
         {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{item.sandbox ? <small>DEMO</small> : !item.available && <small>OFFLINE</small>}</button><Button icon={X} aria-label={`Close ${item.name} tab`} title={item.sandbox ? 'Close the demo workspace' : `Close ${item.name}`} onClick={() => askCloseTab(item)} /></div>)}
@@ -642,7 +645,6 @@ export default function App() {
       </div>
     </section>
     {startupError && <div className="startup-error" role="status">{startupError}</div>}
-    {syncNote && <div className="sync-note" role="status"><span>{syncNote}</span><button onClick={() => setSyncNote('')} aria-label="Dismiss">×</button></div>}
     {!ready && <div className="loading-shell" aria-label="Loading workspace" aria-busy="true">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>}
     {ready && <div className="workspace-container">
       {workspace?.repositories.map(item => <div className="workspace-tab" key={item.id} hidden={active !== `repository:${item.id}`}>
@@ -660,6 +662,9 @@ export default function App() {
         ? <Button icon={GitBranch} className="primary" onClick={() => setActive(`repository:${sandboxId}`)}>Open workspace-demo</Button>
         : <Button icon={GitBranch} className="primary" onClick={() => setDemoVisible(true)}>Show workspace-demo</Button>}</div></main>}
     </div>}
+    <OperationNote note={syncNote} onConsole={showConsole} onDismiss={() => setSyncNote('')} />
+    {/* Zero height: the notes stack upwards from the top of the console, over the workspace. */}
+    <div className="note-dock"><div className="note-stack" ref={setNoteRegion} /></div>
     <Console expanded={consoleOpen} onToggle={() => setConsoleOpen(!consoleOpen)} entries={entries} focus={consoleFocus}
       repositoryId={workspace?.repositories.find(item => item.available && active === `repository:${item.id}`)?.id || null} />
     {dialog && <Dialog title={dialog} wide={['Git profile', 'Repositories', 'Clone repository', 'Remotes', 'SSH', 'AI agents (MCP)', 'Keyboard shortcuts'].includes(dialog)} closeReason={dialogBusy || resetting ? 'Wait for the action to finish or cancel it first' : undefined} onClose={() => setDialog(null)}>
@@ -740,7 +745,7 @@ export default function App() {
     {pushGate && <ExecutionPanel event="pre-push" label="Before Push" phase="pre" steps={pushGate.steps} result={pushGate.result}
       blocked={pushGate.blocked} onClose={() => closePushGate(false)} onRetry={() => closePushGate(false)}
       onRunAgain={() => runPushGate()} onBypass={() => closePushGate(false, true)} />}
-  </div>;
+  </div></NoteRegion.Provider>;
 }
 
 function RepositoryReady({ repository, onOpen }) {
