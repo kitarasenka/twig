@@ -194,7 +194,9 @@ esac
   await page.locator('.tab.active').filter({ hasText: /^app$/ }).waitFor();
   await page.locator('.workspace-tab:not([hidden])').getByRole('button', { name: 'Worktrees' }).click();
   const mainList = page.locator('.workspace-tab:not([hidden])').getByRole('list', { name: 'Worktrees' });
-  await mainList.locator('li').filter({ hasText: 'app-side' }).getByRole('button', { name: 'Remove…' }).click();
+  const boardDetail = page.locator('.workspace-tab:not([hidden]) .board-detail');
+  await mainList.locator('li').filter({ hasText: 'app-side' }).getByRole('button').click();
+  await boardDetail.getByRole('button', { name: 'Remove…', exact: true }).click();
   const removeDialog = page.getByRole('dialog', { name: 'Remove worktree app-side' });
   await removeDialog.getByText(`$ git worktree remove -- ${cwd}-side`).waitFor();
   await removeDialog.getByRole('button', { name: 'Remove worktree', exact: true }).click();
@@ -202,6 +204,92 @@ esac
   await assert.rejects(stat(`${cwd}-side`), /ENOENT/);
   assert.equal(await page.locator('.tab').filter({ hasText: 'app-side' }).count(), 0, 'its tab is gone too');
   assert.equal(await git(['rev-parse', 'side']), sideTwo, 'the branch stays');
+
+  // --- An agent worktree: created on the board, worked in, reviewed, squashed into main, removed with its branch. ---
+  await page.locator('.workspace-tab:not([hidden])').getByRole('button', { name: 'New agent worktree…' }).click();
+  const agentDialog = page.getByRole('dialog', { name: 'New agent worktree' });
+  await agentDialog.getByRole('textbox', { name: 'Task name' }).fill('fix-login');
+  const agentFolder = path.join(cwd, '.claude', 'worktrees', 'fix-login');
+  const baseTip = await git(["rev-parse", "HEAD"]);
+  await agentDialog.getByText(`$ git worktree add -b agent/fix-login -- ${agentFolder} ${baseTip}`).waitFor();
+  await agentDialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.getByText(/Agent worktree created in .*fix-login on agent\/fix-login\./).waitFor();
+  assert.equal(await page.locator('.tab').filter({ hasText: 'fix-login' }).count(), 0, 'an agent worktree does not open a tab');
+  assert.equal(await git(['status', '--porcelain', '--', '.claude']), '', 'the main checkout ignores it');
+  const agentCard = mainList.locator('li').filter({ hasText: 'fix-login' });
+  await agentCard.getByText('Agent', { exact: true }).waitFor();
+  await agentCard.getByRole('button').click();
+  await boardDetail.getByText(`cd '${agentFolder}' && claude`, { exact: true }).waitFor();
+  await boardDetail.getByRole('button', { name: 'Copy command' }).click();
+  await page.locator('.operation-note').filter({ hasText: 'Copied: cd' }).waitFor().catch(async error => {
+    console.log('notes:', await page.locator('.operation-note').allTextContents()); throw error;
+  });
+  assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), `cd '${agentFolder}' && claude`);
+  // The agent works in its folder, outside 🌱 Twig.
+  await commit('login.txt', 'login\n', 'feat: add login', agentFolder);
+  await commit('login.txt', 'login\nlogout\n', 'feat: add logout', agentFolder);
+  await writeFile(path.join(agentFolder, 'notes.md'), 'todo\n');
+  await page.locator('.workspace-tab:not([hidden]) .worktree-board').getByRole('button', { name: 'Refresh', exact: true }).click();
+  await agentCard.getByText(/^2 commits ahead of main/).waitFor();
+  await agentCard.getByText('1 file not committed (1 new)').waitFor();
+  await boardDetail.getByText('Since it left main: 2 commits, 1 file not committed — 2 files changed in all.').waitFor();
+  const reviewFiles = boardDetail.getByRole('list', { name: 'Files this worktree changed' });
+  await reviewFiles.getByRole('button', { name: /login\.txt/ }).click();
+  await boardDetail.locator('.diff-view').getByText('logout').waitFor();
+  await reviewFiles.getByRole('button', { name: /notes\.md/ }).click();
+  await boardDetail.locator('.diff-view').getByText('todo').waitFor();
+  for (const theme of ['dark', 'light']) {
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Settings' }).getByLabel('Appearance').selectOption(theme);
+    await page.keyboard.press('Escape');
+    await page.screenshot({ path: `artifacts/worktree-board-${theme}.png`, animations: 'disabled' });
+  }
+  // A second agent on the same task: the two side by side.
+  const twin = path.join(cwd, '.claude', 'worktrees', 'fix-login-b');
+  await git(['worktree', 'add', '-q', '-b', 'agent/fix-login-b', twin, baseTip]);
+  await commit('login.txt', 'login\n', 'feat: login only', twin);
+  await page.locator('.workspace-tab:not([hidden]) .worktree-board').getByRole('button', { name: 'Refresh', exact: true }).click();
+  await mainList.locator('li').filter({ hasText: 'fix-login-b' }).waitFor();
+  await boardDetail.getByLabel('Compare with').selectOption({ label: 'fix-login-b (agent/fix-login-b)' });
+  const compareTable = boardDetail.getByRole('table', { name: 'Files changed in fix-login or fix-login-b' });
+  await compareTable.getByRole('row', { name: /notes\.md/ }).getByText('unchanged').waitFor();
+  await compareTable.getByRole('row', { name: /login\.txt/ }).getByText('+2 −0').waitFor();
+  await compareTable.getByRole('button', { name: 'login.txt' }).click();
+  await boardDetail.locator('.diff-view').getByText('logout').waitFor();
+  await page.screenshot({ path: 'artifacts/worktree-compare.png', animations: 'disabled' });
+  await boardDetail.getByRole('button', { name: 'Stop comparing' }).click();
+  await boardDetail.getByRole('list', { name: 'Files this worktree changed' }).waitFor();
+  await git(['worktree', 'remove', '--force', twin]);
+  await git(['branch', '-D', 'agent/fix-login-b']);
+  await page.locator('.workspace-tab:not([hidden]) .worktree-board').getByRole('button', { name: 'Refresh', exact: true }).click();
+  await mainList.locator('li').filter({ hasText: 'fix-login-b' }).waitFor({ state: 'detached' });
+
+  await boardDetail.getByRole('button', { name: 'Squash into main…' }).click();
+  const squashDialog = page.getByRole('dialog', { name: 'Squash agent/fix-login into main' });
+  await squashDialog.getByText(/^1 file in this worktree is not committed and will not be included/).waitFor();
+  assert.equal(await squashDialog.getByLabel(/Message/).inputValue(), 'feat: add login\n\n* feat: add login\n* feat: add logout');
+  const agentTip = await git(['rev-parse', 'HEAD'], agentFolder);
+  await squashDialog.getByText(`$ git merge --squash --no-autostash ${agentTip}`).waitFor();
+  await squashDialog.screenshot({ path: 'artifacts/worktree-squash.png' });
+  await squashDialog.getByLabel(/Message/).fill('feat: login and logout');
+  await squashDialog.getByRole('button', { name: 'Squash into main', exact: true }).click();
+  await page.getByText(/agent\/fix-login squashed into main as [0-9a-f]{7}\./).waitFor();
+  assert.equal(await git(['log', '-1', '--format=%s']), 'feat: login and logout');
+  assert.equal(await git(["rev-parse", "HEAD^"]), baseTip, "one commit on main");
+  await agentCard.getByText('Squashed into main').waitFor();
+  await rm(path.join(agentFolder, 'notes.md'));
+  await page.locator('.workspace-tab:not([hidden]) .worktree-board').getByRole('button', { name: 'Refresh', exact: true }).click();
+  await agentCard.getByText('Nothing uncommitted').waitFor();
+  await boardDetail.getByRole('button', { name: 'Remove worktree and branch…' }).click();
+  const finishDialog = page.getByRole('dialog', { name: 'Remove fix-login and agent/fix-login' });
+  await finishDialog.getByText(`$ git worktree remove -- ${agentFolder}`).waitFor();
+  await finishDialog.getByText('$ git branch -D -- agent/fix-login').waitFor();
+  await finishDialog.getByRole('button', { name: 'Remove worktree and branch', exact: true }).click();
+  await page.getByText('Worktree fix-login and branch agent/fix-login removed.').waitFor();
+  await assert.rejects(stat(agentFolder), /ENOENT/);
+  assert.equal((await runGit({ argv: ['rev-parse', '--verify', '--quiet', 'refs/heads/agent/fix-login'], cwd, log })).code, 1);
+  await agentCard.waitFor({ state: 'detached' });
+  assert.equal(await mainList.locator('li').count(), 1);
 
   // --- Submodules: pinned, and open as a tab of its own. ---
   await page.locator('.workspace-tab:not([hidden])').getByRole('button', { name: 'Submodules' }).click();
@@ -221,10 +309,17 @@ esac
   await assert.rejects(page.evaluate(repo => window.twig.openWorktree(repo, '/etc'), id), /no such worktree/);
   await assert.rejects(page.evaluate(repo => window.twig.addWorktree(repo, { token: 'x', branch: 'side', create: false }), id), /again/);
   await assert.rejects(page.evaluate(repo => window.twig.getSignature(repo, 'HEAD'), id), /Invalid commit/);
+  await assert.rejects(page.evaluate(repo => window.twig.getWorktreeReview(repo, '/etc'), id), /no such worktree/);
+  await assert.rejects(page.evaluate(repo => window.twig.getWorktreeFileDiff(repo, '/etc', 'x', 'yes'), id), /Invalid/);
+  await assert.rejects(page.evaluate(repo => window.twig.squashWorktree(repo, '/etc', { message: 'x', branchOid: 'main', baseOid: 'main' }), id), /Invalid commit/);
+  await assert.rejects(page.evaluate(repo => window.twig.planWorktree(repo, 'x', 'anywhere'), id), /Invalid worktree/);
+  await assert.rejects(page.evaluate(repo => window.twig.finishWorktree(repo, '/etc'), id), /no such worktree/);
+  await assert.rejects(page.evaluate(repo => window.twig.compareWorktrees(repo, '/etc', '/etc'), id), /two different/);
+  await assert.rejects(page.evaluate(repo => window.twig.getWorktreeCompareDiff(repo, '/etc', '/tmp', '../x'), id), /Invalid file path/);
   await assert.rejects(page.evaluate(() => window.twig.getLfsStatus('not-a-repository')), /unavailable/);
 
   assert.deepEqual(errors, [], 'no page errors');
-  console.log('Tools smoke passed: LFS banner and git lfs pull, LFS pointer card, verified SSH signature, cherry-pick of a selection with one Undo, patch export and am, worktree from the branch menu opened as a tab and removed with it, submodule opened as a tab, 8 IPC refusals.');
+  console.log('Tools smoke passed: LFS banner and git lfs pull, LFS pointer card, verified SSH signature, cherry-pick of a selection with one Undo, patch export and am, worktree from the branch menu opened as a tab and removed with it, an agent worktree created, reviewed, compared with a second one, squashed into main and removed with its branch, submodule opened as a tab, 15 IPC refusals.');
 } finally {
   await app?.close().catch(() => {});
   await rm(root, { recursive: true, force: true });

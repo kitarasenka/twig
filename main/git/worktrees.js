@@ -52,13 +52,20 @@ async function exists(target) {
   try { await stat(target); return true; } catch { return false; }
 }
 
+/** Where agent worktrees live inside the main checkout — the folder `claude --worktree` uses. */
+export const AGENT_FOLDER = '.claude/worktrees';
+/** The branch an agent worktree named `name` starts: `agent/<name>`. */
+export const agentBranch = name => `agent/${name}`;
+
 /**
  * Where a new worktree for `branch` goes unless the person picks a folder:
- * next to the main one, as `<repository>-<branch>`, with a number added while
- * that name is taken — Git refuses a folder that already has files in it.
+ * next to the main one, as `<repository>-<branch>`, or, for an agent, in the
+ * main checkout's `.claude/worktrees/<name>` — with a number added while that
+ * name is taken: Git refuses a folder that already has files in it.
  */
-export async function suggestWorktreePath({ main, branch, parent = null }) {
-  const base = parent ? path.join(parent, folderName(branch)) : `${main}-${folderName(branch)}`;
+export async function suggestWorktreePath({ main, branch, parent = null, agent = false }) {
+  const base = agent ? path.join(main, AGENT_FOLDER, folderName(branch.replace(/^agent\//, '')))
+    : parent ? path.join(parent, folderName(branch)) : `${main}-${folderName(branch)}`;
   for (let attempt = 1; attempt < 100; attempt += 1) {
     const candidate = attempt === 1 ? base : `${base}-${attempt}`;
     if (!await exists(candidate)) return candidate;

@@ -1,4 +1,5 @@
 import { app, dialog, ipcMain } from 'electron';
+import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { isTrustedPage } from './security.js';
 import { runGit } from './git/exec.js';
@@ -7,7 +8,11 @@ import { loadRepositoryStats, runMaintenance } from './git/maintenance.js';
 import { MAINTENANCE_TASKS } from './git/maintenance-plan.js';
 import { checkPatch, exportName, exportPatches, inspectPatch, readPatchFile, validateExport } from './git/patches.js';
 import { loadSubmodules, submoduleDirectory, updateSubmodules } from './git/submodules.js';
-import { addWorktree, findWorktree, folderName, loadWorktrees, pruneWorktrees, removeWorktree, suggestWorktreePath } from './git/worktrees.js';
+import { addWorktree, agentBranch, findWorktree, folderName, loadWorktrees, pruneWorktrees, removeWorktree, suggestWorktreePath } from './git/worktrees.js';
+import { compareWorktrees, excludeAgentFolder, finishWorktree, loadWorktreeBoard, loadWorktreeCompareDiff, loadWorktreeFileDiff, loadWorktreeReview, planSquash,
+  squashWorktree } from './git/worktree-board.js';
+import { validateOid } from './git/commit.js';
+import { validateRefName } from './git/refs-ops.js';
 
 /**
  * Channels for the repository tools beyond history: Git LFS, patches,
@@ -15,7 +20,7 @@ import { addWorktree, findWorktree, folderName, loadWorktrees, pruneWorktrees, r
  * its frame and the argument count, and resolves the repository only from the
  * saved list — a path from the renderer is never trusted as a repository.
  */
-export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journal, undo, patchFiles, folders }) {
+export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journal, undo, patchFiles, folders, pendingProposals = () => new Set(), connectedAgents = () => [] }) {
   const jobs = new Map();
 
   function repository(id) {
@@ -92,44 +97,60 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
 
   // --- worktrees -------------------------------------------------------------------------------
   handler('worktrees:list', 1, options => loadWorktrees(options));
+  /** The board: every worktree with its changes, how far it is from the base, and a waiting proposal. */
+  handler('worktrees:board', 1, options => loadWorktreeBoard({ ...options, pending: pendingProposals(), agents: connectedAgents() }));
   /**
    * The folder a new worktree for `branch` would get — next to the main one,
-   * or inside a folder the person picks — held by a token, so what the dialog
-   * shows is exactly where Git will put it.
+   * inside a folder the person picks, or, for an agent, in the main
+   * checkout's `.claude/worktrees/<name>` on a new branch `agent/<name>` —
+   * held by a token, so what the dialog shows is exactly where Git will put it.
    */
-  handler('worktrees:plan', 3, async (options, branch, choose) => {
-    if (typeof branch !== 'string' || !branch || branch.length > 255 || typeof choose !== 'boolean') throw new TypeError('Invalid worktree request');
+  handler('worktrees:plan', 3, async (options, name, where) => {
+    if (typeof name !== 'string' || !name || name.length > 255 || !['next', 'choose', 'agent'].includes(where)) throw new TypeError('Invalid worktree request');
+    const branch = where === 'agent' ? validateRefName(agentBranch(name)) : name;
     let parent = null;
-    if (choose) {
+    if (where === 'choose') {
       const picked = await dialog.showOpenDialog(getWindow(), { title: 'Choose where the new worktree goes', properties: ['openDirectory', 'createDirectory'] });
       if (picked.canceled || !picked.filePaths[0]) return null;
       parent = picked.filePaths[0];
     }
     const main = (await loadWorktrees(options))[0].path;
-    const folder = await suggestWorktreePath({ main, branch, parent });
-    return { token: folders.add(options.cwd, { folder, branch: folderName(branch) }), path: folder };
+    const folder = await suggestWorktreePath({ main, branch, parent, agent: where === 'agent' });
+    return { token: folders.add(options.cwd, { folder, branch: folderName(branch), agent: where === 'agent' ? branch : null, main }), path: folder, branch };
   });
   /**
-   * Adds the worktree and opens it as a tab. `create` makes `branch` a new
-   * branch at `startPoint`; otherwise it must be a branch no other worktree
-   * has checked out (Git refuses that, and says so).
+   * Adds the worktree. `create` makes `branch` a new branch at `startPoint`;
+   * otherwise it must be a branch no other worktree has checked out (Git
+   * refuses that, and says so). A worktree opens as a tab — except one for an
+   * agent, which stays on the board: the agent works in it, not the person.
    */
   handler('worktrees:add', 2, async (options, request) => {
     if (!request || typeof request !== 'object' || typeof request.create !== 'boolean' || typeof request.branch !== 'string') throw new TypeError('Invalid worktree request');
-    const { folder } = folders.take(options.cwd, request.token);
-    const result = await undo.perform(options.cwd, 'worktrees:add', [], () => addWorktree({ ...options, path: folder, branch: request.branch,
+    const planned = folders.take(options.cwd, request.token);
+    if (planned.agent && (request.branch !== planned.agent || !request.create)) throw new TypeError('Invalid worktree request');
+    const result = await undo.perform(options.cwd, 'worktrees:add', [], () => addWorktree({ ...options, path: planned.folder, branch: request.branch,
       create: request.create, startPoint: request.create ? request.startPoint : null }));
     if (!result.ok) return result;
-    return { ...result, workspace: await repositories.add(folder) };
+    if (planned.agent) {
+      // The main checkout would otherwise list the new folder as untracked.
+      const excluded = await excludeAgentFolder({ cwd: planned.main, log: journal }).catch(() => ({ added: false }));
+      return { ...result, agent: true, excluded: excluded.added ? excluded.rule : null };
+    }
+    return { ...result, workspace: await repositories.add(planned.folder) };
   });
   handler('worktrees:remove', 3, async (options, folder, force) => {
     if (typeof force !== 'boolean') throw new TypeError('Invalid worktree request');
     await findWorktree({ ...options, path: folder });
     const result = await undo.perform(options.cwd, 'worktrees:remove', [], () => removeWorktree({ ...options, path: folder, force }));
     if (!result.ok) return result;
-    // Its tab, if one was open, would only say "unavailable" now.
-    const tab = repositories.snapshot().repositories.find(entry => !entry.sandbox && path.resolve(entry.path) === path.resolve(result.path));
-    return { ...result, workspace: tab ? await repositories.remove(tab.id) : repositories.snapshot() };
+    return { ...result, workspace: await closeTabOf(result.path) };
+  });
+  /** Removes a worktree whose work is in the base, and its branch. */
+  handler('worktrees:finish', 2, async (options, folder) => {
+    await findWorktree({ ...options, path: folder });
+    const result = await undo.perform(options.cwd, 'worktrees:finish', [], () => finishWorktree({ ...options, folder }));
+    if (!result.path) return result;
+    return { ...result, workspace: await closeTabOf(result.path) };
   });
   handler('worktrees:prune', 1, options => undo.perform(options.cwd, 'worktrees:prune', [], () => pruneWorktrees(options)));
   /** Opens another worktree of this repository as a tab. */
@@ -138,6 +159,41 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
     if (found.prunable) throw new Error('This worktree’s folder is gone. Prune it instead.');
     return repositories.add(found.path);
   });
+  /** Everything a worktree changed since its branch left the base, and one file of it. */
+  handler('worktrees:review', 2, (options, folder) => loadWorktreeReview({ ...options, folder }));
+  handler('worktrees:file-diff', 4, (options, folder, file, untracked) => {
+    if (typeof untracked !== 'boolean') throw new TypeError('Invalid worktree request');
+    return loadWorktreeFileDiff({ ...options, folder, path: file, untracked });
+  });
+  /** Two worktrees side by side — two agents on the same task — and one file of the two as a diff. */
+  handler('worktrees:compare', 3, (options, left, right) => compareWorktrees({ ...options, left, right }));
+  handler('worktrees:compare-file', 4, (options, left, right, file) => loadWorktreeCompareDiff({ ...options, left, right, path: file }));
+  /**
+   * Squashing a worktree's branch into the base: the plan (commits, message,
+   * commands, why not), then the squash itself with the tips the dialog showed.
+   * It commits in the base worktree, so Undo there takes the commit back.
+   */
+  handler('worktrees:squash-plan', 2, (options, folder) => planSquash({ ...options, folder }));
+  handler('worktrees:squash', 3, async (options, folder, request) => {
+    if (!request || typeof request !== 'object' || typeof request.message !== 'string' || request.message.length > 100_000) throw new TypeError('Invalid squash request');
+    validateOid(request.branchOid); validateOid(request.baseOid);
+    const plan = await planSquash({ ...options, folder });
+    if (plan.problem) return { ok: false, message: plan.problem };
+    // Git names the base folder resolved; Undo keys on the folder as the tab holds it.
+    const undoCwd = sameFolder(plan.basePath, options.cwd) ? options.cwd : plan.basePath;
+    return undo.perform(undoCwd, 'worktree:commit', [], () => squashWorktree({ ...options, folder, message: request.message,
+      branchOid: request.branchOid, baseOid: request.baseOid }));
+  });
+
+  function sameFolder(a, b) {
+    const real = folder => { try { return realpathSync.native(folder); } catch { return path.resolve(folder); } };
+    return real(a) === real(b);
+  }
+  // Its tab, if one was open, would only say "unavailable" now.
+  async function closeTabOf(folder) {
+    const tab = repositories.snapshot().repositories.find(entry => !entry.sandbox && path.resolve(entry.path) === path.resolve(folder));
+    return tab ? repositories.remove(tab.id) : repositories.snapshot();
+  }
 
   // --- maintenance -----------------------------------------------------------------------------
   handler('maintenance:stats', 1, options => loadRepositoryStats(options));

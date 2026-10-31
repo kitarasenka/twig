@@ -34,9 +34,11 @@ export function clientCwd(params) {
  * the bridge replays the client's `initialize` first — this is the fallback if
  * that replay did not happen.
  *
- * @param {{ version: string, tools: Record<string, (args: object, client: { cwd: ?string }) => Promise<object | string>>, onCall?: (name: string) => void }} options
+ * `onInitialize` hears when the client said hello, its folder known from then on.
+ * @param {{ version: string, tools: Record<string, (args: object, client: { cwd: ?string }) => Promise<object | string>>, onCall?: (name: string) => void,
+ *   onInitialize?: () => void }} options
  */
-export function createMcpSession({ version, tools, onCall = () => {} }) {
+export function createMcpSession({ version, tools, onCall = () => {}, onInitialize = () => {} }) {
   let protocolVersion = negotiateVersion(null);
   const client = { cwd: null };
   const catalog = new Map(TOOLS.map(definition => [definition.name, definition]));
@@ -75,6 +77,7 @@ export function createMcpSession({ version, tools, onCall = () => {} }) {
       case 'initialize':
         protocolVersion = negotiateVersion(params?.protocolVersion);
         client.cwd = clientCwd(params);
+        onInitialize();
         return rpcResult(id, {
           protocolVersion,
           capabilities: { tools: { listChanged: false } },
@@ -117,6 +120,8 @@ export function createMcpSession({ version, tools, onCall = () => {} }) {
       try { message = JSON.parse(line); } catch { return rpcError(null, PARSE_ERROR, 'Parse error'); }
       return this.handle(message);
     },
-    get protocolVersion() { return protocolVersion; }
+    get protocolVersion() { return protocolVersion; },
+    /** The folder the client's bridge was started in, once it said hello. */
+    get cwd() { return client.cwd; }
   };
 }

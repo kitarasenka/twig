@@ -35,7 +35,7 @@ async function privateFolder(dir) {
  * @param {{ userData: string, execPath: string, appImage?: ?string, version: string,
  *   repositories: object, journal: object, platform?: string, proposals?: ?object, waitMs?: ?number }} options
  */
-export function createMcpService({ userData, execPath, appImage = null, version, repositories, journal, platform = process.platform, proposals = null, waitMs = null }) {
+export function createMcpService({ userData, execPath, appImage = null, version, repositories, journal, platform = process.platform, proposals = null, waitMs = null, onAgentsChange = () => {} }) {
   const endpoint = resolveEndpoint({ userData, platform });
   const launch = launchCommand({ execPath, appImage, dir: endpoint.dir });
   let activeId = null;
@@ -50,7 +50,13 @@ export function createMcpService({ userData, execPath, appImage = null, version,
   const tools = bindTools(context);
   const transport = createSocketTransport({
     socket: endpoint.socket,
-    createSession: () => createMcpSession({ version, tools, onCall: () => { calls++; lastCallAt = new Date().toISOString(); } })
+    createSession: () => {
+      const meta = { connectedAt: new Date().toISOString(), lastCallAt: null };
+      const session = createMcpSession({ version, tools, onInitialize: onAgentsChange,
+        onCall: () => { calls++; lastCallAt = new Date().toISOString(); meta.lastCallAt = lastCallAt; } });
+      return Object.assign(session, { meta });
+    },
+    onClose: onAgentsChange
   });
 
   async function start() {
@@ -99,6 +105,23 @@ export function createMcpService({ userData, execPath, appImage = null, version,
       return { enabled, listening: enabled && !error, error, connections: transport.connections, calls, lastCallAt };
     },
     config() { return { launch, ...clientConfigs(launch, platform) }; },
+    /**
+     * Agents connected now, by the repository or worktree their folder is in:
+     * only folders that resolve without a guess (a connected repository or a
+     * worktree of one), newest call first.
+     * @returns {Array<{ path: string, cwd: string, connectedAt: string, lastCallAt: ?string }>}
+     */
+    agents() {
+      const found = [];
+      for (const session of transport.sessions()) {
+        if (!session.cwd) continue;
+        let repo;
+        try { repo = context.forClient({ cwd: session.cwd }).repository(); } catch { continue; }
+        if (repo.implicit) continue;
+        found.push({ path: repo.path, cwd: session.cwd, connectedAt: session.meta.connectedAt, lastCallAt: session.meta.lastCallAt });
+      }
+      return found.sort((a, b) => String(b.lastCallAt ?? b.connectedAt).localeCompare(String(a.lastCallAt ?? a.connectedAt)));
+    },
     context
   };
 }

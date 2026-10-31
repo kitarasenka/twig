@@ -72,11 +72,25 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   updateSubmodules: (id, paths = null) => ipcRenderer.invoke('submodules:update', id, paths),
   openSubmodule: (id, path) => ipcRenderer.invoke('submodules:open', id, path),
   getWorktrees: (id) => ipcRenderer.invoke('worktrees:list', id),
-  planWorktree: (id, branch, choose = false) => ipcRenderer.invoke('worktrees:plan', id, branch, choose),
+  planWorktree: (id, name, where = 'next') => ipcRenderer.invoke('worktrees:plan', id, name, where),
   addWorktree: (id, request) => ipcRenderer.invoke('worktrees:add', id, request),
   removeWorktree: (id, path, force = false) => ipcRenderer.invoke('worktrees:remove', id, path, force),
   pruneWorktrees: (id) => ipcRenderer.invoke('worktrees:prune', id),
   openWorktree: (id, path) => ipcRenderer.invoke('worktrees:open', id, path),
+  getWorktreeBoard: (id) => ipcRenderer.invoke('worktrees:board', id),
+  getWorktreeReview: (id, path) => ipcRenderer.invoke('worktrees:review', id, path),
+  getWorktreeFileDiff: (id, path, file, untracked = false) => ipcRenderer.invoke('worktrees:file-diff', id, path, file, untracked),
+  planWorktreeSquash: (id, path) => ipcRenderer.invoke('worktrees:squash-plan', id, path),
+  squashWorktree: (id, path, request) => ipcRenderer.invoke('worktrees:squash', id, path, request),
+  finishWorktree: (id, path) => ipcRenderer.invoke('worktrees:finish', id, path),
+  compareWorktrees: (id, left, right) => ipcRenderer.invoke('worktrees:compare', id, left, right),
+  getWorktreeCompareDiff: (id, left, right, file) => ipcRenderer.invoke('worktrees:compare-file', id, left, right, file),
+  onMcpAgents: listener => {
+    if (typeof listener !== 'function') throw new TypeError('Invalid agents listener');
+    const callback = () => listener();
+    ipcRenderer.on('mcp:agents', callback);
+    return () => ipcRenderer.removeListener('mcp:agents', callback);
+  },
   exportPatches: (id, oids) => ipcRenderer.invoke('patch:export', id, oids),
   choosePatch: (id) => ipcRenderer.invoke('patch:choose', id),
   applyPatchCommits: (id, token) => ipcRenderer.invoke('patch:am', id, token),

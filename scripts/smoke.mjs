@@ -58,6 +58,8 @@ try {
     'exportPatches', 'choosePatch', 'applyPatchCommits', 'applyPatchFiles',
     'getSubmodules', 'updateSubmodules', 'openSubmodule',
     'getWorktrees', 'planWorktree', 'addWorktree', 'removeWorktree', 'pruneWorktrees', 'openWorktree',
+    'getWorktreeBoard', 'getWorktreeReview', 'getWorktreeFileDiff', 'planWorktreeSquash', 'squashWorktree', 'finishWorktree',
+    'compareWorktrees', 'getWorktreeCompareDiff', 'onMcpAgents',
     'getTagDetails', 'getCoAuthors', 'addIgnoreRule', 'getRepositoryStats', 'runMaintenance'].sort());
   const security = await app.evaluate(({ BrowserWindow }) => {
     const prefs = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();

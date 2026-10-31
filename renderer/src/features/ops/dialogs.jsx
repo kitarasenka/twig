@@ -13,11 +13,13 @@ const shown = command => command.map(arg => (/[\s"'`$\\]/.test(arg) ? JSON.strin
  * is shown in the same monospace form the console will log.
  */
 export function ConfirmDialog({ title, command, consequence, confirmLabel, danger = true, onConfirm, onClose }) {
+  // One argv, or several run one after another.
+  const commands = Array.isArray(command[0]) ? command : [command];
   return <Dialog title={title} onClose={onClose}>
     <div className="confirm-dialog">
       <p className="confirm-consequence"><AlertTriangle aria-hidden="true" />{consequence}</p>
-      <p className="muted">This command will run:</p>
-      <code className="confirm-command">$ git {shown(command)}</code>
+      <p className="muted">{commands.length === 1 ? 'This command will run:' : 'These commands will run, in order:'}</p>
+      {commands.map((argv, index) => <code key={index} className="confirm-command">$ git {shown(argv)}</code>)}
       <div className="dialog-actions">
         <Button onClick={onClose}>Cancel</Button>
         <Button className={danger ? 'danger' : 'primary'} onClick={() => { onClose(); onConfirm(); }}>{confirmLabel}</Button>

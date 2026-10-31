@@ -13,10 +13,10 @@ const INVALID = /[\s~^:?*[\\]|\.\.|^[-/.]|\.lock$|\/$/;
  * next to the repository unless the person picks another place. Main plans
  * the folder and holds it by a token, so the command shown is the command run.
  */
-export default function WorktreeDialog({ repository, refs, headOid, headBranch, initialBranch = null, onCreate, onClose }) {
+export default function WorktreeDialog({ repository, refs, headOid, headBranch, initialBranch = null, agent = false, onCreate, onClose }) {
   const [worktrees, setWorktrees] = useState(null);
   const [error, setError] = useState('');
-  const [mode, setMode] = useState(initialBranch ? 'existing' : 'new');
+  const [mode, setMode] = useState(initialBranch && !agent ? 'existing' : 'new');
   const [branch, setBranch] = useState(initialBranch || '');
   const [name, setName] = useState('');
   const [plan, setPlan] = useState(null);
@@ -35,27 +35,45 @@ export default function WorktreeDialog({ repository, refs, headOid, headBranch, 
   }, [mode, branch, free]);
   const target = mode === 'existing' ? branch : name.trim();
   const invalid = mode === 'new' && Boolean(target) && INVALID.test(target);
-  const exists = mode === 'new' && refs.some(ref => ref.type === 'local' && ref.name === target);
+  const branchName = agent ? (target ? `agent/${target}` : '') : target;
+  const exists = mode === 'new' && refs.some(ref => ref.type === 'local' && ref.name === branchName);
   useEffect(() => {
     if (chosen || !target || invalid) return undefined;
     let alive = true;
     const timer = setTimeout(() => {
-      window.twig.planWorktree(repository.id, target, false).then(next => { if (alive) setPlan(next); })
+      window.twig.planWorktree(repository.id, target, agent ? 'agent' : 'next').then(next => { if (alive) setPlan(next); })
         .catch(failure => { if (alive) setError(failure.message || 'Could not plan the folder.'); });
     }, 250);
     return () => { alive = false; clearTimeout(timer); };
-  }, [repository.id, target, invalid, chosen]);
+  }, [repository.id, target, invalid, chosen, agent]);
   async function chooseFolder() {
     try {
-      const next = await window.twig.planWorktree(repository.id, target, true);
+      const next = await window.twig.planWorktree(repository.id, target, 'choose');
       if (next) { setPlan(next); setChosen(true); }
     } catch (failure) { setError(failure.message || 'Could not use that folder.'); }
   }
   const create = mode === 'new';
-  const reason = !worktrees ? 'Reading the worktrees…' : !target ? (create ? 'Enter a branch name' : 'No branch is free to check out')
-    : invalid ? 'This name is not valid' : exists ? 'A branch with this name exists; choose it under Existing branch'
-      : create && !headOid ? 'There is no commit to start from yet' : !plan ? 'Planning the folder…' : undefined;
-  const command = plan && target ? worktreeAddCommand({ path: plan.path, branch: target, create, startPoint: headOid }) : null;
+  const reason = !worktrees ? 'Reading the worktrees…' : !target ? (agent ? 'Enter a task name' : create ? 'Enter a branch name' : 'No branch is free to check out')
+    : invalid ? 'This name is not valid' : exists ? (agent ? `The branch ${branchName} exists; choose another name` : 'A branch with this name exists; choose it under Existing branch')
+      : create && !headOid ? 'There is no commit to start from yet' : !plan || (agent && plan.branch !== branchName) ? 'Planning the folder…' : undefined;
+  const command = plan && target ? worktreeAddCommand({ path: plan.path, branch: plan.branch || branchName, create, startPoint: headOid }) : null;
+  if (agent) {
+    return <Dialog title="New agent worktree" onClose={onClose}>
+      <form className="worktree-dialog" onSubmit={event => { event.preventDefault(); if (reason) return; onClose(); onCreate({ token: plan.token, branch: plan.branch, create: true, startPoint: headOid, agent: true }); }}>
+        <p className="muted">A checkout of its own for one agent: a new branch from {headBranch || 'HEAD'} ({headOid ? headOid.slice(0, 7) : 'no commit'}) in this repository’s .claude/worktrees folder, where claude --worktree puts its own. It stays on the board; copy its command there to start the agent.</p>
+        {error && <p role="alert" className="warn">{error}</p>}
+        <label htmlFor="worktree-agent-name">Task name
+          <input id="worktree-agent-name" value={name} autoComplete="off" spellCheck={false} placeholder="fix-login" onChange={event => setName(event.target.value)} /></label>
+        <div className="worktree-folder"><span><FolderGit2 aria-hidden="true" /><code>{plan?.path || '…'}</code></span></div>
+        {command && <><p className="muted">This command will run:</p><code className="confirm-command">$ git {shown(command)}</code>
+          <p className="muted">If the main checkout does not ignore .claude/worktrees/ yet, 🌱 Twig adds it to .git/info/exclude, a local file Git never commits.</p></>}
+        <div className="dialog-actions">
+          <Button type="button" onClick={onClose}>Cancel</Button>
+          <Button type="submit" className="primary" reason={reason}>Create</Button>
+        </div>
+      </form>
+    </Dialog>;
+  }
   return <Dialog title="New worktree" onClose={onClose}>
     <form className="worktree-dialog" onSubmit={event => { event.preventDefault(); if (reason) return; onClose(); onCreate({ token: plan.token, branch: target, create, startPoint: create ? headOid : null }); }}>
       <p className="muted">A second checkout of this repository in its own folder, opened as its own tab. The work in progress here stays as it is.</p>

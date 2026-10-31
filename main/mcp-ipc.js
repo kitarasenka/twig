@@ -44,7 +44,9 @@ export function registerMcpIpc(getWindow, entryUrl, { repositories, journal, sto
   });
   const service = createMcpService({
     userData: app.getPath('userData'), execPath: process.execPath, appImage: process.env.APPIMAGE || null,
-    version: app.getVersion(), repositories, journal, proposals
+    version: app.getVersion(), repositories, journal, proposals,
+    // An agent said hello or went away: the Worktrees board reads again.
+    onAgentsChange: () => send('mcp:agents', null)
   });
   void service.configure(store.get().enabled);
   app.on('will-quit', () => { void service.configure(false); });
@@ -88,5 +90,5 @@ export function registerMcpIpc(getWindow, entryUrl, { repositories, journal, sto
   ipcMain.on('mcp:ui-context', (event, ...args) => {
     if (valid(event, args, 1)) service.setUiContext(args[0]);
   });
-  return { follow: id => service.follow(id) };
+  return { follow: id => service.follow(id), pendingPaths: () => proposals.pendingPaths(), agents: () => service.agents() };
 }

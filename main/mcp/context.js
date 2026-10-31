@@ -1,4 +1,4 @@
-import { realpathSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { resolveGitDir } from '../git/operation-state.js';
 import { McpError } from './errors.js';
@@ -29,11 +29,60 @@ function inside(root, target) {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
+const real = file => { try { return realpathSync.native(file); } catch { return file; } };
+
+/** A small regular file's text, or null: a FIFO or a huge file here is not Git's. */
+function readSmall(file) {
+  try {
+    const info = lstatSync(file);
+    return info.isFile() && info.size <= 4096 ? readFileSync(file, 'utf8') : null;
+  } catch { return null; }
+}
+
+/** The nearest folder at or above `target` with a `.git` entry: the checkout it is in. */
+export function checkoutRoot(target) {
+  let folder = path.resolve(target);
+  for (let depth = 0; depth < 128; depth += 1) {
+    try { lstatSync(path.join(folder, '.git')); return folder; } catch { /* keep climbing */ }
+    const parent = path.dirname(folder);
+    if (parent === folder) return null;
+    folder = parent;
+  }
+  return null;
+}
+
+/**
+ * The repository's common directory for the checkout at `root`, read without
+ * Git: `.git` itself for a main checkout, or, for a linked worktree, the one
+ * its `.git` file leads to — only in the layout `git worktree add` makes
+ * (`<common>/worktrees/<name>`, whose `gitdir` file points back at this
+ * checkout). A `.git` file anywhere else that merely names a repository's
+ * worktree folder is not that worktree.
+ */
+export function commonDir(root) {
+  const dot = path.join(root, '.git');
+  let info;
+  try { info = lstatSync(dot); } catch { return null; }
+  if (info.isDirectory()) return real(dot);
+  const match = readSmall(dot)?.match(/^gitdir:\s*(.+?)\s*$/m);
+  if (!match) return null;
+  const gitDir = path.resolve(root, match[1]);
+  const pointer = readSmall(path.join(gitDir, 'commondir'))?.trim();
+  const back = readSmall(path.join(gitDir, 'gitdir'))?.trim();
+  if (!pointer || !back) return null;
+  const common = path.resolve(gitDir, pointer);
+  const relative = path.relative(common, gitDir).split(path.sep);
+  if (relative.length !== 2 || relative[0] !== 'worktrees') return null;
+  if (real(path.resolve(gitDir, back)) !== real(dot)) return null;
+  return real(common);
+}
+
 /**
  * What every tool gets: the repository it should read, resolved only against
  * the list the person connected in 🌱 Twig, the journal and the UI selection.
  * A path is matched without running Git; nested repositories resolve to the
- * deepest root that contains it.
+ * deepest root that contains it, and a linked worktree of a connected
+ * repository to that worktree.
  * @param {{ repositories: { snapshot: () => { repositories: object[] } }, journal: object,
  *   getActiveId: () => ?string, getUiContext: () => ?object, proposals?: ?object, waitMs?: ?number }} options
  */
@@ -46,22 +95,43 @@ export function createToolContext({ repositories, journal, getActiveId, getUiCon
   // macOS) while a repository may be connected through a symlink (/var/…), so
   // paths are matched both as written and resolved. Roots are resolved once.
   const resolved = new Map();
-  const real = file => { try { return realpathSync.native(file); } catch { return file; } };
   const realRoot = root => {
     if (!resolved.has(root)) resolved.set(root, real(root));
     return resolved.get(root);
   };
-  /** The deepest connected repository that contains `target`, or undefined. */
+  // A connected repository's common directory never changes, so it is read once.
+  const commons = new Map();
+  const commonOf = root => {
+    if (!commons.has(root)) commons.set(root, commonDir(realRoot(root)));
+    return commons.get(root);
+  };
+  /**
+   * The deepest connected repository that contains `target`, or undefined.
+   * A linked worktree of a connected repository is that repository's own
+   * checkout even when nobody connected it: an agent working in
+   * `.claude/worktrees/<name>`, or in a worktree folder next to the
+   * repository, reads and commits there, not in the folder around it.
+   */
   const containing = target => {
     const targets = [target, real(target)];
-    return connected()
+    const byPath = connected()
       .filter(item => item.path && targets.some(candidate => inside(item.path, candidate) || inside(realRoot(item.path), candidate)))
       .sort((a, b) => b.path.length - a.path.length)[0];
+    const root = checkoutRoot(real(target));
+    if (!root || (byPath && (inside(root, byPath.path) || inside(root, realRoot(byPath.path))))) return byPath;
+    const common = commonDir(root);
+    if (!common) return byPath;
+    // The main checkout first: a linked worktree connected as a tab shares the common directory.
+    const owner = connected().filter(item => item.path && commonOf(item.path) === common)
+      .sort((a, b) => Number(commonOf(b.path) === real(path.join(realRoot(b.path), '.git'))) - Number(commonOf(a.path) === real(path.join(realRoot(a.path), '.git'))))[0];
+    if (!owner) return byPath;
+    return { ...owner, id: root, name: `${path.basename(root)} (worktree of ${owner.name})`, path: root, worktreeOf: owner.id };
   };
 
   function usable(repo, extra = {}) {
     if (!repo.available) throw new McpError('REPOSITORY_NOT_FOUND', `${repo.name} is connected but unavailable — it may have moved or been removed.`);
-    return { id: repo.id, name: repo.name, path: repo.path, active: repo.id === getActiveId(), implicit: false, ...extra };
+    return { id: repo.id, name: repo.name, path: repo.path, active: repo.id === getActiveId(), implicit: false,
+      ...(repo.worktreeOf ? { worktreeOf: repo.worktreeOf } : {}), ...extra };
   }
 
   /**

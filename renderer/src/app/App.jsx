@@ -401,8 +401,14 @@ export default function App() {
     let alive = true;
     const show = view => {
       if (!alive) return;
-      // null is main closing it (answered elsewhere, superseded). While this window is
-      // committing it, or showing why that failed, the dialog stays: decideProposal closes it.
+      // The proposal on screen again, with a new count of others waiting: only the count changes.
+      if (view && proposalRef.current?.id === view.id) {
+        setProposal(current => (current?.id === view.id ? { ...current, waiting: view.waiting } : current));
+        return;
+      }
+      // null is main closing it (answered elsewhere, superseded), another is the next in line.
+      // While this window is committing it, or showing why that failed, the dialog stays:
+      // closing it asks main for whatever comes next.
       const held = proposalRunRef.current.running || Boolean(proposalRunRef.current.failure);
       if (held) return;
       setProposalRun({ running: false, step: null, failure: '' });
@@ -415,6 +421,14 @@ export default function App() {
   }, []);
   const proposalRunRef = useRef(proposalRun);
   proposalRunRef.current = proposalRun;
+  const proposalRef = useRef(proposal);
+  proposalRef.current = proposal;
+  /** Closes the dialog and shows the next proposal in line, from another worktree, if there is one. */
+  function closeProposal() {
+    setProposal(null);
+    setProposalRun({ running: false, step: null, failure: '' });
+    window.twig.getCommitProposal().then(next => { if (next) setProposal(next); }).catch(() => {});
+  }
   async function decideProposal(decision) {
     if (!proposal) return;
     if (decision.action !== 'cancel') setProposalRun({ running: true, step: null, failure: '' });
@@ -423,10 +437,9 @@ export default function App() {
       if (answer.stale) { setProposal(answer.stale); setProposalRun({ running: false, step: null, failure: '' }); return; }
       // A tag that cannot be made (it exists, a bad name): the dialog stays open to fix it.
       if (answer.invalid) { setProposalRun({ running: false, step: null, failure: '', invalid: answer.invalid }); return; }
-      if (decision.action === 'cancel') { setProposal(null); setProposalRun({ running: false, step: null, failure: '' }); return; }
+      if (decision.action === 'cancel') { closeProposal(); return; }
       if (answer.ok) {
-        setProposal(null);
-        setProposalRun({ running: false, step: null, failure: '' });
+        closeProposal();
         setSyncNote(outcomeNote(answer.outcome));
       } else {
         setProposalRun({ running: false, step: null, failure: answer.outcome });
@@ -741,7 +754,7 @@ export default function App() {
       }} />}
     </Dialog>}
     {proposal && <CommitProposalDialog key={proposal.id} view={proposal} running={proposalRun.running} step={proposalRun.step} failure={proposalRun.failure} invalid={proposalRun.invalid}
-      onDecide={decision => void decideProposal(decision)} onClose={() => { setProposal(null); setProposalRun({ running: false, step: null, failure: '' }); }} />}
+      onDecide={decision => void decideProposal(decision)} onClose={closeProposal} />}
     {pushGate && <ExecutionPanel event="pre-push" label="Before Push" phase="pre" steps={pushGate.steps} result={pushGate.result}
       blocked={pushGate.blocked} onClose={() => closePushGate(false)} onRetry={() => closePushGate(false)}
       onRunAgain={() => runPushGate()} onBypass={() => closePushGate(false, true)} />}

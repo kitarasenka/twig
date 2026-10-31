@@ -95,7 +95,12 @@ its root path, or **any path inside it**. Usually it can be left out:
 
 1. The bridge reports the folder the MCP client started it in (the agent's project), and
    tools read that repository if it is connected. Symlinked paths such as `/var` and
-   `/private/var` on macOS are matched both ways.
+   `/private/var` on macOS are matched both ways. A **worktree** of a connected repository
+   is read as itself even if nobody connected it — `.claude/worktrees/<name>`, where
+   `claude --worktree` and the Worktrees board put agents, or a worktree folder next to the
+   repository — so an agent there sees and commits its own changes, not the main checkout's.
+   It is recognised from its `.git` file only in the layout `git worktree add` makes
+   (`<repository>/.git/worktrees/<name>`, pointing back at that folder).
 2. Otherwise tools read the repository open in 🌱 Twig, and the answer **starts with**
    `repository: <path>` and, if the agent's folder is known, a `note:` saying that folder is
    not connected. A guess is always visible; a repository the agent named, or its own,
@@ -324,6 +329,15 @@ the version, or one that never did.
 
 The bumped files go into the same commit. The commit panel offers the version choice too, when
 a Bump version action applies.
+
+**Several agents at once.** One proposal is on screen at a time. A newer proposal from the
+**same** worktree replaces the one before it (`superseded: a newer proposal replaced it`);
+one from **another** worktree waits in line — the dialog says how many are waiting — and opens
+when the one on screen is answered. Each commits in its own worktree. The Worktrees board
+marks a worktree with a waiting proposal **Commit proposed**. It also marks a worktree **Agent
+connected** while an agent's bridge, started in that folder, is connected, with when it last
+asked something — an agent started in the main folder that makes worktrees of its own counts
+for the main folder.
 
 ### A new version
 

@@ -17,6 +17,81 @@ JavaScript ESM / Node 20. Бриф-источник правды: `PROMPT.md`, �
 
 ## Состояние
 
+Worktrees для параллельных агентов, шаги 1 и 2 (2026-10-31, вне вех; по запросу
+пользователя; решения: папка `.claude/worktrees/<имя>` как у `claude -w`,
+результат в базу — Squash, агентов 🌱 Twig не запускает — только даёт команду).
+**MCP:** `containing` в `main/mcp/context.js` теперь находит ближайший к папке
+агента checkout (`checkoutRoot`) и, если это linked worktree подключённого
+репозитория (`commonDir`: `.git`-файл → `<common>/worktrees/<name>` с
+`commondir` и обратной ссылкой `gitdir`, без запуска Git), отвечает им самим —
+`{ id: путь, name: '<папка> (worktree of <репо>)', worktreeOf }`. Раньше агент
+в `.claude/worktrees/x` читал и коммитил основной checkout. Автоматизации и
+Bump такого worktree — от `worktreeOf`. Поддельный `.git`-файл → прежний
+откат на открытый репозиторий с `note`. **Очередь предложений**
+(`commit-proposal.js`): новое вытесняет только предложение из того же
+worktree, из другого — ждёт (`waiting` в виде, `waitingLine` в диалоге),
+ответ на текущее показывает следующее; `pendingPaths()` для доски; App:
+`closeProposal` дочитывает следующее, повторный показ того же id меняет только
+счётчик. **Доска** — экран Worktrees переписан
+(`features/tools/WorktreesScreen.jsx`, слова в `tools-view.js`:
+`launchCommand`, `changesLine`, `progressLine`, `boardBadges`, `squashReason`,
+`finishCommands`): карточки (незакоммиченное +/−, «N commits ahead of main ·
+M behind», «Squashed/Merged into main», «Changed …», метки Agent / Commit
+proposed / Done), справа — всё, что worktree сделал с точки ответвления
+(`merge-base` с базой: коммиты + незакоммиченное одним `git diff <fork>`,
+untracked отдельно, дубль при гонке с коммитом агента отбрасывается) и дифф
+файла; Copy command (`window.twig.copyText`), Squash into main…, Open as tab,
+Remove… / Remove worktree and branch…. База — ветка основного worktree.
+Обновляется по ключу tips локальных веток (`branchTips`), фокусу окна и
+Refresh. **New agent worktree…** — `WorktreeDialog agent`: имя задачи →
+`agent/<имя>` от HEAD в `<main>/.claude/worktrees/<имя>`, вкладку не открывает,
+при необходимости дописывает `/.claude/worktrees/` в `.git/info/exclude`
+(проба `ls-files --others --ignored --directory`, запись журналируется как
+`🌱 Twig append .git/info/exclude`). Git-слой — `main/git/worktree-board.js`:
+все чтения доски с кодом 0 (кроме `merge-base` без общего предка); Squash —
+`merge --squash --no-autostash <oid>` + `commit --file=-` в базовом worktree,
+сверка tips из диалога, конфликт/отказ/хук → `reset --merge` (main как был,
+неотслеживаемое цело), через `undo.perform(..., 'worktree:commit')` — Undo
+берёт коммит назад, изменения остаются staged; staged в базе — отказ. Что
+работа «в базе»: ahead = 0 (merged) или записи `refs/twig/squash/<ветка>` +
+`refs/twig/squash-tip/<ветка>` (squash сделан 🌱 Twig на том же tip и он в
+базе); squash на форже не распознаётся. `finishWorktree` — только для такой:
+`worktree remove` (грязный — отказ) + `branch -D` + удаление записей. Каналы
+`worktrees:board|review|file-diff|squash-plan|squash|finish`, `worktrees:plan`
+теперь `(name, 'next'|'choose'|'agent')`, `worktrees:add` для агента
+сверяет ветку с токеном. `ConfirmDialog` принимает несколько команд.
+Twig-автоматизации при Squash не запускаются (Git-хуки — да). Проверки:
+`scripts/checks/worktree-board.mjs` (в `npm test`, настоящий Git: слова,
+папка и exclude, счётчики, обзор, Squash с Undo, откат при конфликте и хуке,
+MCP-разрешение worktree и поддельный `.git`, finish), `mcp-commit.mjs`
+(очередь двух worktree), `tools-smoke.mjs` (агентский worktree от создания до
+удаления с веткой, 5 новых отказов IPC; снимки
+`artifacts/worktree-board-{dark,light}.png`, `worktree-squash.png`
+просмотрены), `smoke.mjs` (мост). Правки рабочих файлов агента (без
+коммита) доска видит по фокусу окна и Refresh, не мгновенно.
+
+Шаг 2 (2026-10-31, тот же заход): **Agent connected** — транспорт MCP держит
+сессии открытых соединений (`sessions()`, `onClose`), сессия знает папку
+моста (`cwd`, `onInitialize`), `service.agents()` — сессии, чья папка без
+догадки разрешается в подключённый репозиторий или его worktree (`path`,
+`connectedAt`, `lastCallAt`); событие `mcp:agents` (мост `onMcpAgents`)
+перечитывает доску. Карточка: метка «Agent connected» и строка «last asked …»
+(`connectedLine`); агент, запущенный в основной папке и сам создающий
+worktree (субагенты), считается за основную. **Сравнение двух worktree**:
+«Compare with» в правой части доски → `worktrees:compare`
+(`compareWorktrees`: обзоры обеих сторон, файлы объединением со статусом и
++/− каждой, `compareCell`) и `worktrees:compare-file`
+(`loadWorktreeCompareDiff`: `git diff --no-index` двух файлов на диске, с
+незакоммиченным; − левая сторона, + правая; заголовок с абсолютными путями
+отрезан до первого `@@`; не обычный файл, ссылка за пределы worktree, > 1 МБ —
+словами). **Open in Terminal не делается** — решение пользователя «только
+команду давать». Проверки: `worktree-board.mjs` (сравнение, ссылка наружу,
+метка), `mcp.mjs` (мост в подключённой папке появляется в `agents()` и
+исчезает при закрытии, оба раза событие), `tools-smoke.mjs` (второй агент,
+таблица, дифф, Stop comparing, 15 отказов IPC; снимок
+`artifacts/worktree-compare.png` просмотрен), `smoke.mjs` (мост).
+`docs/mcp.md` дополнен. Версия не менялась.
+
 Назад в историю словами, заметки — всплывающие над консолью (2026-10-26, вне
 вех; по запросу пользователя: крестик, который возвращал в историю, был
 непонятен, а заметка «push finished.» вставала над графом и сдвигала его).

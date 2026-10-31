@@ -151,8 +151,15 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
       // version (if any) and the previous release tag (if any).
       versioning: { current: proposal.bumpPlan?.targets[0]?.current ?? null, tag: proposal.previousTag },
       defaults: proposal.defaults,
+      // Proposals from other worktrees, waiting for this one to be answered.
+      waiting: open().filter(other => other.id !== proposal.id).length,
       status: proposal.status, ...extra
     };
+  }
+
+  /** Proposals nobody has answered yet, oldest first. */
+  function open() {
+    return [...proposals.values()].filter(proposal => !proposal.outcome).sort((a, b) => a.createdAt - b.createdAt);
   }
 
   function settle(proposal, outcome) {
@@ -161,7 +168,11 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
     proposal.status = 'done';
     proposal.settledAt = now();
     for (const resolve of proposal.waiters.splice(0)) resolve(outcome);
-    if (shown === proposal.id) { shown = null; present(null); }
+    if (shown !== proposal.id) return;
+    // The next one in line, from another worktree, takes the dialog.
+    const next = open()[0] ?? null;
+    shown = next?.id ?? null;
+    present(next ? view(next) : null);
   }
 
   function sweep() {
@@ -181,7 +192,9 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
     const target = await pushTarget({ cwd: repo.path, log, branch: state.branch });
     // A "Bump version" automation decides the files and the default; without
     // one the root package.json is still offered, bumping nothing by default.
-    const bumpPlan = bump ? (await bump.plan({ repo, files: state.files })) ?? (await bump.packagePlan?.({ repo })) ?? null : null;
+    // A worktree nobody connected follows the automations of its repository.
+    const automationRepo = repo.worktreeOf ? { ...repo, id: repo.worktreeOf } : repo;
+    const bumpPlan = bump ? (await bump.plan({ repo: automationRepo, files: state.files })) ?? (await bump.packagePlan?.({ repo })) ?? null : null;
     const previousTag = await readPreviousTag({ cwd: repo.path, log, head: state.head });
     return { state, target, bumpPlan, previousTag };
   }
@@ -198,7 +211,9 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
   return {
     /**
      * Shows a proposal and returns its id. One proposal is on screen at a
-     * time; a newer one replaces it and the older one is answered so.
+     * time. A newer one from the same worktree replaces the older one, which
+     * is answered so; one from another worktree — another agent working in
+     * parallel — waits in line and is shown when the one on screen is answered.
      * A `release` (new_version) starts with the version bump and the tag
      * switched on, and its message may be left to the dialog
      * (`chore(release): <version>`).
@@ -220,15 +235,27 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
       const proposal = { id: randomUUID(), repo, kind, message: optional ? null : message, push, ...prepared,
         defaults: defaults(kind, prepared, { bump: suggestedBump, tag: suggestedTag ?? null }),
         status: 'pending', waiters: [], outcome: null, createdAt: now(), settledAt: null };
-      for (const other of proposals.values()) if (!other.outcome && other.status === 'pending') settle(other, 'superseded: a newer proposal replaced it');
+      const same = other => other.repo.path === repo.path;
+      // Settled before this one is added, so the dialog does not move on to a proposal it replaces.
+      const replaced = open().filter(other => same(other) && other.status === 'pending');
       proposals.set(proposal.id, proposal);
-      shown = proposal.id;
-      if (!present(view(proposal))) {
-        shown = null;
+      const onScreen = shown ? proposals.get(shown) : null;
+      const queued = Boolean(onScreen && !onScreen.outcome && !replaced.includes(onScreen));
+      // Set first: a replaced proposal on screen then hands the dialog to this one, not to the next in line.
+      if (!queued) shown = proposal.id;
+      for (const other of replaced) settle(other, 'superseded: a newer proposal replaced it');
+      // Shown, or the one on screen shown again with one more waiting.
+      if (!present(view(queued ? onScreen : proposal))) {
+        if (shown === proposal.id) shown = null;
         proposals.delete(proposal.id);
         throw new McpError('CONFIRMATION_UNAVAILABLE', 'The 🌱 Twig window is not open, so nobody can confirm a commit.', { hint: 'Ask the person to open 🌱 Twig, then propose again.' });
       }
       return proposal.id;
+    },
+
+    /** Worktree folders with a proposal nobody has answered yet. */
+    pendingPaths() {
+      return new Set(open().map(proposal => proposal.repo.path));
     },
 
     /** The outcome text once decided, or null if the person is still deciding after `ms`. */
@@ -303,7 +330,13 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
 
     /** Turning the permission off answers every open proposal. */
     revokeAll() {
-      for (const proposal of proposals.values()) if (!proposal.outcome && proposal.status === 'pending') settle(proposal, 'not committed: commits from agents were turned off in 🌱 Twig');
+      const wasShown = shown;
+      shown = null;
+      for (const proposal of open()) if (proposal.status === 'pending') settle(proposal, 'not committed: commits from agents were turned off in 🌱 Twig');
+      // A proposal already being committed keeps the dialog until it finishes.
+      const running = wasShown ? proposals.get(wasShown) : null;
+      if (running && !running.outcome) shown = running.id;
+      else if (wasShown) present(null);
     }
   };
 
@@ -311,7 +344,8 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
     const { repo } = proposal;
     const cwd = repo.path;
     const pipeline = (event, extra = {}) => triggerPipeline({
-      event, repoId: repo.id, cwd, log, automations, runs, loginPath, operation: `Agent commit: ${event}`, onStep, ...extra
+      // A worktree nobody connected runs the automations of the repository it belongs to.
+      event, repoId: repo.worktreeOf ?? repo.id, cwd, log, automations, runs, loginPath, operation: `Agent commit: ${event}`, onStep, ...extra
     });
     const edited = proposal.message !== null && message !== proposal.message;
     const branch = proposal.state.branch;

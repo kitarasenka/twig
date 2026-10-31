@@ -793,7 +793,8 @@ try {
   // --- the socket transport and the stdio bridge, end to end ---------------------------------
   {
     const userData = path.join(root, 'user data');
-    const service = createMcpService({ userData, execPath: process.execPath, version: '9.9.9', repositories, journal: log });
+    let agentChanges = 0;
+    const service = createMcpService({ userData, execPath: process.execPath, version: '9.9.9', repositories, journal: log, onAgentsChange: () => { agentChanges++; } });
     service.follow(main.cwd);
     await service.configure(true);
     assert.equal(service.status().listening, true, service.status().error);
@@ -845,6 +846,23 @@ try {
     assert.equal(text(await bridge.request('tools/call', { name: 'get_workspace_context', arguments: {} })).repository.path, main.cwd);
     assert.equal(service.status().connections, 1);
     assert.ok(service.status().calls >= 1);
+    assert.deepEqual(service.agents(), [], 'an agent whose folder is no connected repository is not on any card');
+
+    // An agent working in a connected repository is known by its folder while its session lasts.
+    {
+      const changesBefore = agentChanges;
+      const inside = startBridge(main.cwd);
+      await inside.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'check', version: '1' } });
+      assert.ok(agentChanges > changesBefore, 'saying hello is announced');
+      assert.deepEqual(service.agents().map(agent => [agent.path, agent.lastCallAt]), [[main.cwd, null]]);
+      await inside.request('tools/call', { name: 'get_workspace_context', arguments: {} });
+      assert.match(service.agents()[0].lastCallAt, /^\d{4}-\d\d-\d\dT/);
+      const beforeClose = agentChanges;
+      await inside.close();
+      for (let wait = 0; wait < 50 && service.agents().length; wait++) await new Promise(resolve => setTimeout(resolve, 20));
+      assert.deepEqual(service.agents(), [], 'and forgotten when it ends');
+      assert.ok(agentChanges > beforeClose, 'which is announced too');
+    }
 
     // 🌱 Twig stops listening: the bridge answers by itself, and the client keeps its tools.
     await service.configure(false);

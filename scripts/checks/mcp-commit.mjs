@@ -335,7 +335,7 @@ try {
     assert.equal(shown.length, count, 'no refused proposal reached the window');
   }
 
-  // A newer proposal replaces the one on screen; turning the permission off answers what is open.
+  // A newer proposal from the same worktree replaces the one on screen; turning the permission off answers what is open.
   {
     const first = proposalId(await call('propose_commit', { message: 'feat: one' }));
     const second = proposalId(await call('propose_commit', { message: 'feat: two' }));
@@ -343,9 +343,32 @@ try {
     proposals.revokeAll();
     assert.match(await call('await_commit', { proposalId: second }), /^not committed: commits from agents were turned off/);
     assert.equal(await readFile(path.join(cwd, 'x.txt'), 'utf8'), 'x\n', 'and nothing was committed');
+    assert.equal(shown.at(-1), null, 'and the dialog closed');
+  }
+
+  // Agents in two worktrees: the second proposal waits in line instead of replacing the first.
+  {
+    const other = path.join(root, 'other-worktree');
+    await git('worktree', 'add', '-q', '-b', 'other', other);
+    await writeFile(path.join(other, 'other.txt'), 'other\n');
+    const here = await proposals.propose({ repo: { id: cwd, name: 'repo', path: cwd }, message: 'feat: here', push: false });
+    const there = await proposals.propose({ repo: { id: other, name: 'other (worktree of repo)', path: other }, message: 'feat: there', push: false });
+    assert.equal(shown.at(-1).id, here, 'the first stays on screen');
+    assert.equal(shown.at(-1).waiting, 1, 'showing one more waiting');
+    assert.equal(proposals.current().id, here);
+    assert.deepEqual([...proposals.pendingPaths()].sort(), [cwd, other].sort(), 'the board can tell both worktrees have one');
+    const done = await proposals.decide(here, { action: 'cancel', message: 'feat: here' });
+    assert.equal(done.outcome, 'cancelled by user');
+    assert.equal(shown.at(-1).id, there, 'answering it opens the next one');
+    assert.equal(shown.at(-1).waiting, 0);
+    const committed = await proposals.decide(there, { action: 'commit', message: 'feat: there' });
+    assert.match(committed.outcome, /^committed [0-9a-f]{12} on other: feat: there$/, committed.outcome);
+    assert.equal((await runGit({ cwd: other, log, argv: ['log', '-1', '--format=%s'] })).stdout.trim(), 'feat: there', 'committed in its own worktree');
+    assert.equal(shown.at(-1), null, 'nothing else is waiting');
+    assert.equal(await readFile(path.join(cwd, 'x.txt'), 'utf8'), 'x\n', 'the first worktree is untouched');
   }
   assert.ok(log.list().some(entry => entry.operation === 'Stage all changes'), 'the commands are in the journal');
 } finally {
   await rm(root, { recursive: true, force: true });
 }
-console.log('mcp-commit: permission, dialog words, release tags, cancel, stale tree, automation and hook refusals, Undo, commit and push, tag with Undo, new_version with bump, tag and push');
+console.log('mcp-commit: permission, dialog words, release tags, cancel, stale tree, automation and hook refusals, Undo, commit and push, tag with Undo, new_version with bump, tag and push, proposals from two worktrees in line');

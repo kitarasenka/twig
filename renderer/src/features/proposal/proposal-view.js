@@ -75,3 +75,9 @@ export function primaryAction(view) {
 export function outcomeNote(outcome) {
   return String(outcome || '').split('\n')[0];
 }
+
+/** Proposals from other worktrees waiting behind this one, in words. */
+export function waitingLine(count) {
+  if (!(count > 0)) return '';
+  return `${count === 1 ? '1 more proposal is' : `${count} more proposals are`} waiting from other worktrees. The next one opens when you answer this one.`;
+}

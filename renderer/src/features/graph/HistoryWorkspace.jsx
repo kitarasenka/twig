@@ -659,6 +659,8 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
 
   const headBranch = repository.status?.branch?.name || null;
   const headOid = repository.status?.branch?.oid || null;
+  // Moves whenever any local branch does — an agent committing in its worktree — so the Worktrees board reads again.
+  const branchTips = useMemo(() => data.refs.filter(ref => ref.type === 'local').map(ref => ref.target).join(), [data.refs]);
   const dirty = (repository.status?.entries || []).some(entry => entry.kind === 'ordinary' || entry.kind === 'renamed');
 
   function openMenu(oid, x, y) {
@@ -955,7 +957,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
 
   // Worktrees and submodules open as tabs of their own; App switches to them.
   const [toolsRefresh, setToolsRefresh] = useState(0);
-  function openWorktreeDialog(branch = null) { setDialog({ type: 'worktree', branch }); }
+  function openWorktreeDialog(branch = null, agent = false) { setDialog({ type: 'worktree', branch, agent }); }
   async function openTab(open) {
     setNote('');
     try { onOpenWorkspace?.(await open()); }
@@ -966,9 +968,14 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     try {
       const result = await window.twig.addWorktree(repository.id, request);
       if (!result.ok) { setNote({ text: result.message, failed: true }); return; }
-      setNote(`Worktree for ${request.branch} created in ${result.path}.`);
       setToolsRefresh(value => value + 1);
       if (request.create) void reload();
+      // An agent's worktree stays on the board, where its card copies the command that starts the agent.
+      if (result.agent) {
+        setNote(`Agent worktree created in ${result.path} on ${request.branch}.${result.excluded ? ` ${result.excluded} added to .git/info/exclude.` : ''} Copy its command on the board to start the agent.`);
+        return;
+      }
+      setNote(`Worktree for ${request.branch} created in ${result.path}.`);
       onOpenWorkspace?.(result.workspace);
     } catch (failure) { setNote({ text: failure.message || 'Could not add the worktree.', failed: true }); }
     finally { setWorking(false); }
@@ -1450,9 +1457,11 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} onJump={oid => void jump(oid)} />}
       {!conflict && screen === 'worktree' && <WorktreeScreen repository={repository} operation={operation} onConsole={onConsole} onChanged={({ history = false } = {}) => { if (history) void reload(); void refreshOperation(); onRepositoryChanged?.(); }}
         runAutomation={runAutomation} onBack={() => choose(data.commits[0]?.oid || null)} />}
-      {!conflict && screen === 'worktrees' && <WorktreesScreen repository={repository} busy={working} refreshKey={toolsRefresh}
-        onBack={() => choose(data.commits[0]?.oid || null)} onNew={branch => openWorktreeDialog(branch)} onOpen={folder => openTab(() => window.twig.openWorktree(repository.id, folder))}
-        onDialog={setDialog} onWorkspace={next => onWorkspace?.(next)} onConsole={onConsole} />}
+      {!conflict && screen === 'worktrees' && <WorktreesScreen repository={repository} platform={platform} busy={working} refreshKey={`${toolsRefresh}:${branchTips}`}
+        onBack={() => choose(data.commits[0]?.oid || null)} onNew={branch => openWorktreeDialog(branch)} onNewAgent={() => openWorktreeDialog(null, true)}
+        onOpen={folder => openTab(() => window.twig.openWorktree(repository.id, folder))}
+        onDialog={setDialog} onWorkspace={next => onWorkspace?.(next)} onConsole={onConsole}
+        onChanged={({ history = false } = {}) => { if (history) void reload(); void refreshOperation(); onRepositoryChanged?.(); }} />}
       {!conflict && screen === 'submodules' && <SubmodulesScreen repository={repository} busy={working} refreshKey={toolsRefresh}
         onBack={() => choose(data.commits[0]?.oid || null)} onOpen={folder => openTab(() => window.twig.openSubmodule(repository.id, folder))}
         onDialog={setDialog} onChanged={() => onRepositoryChanged?.()} onConsole={onConsole} />}
@@ -1549,7 +1558,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     {dialog?.type === 'upstream' && <UpstreamDialog branch={dialog.branch} current={dialog.current} candidates={dialog.candidates}
       onClose={() => setDialog(null)} onConfirm={dialog.onConfirm} />}
     {dialog?.type === 'worktree' && <WorktreeDialog repository={repository} refs={data.refs} headOid={headOid} headBranch={headBranch}
-      initialBranch={dialog.branch} onClose={() => setDialog(null)} onCreate={request => void createWorktree(request)} />}
+      initialBranch={dialog.branch} agent={Boolean(dialog.agent)} onClose={() => setDialog(null)} onCreate={request => void createWorktree(request)} />}
     {dialog?.type === 'patch' && <PatchDialog patch={dialog.patch} branch={headBranch} onClose={() => setDialog(null)}
       onApply={index => void (dialog.patch.kind === 'mbox'
         ? perform(() => window.twig.applyPatchCommits(repository.id, dialog.patch.token), `${dialog.patch.commits.length === 1 ? 'Patch' : `${dialog.patch.commits.length} patches`} applied as commits.`)

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Bot } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
-import { actionLabels, primaryAction, proposalCommands, pushLine, releaseState, stepLabel, totalsLine } from './proposal-view.js';
+import { actionLabels, primaryAction, proposalCommands, pushLine, releaseState, stepLabel, totalsLine, waitingLine } from './proposal-view.js';
 
 const STEPS = ['patch', 'minor', 'major'];
 
@@ -54,7 +54,8 @@ export default function CommitProposalDialog({ view, running, step, failure, inv
   return <Dialog title={view.kind === 'release' ? 'New version proposed by an agent' : 'Commit proposed by an agent'} wide
     onClose={failure ? onClose : () => decide('cancel')} closeReason={busyReason}>
     <div className="proposal-dialog">
-      <p className="proposal-where"><Bot aria-hidden="true" /><span><strong>{view.repository.name}</strong> · {view.branch}{view.unborn ? ' (first commit)' : ''}<small>{pushLine(view)}</small></span></p>
+      <p className="proposal-where"><Bot aria-hidden="true" /><span><strong title={view.repository.path}>{view.repository.name}</strong> · {view.branch}{view.unborn ? ' (first commit)' : ''}<small>{pushLine(view)}</small></span></p>
+      {view.waiting > 0 && <p className="proposal-waiting" role="status">{waitingLine(view.waiting)}</p>}
       {view.stale && <p className="proposal-stale" role="alert">The files changed after the agent proposed this. Check the list and the message again.</p>}
       <h3 className="proposal-heading">{heading}</h3>
       {view.files.length > 0 && <ul className="proposal-files" aria-label="Files in this commit" tabIndex={0}>

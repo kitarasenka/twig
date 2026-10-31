@@ -173,6 +173,7 @@ dialog.wide { width: min(920px, calc(100vw - var(--space-8))); }
 .proposal-where { display: flex; gap: var(--space-2); align-items: flex-start; line-height: 1.5; }
 .proposal-where svg { flex: none; color: var(--accent); margin-top: 2px; }
 .proposal-where small { display: block; color: var(--muted); font-size: var(--text-xs); }
+.proposal-waiting { margin: 0; padding: var(--space-1) var(--space-2); border-left: 3px solid var(--accent); background: var(--accent-bg); font-size: var(--text-xs); }
 .proposal-stale { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--danger-bg); color: var(--text); }
 .proposal-heading { margin: var(--space-2) 0 0; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
 .proposal-heading .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }

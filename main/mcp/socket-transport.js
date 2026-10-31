@@ -14,18 +14,21 @@ export const MAX_CONNECTIONS = 16;
  *
  * The transport knows nothing about tools: another transport (HTTP, say)
  * would take the same `createSession` and nothing else would change.
- * @param {{ socket: string, createSession: () => { handleLine: (line: string) => Promise<object|null> } }} options
+ * `onClose` hears when a connection — an agent session — ends.
+ * @param {{ socket: string, createSession: () => { handleLine: (line: string) => Promise<object|null> }, onClose?: () => void }} options
  */
-export function createSocketTransport({ socket, createSession }) {
+export function createSocketTransport({ socket, createSession, onClose = () => {} }) {
   let server = null;
   const connections = new Set();
+  const sessions = new Map();
 
   function serve(connection) {
     if (connections.size >= MAX_CONNECTIONS) { connection.destroy(); return; }
     connections.add(connection);
-    connection.on('close', () => connections.delete(connection));
-    connection.on('error', () => {});
     const session = createSession();
+    sessions.set(connection, session);
+    connection.on('close', () => { connections.delete(connection); sessions.delete(connection); onClose(); });
+    connection.on('error', () => {});
     let buffer = '';
     connection.setEncoding('utf8');
     connection.on('data', chunk => {
@@ -45,6 +48,8 @@ export function createSocketTransport({ socket, createSession }) {
 
   return {
     get connections() { return connections.size; },
+    /** The sessions of the open connections. */
+    sessions() { return [...sessions.values()]; },
     async start() {
       if (server) return;
       // A socket file left by a crashed run would refuse the bind. Only this

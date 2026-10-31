@@ -45,7 +45,9 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
   registerHistoryOpsIpc(getWindow, entryUrl, { journal, repositories, undo, stateDir: app.getPath('userData'), patchFiles });
   registerConsoleIpc(getWindow, entryUrl, { repositories, journal });
   registerFilesIpc(getWindow, entryUrl, { repositories, journal, editor, loginPath: automationPath });
-  registerRepoToolsIpc(getWindow, entryUrl, { repositories, journal, undo, patchFiles, folders: createTokenRegistry() });
+  // Proposals live with the MCP service registered below; the board asks for them when it reads.
+  registerRepoToolsIpc(getWindow, entryUrl, { repositories, journal, undo, patchFiles, folders: createTokenRegistry(),
+    pendingProposals: () => mcp.pendingPaths(), connectedAgents: () => mcp.agents() });
   const fetcher = registerFetchIpc(getWindow, entryUrl, { repositories, journal, undo, store: fetchSettings });
   const mcp = registerMcpIpc(getWindow, entryUrl, { repositories, journal, store: mcpSettings, undo, automations, automationRuns, automationPath, bumper });
   const watcher = createRepositoryWatcher(getWindow);
