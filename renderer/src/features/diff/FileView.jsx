@@ -7,6 +7,7 @@ import { splitByRanges } from './diff-view.js';
 import { languageFor, languageLabel } from './languages.js';
 import useHighlighter from './useHighlighter.js';
 import useDiffPrefs from './useDiffPrefs.js';
+import { t, tn } from '../../i18n/i18n.js';
 import { changeStarts, changeSummary, changedLines, fileLines, stepChange, versionLabels, versionProblem } from './file-view.js';
 
 /** Where a change the arrows go to lands: a third of the way down, with what came before it in view. */
@@ -26,7 +27,7 @@ export default function FileView({ repositoryId, file, source, patch = '', withC
     setData(null);
     window.twig.getFileText(repositoryId, file, source)
       .then(result => { if (alive) setData(result); })
-      .catch(() => { if (alive) setData({ error: 'Could not read this file. Show output in the console.' }); });
+      .catch(() => { if (alive) setData({ error: t('Could not read this file. Show output in the console.') }); });
     return () => { alive = false; };
   }, [repositoryId, file, source]);
 
@@ -71,27 +72,27 @@ export default function FileView({ repositoryId, file, source, patch = '', withC
   const version = after ? labels.after : labels.before;
   return <>
     <div className="diff-toolbar file-toolbar">
-      <span className="diff-language" title={prefs.syntax ? undefined : 'Syntax highlighting is off in Settings'}>
-        {languageLabel(language)}{side?.state === 'ok' ? ` · ${lines.length} line${lines.length === 1 ? '' : 's'}` : ''} · {version}</span>
+      <span className="diff-language" title={prefs.syntax ? undefined : t('Syntax highlighting is off in Settings')}>
+        {languageLabel(language)}{side?.state === 'ok' ? ` · ${tn(lines.length, '{n} line', '{n} lines')}` : ''} · {version}</span>
       <div className="file-toolbar-actions">
         {side?.state === 'ok' && <>
-          <span className="file-changes" title={after ? 'Highlighted: the lines this change adds or rewrites' : 'Highlighted: the lines this change removes or rewrites'}>
+          <span className="file-changes" title={after ? t('Highlighted: the lines this change adds or rewrites') : t('Highlighted: the lines this change removes or rewrites')}>
             {changeSummary({ starts, withChanges: after, patched: Boolean(patch) })}</span>
           {starts.length > 0 && <>
-            <Button icon={ChevronUp} aria-label="Previous change" title="Previous change" onClick={() => go(-1)} />
-            <Button icon={ChevronDown} aria-label="Next change" title="Next change" onClick={() => go(1)} />
+            <Button icon={ChevronUp} aria-label={t('Previous change')} title={t('Previous change')} onClick={() => go(-1)} />
+            <Button icon={ChevronDown} aria-label={t('Next change')} title={t('Next change')} onClick={() => go(1)} />
           </>}
         </>}
-        {labels.toggle && <label className="switch" title={`On: the file ${labels.after}. Off: the file ${labels.before}.`}>
+        {labels.toggle && <label className="switch" title={t`On: the file ${labels.after}. Off: the file ${labels.before}.`}>
           <input type="checkbox" checked={withChanges} onChange={event => onWithChanges(event.target.checked)} /><span className="track" />{labels.toggle}</label>}
       </div>
     </div>
-    {!data ? <div className="loading-shell" aria-label="Loading file"><div className="skeleton" /><div className="skeleton" /></div>
-      : data.error ? <p role="alert" className="empty-inline">{data.error} <button onClick={onConsole}>Show output</button></p>
+    {!data ? <div className="loading-shell" aria-label={t('Loading file')}><div className="skeleton" /><div className="skeleton" /></div>
+      : data.error ? <p role="alert" className="empty-inline">{data.error} <button onClick={onConsole}>{t('Show output')}</button></p>
       : problem ? <p className="empty-inline">{problem}
         {other?.state === 'ok' && labels.toggle && <> <button type="button" className="text-button" onClick={() => onWithChanges(!withChanges)}>
-          Show it {after ? labels.before : labels.after}</button></>}</p>
-      : !lines.length ? <p className="empty-inline">The file is empty {version}.</p>
+          {t`Show it ${after ? labels.before : labels.after}`}</button></>}</p>
+      : !lines.length ? <p className="empty-inline">{t`The file is empty ${version}.`}</p>
       : <RowScroller ref={scroller} rows={rows} gutter="file" style={style} label={`${file} ${version}`}
         className={`diff-lines file-lines${syntax ? ' diff-syntax' : ''}${className ? ` ${className}` : ''}`} />}
   </>;

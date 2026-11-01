@@ -1,5 +1,6 @@
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Branch, tag and checkout operations — the non-history-rewriting half of the
@@ -73,9 +74,9 @@ export function buildDeleteTagArgv(name) {
   return ['tag', '-d', '--', validateRefName(name)];
 }
 
-async function mutate({ cwd, log, argv, operation, stdin = null }) {
+async function mutate({ cwd, log, argv, operation, failed, stdin = null }) {
   const result = await runGit({ argv, cwd, log, operation, stdin });
-  if (result.code !== 0) throw new Error(`${operation} failed. See the command console.`);
+  if (result.code !== 0) throw new Error(failed);
   return result;
 }
 
@@ -83,13 +84,14 @@ async function mutate({ cwd, log, argv, operation, stdin = null }) {
 export function createBranch({ cwd, log, name, startPoint, checkout = false }) {
   return mutate({
     cwd, log, operation: checkout ? 'Create and check out branch' : 'Create branch',
+    failed: checkout ? ui`Create and check out branch failed. See the command console.` : ui`Create branch failed. See the command console.`,
     argv: checkout ? buildCheckoutNewBranchArgv(name, startPoint) : buildCreateBranchArgv(name, startPoint)
   }).then(() => true);
 }
 
 /** @param {{ cwd: string, log: object, name: string }} options */
 export function deleteBranch({ cwd, log, name, force = false }) {
-  return mutate({ cwd, log, argv: buildDeleteBranchArgv(name, force), operation: 'Delete branch' }).then(() => true);
+  return mutate({ cwd, log, argv: buildDeleteBranchArgv(name, force), operation: 'Delete branch', failed: ui`Delete branch failed. See the command console.` }).then(() => true);
 }
 
 /** @param {{ cwd: string, log: object, name: string, oid: string, message?: string }} options */
@@ -97,7 +99,8 @@ export function createTag({ cwd, log, name, oid, message = '' }) {
   const annotated = message.trim().length > 0;
   return mutate({
     cwd, log, argv: buildCreateTagArgv(name, oid, annotated),
-    stdin: annotated ? message : null, operation: annotated ? 'Create annotated tag' : 'Create tag'
+    stdin: annotated ? message : null, operation: annotated ? 'Create annotated tag' : 'Create tag',
+    failed: annotated ? ui`Create annotated tag failed. See the command console.` : ui`Create tag failed. See the command console.`
   }).then(() => true);
 }
 
@@ -119,24 +122,27 @@ export async function readTagRef({ cwd, log, name }) {
 export function checkout({ cwd, log, target, detach = false }) {
   return mutate({
     cwd, log, operation: detach ? 'Check out commit' : 'Check out branch',
+    failed: detach ? ui`Check out commit failed. See the command console.` : ui`Check out branch failed. See the command console.`,
     argv: detach ? buildCheckoutCommitArgv(target) : buildCheckoutBranchArgv(target)
   }).then(() => true);
 }
 
 /** @param {{ cwd: string, log: object, from: string, to: string }} options */
 export function renameBranch({ cwd, log, from, to }) {
-  return mutate({ cwd, log, argv: buildRenameBranchArgv(from, to), operation: `Rename branch ${from} to ${to}` }).then(() => true);
+  return mutate({ cwd, log, argv: buildRenameBranchArgv(from, to), operation: `Rename branch ${from} to ${to}`,
+    failed: ui`Rename branch ${from} to ${to} failed. See the command console.` }).then(() => true);
 }
 
 /** @param {{ cwd: string, log: object, branch: string, upstream: ?string }} options */
 export function setUpstream({ cwd, log, branch, upstream }) {
   return mutate({
     cwd, log, argv: buildUpstreamArgv(branch, upstream),
-    operation: upstream === null ? `Unset upstream of ${branch}` : `Track ${upstream} from ${branch}`
+    operation: upstream === null ? `Unset upstream of ${branch}` : `Track ${upstream} from ${branch}`,
+    failed: upstream === null ? ui`Unset upstream of ${branch} failed. See the command console.` : ui`Track ${upstream} from ${branch} failed. See the command console.`
   }).then(() => true);
 }
 
 /** @param {{ cwd: string, log: object, name: string }} options */
 export function deleteTag({ cwd, log, name }) {
-  return mutate({ cwd, log, argv: buildDeleteTagArgv(name), operation: `Delete tag ${name}` }).then(() => true);
+  return mutate({ cwd, log, argv: buildDeleteTagArgv(name), operation: `Delete tag ${name}`, failed: ui`Delete tag ${name} failed. See the command console.` }).then(() => true);
 }

@@ -64,7 +64,7 @@ try {
   await writeFile(path.join(cwd, 'art/logo.png'), png(260, 160, scene([BADGE, AMBER])));
   await writeFile(path.join(cwd, 'art/new.png'), png(32, 32, (x, y) => ((x >> 3) + (y >> 3)) % 2 ? [200, 60, 60, 255] : [0, 0, 0, 0]));
 
-  const env = { ...process.env };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'profile')}`], env });

@@ -12,7 +12,7 @@ const errors = [];
 let app;
 let server;
 try {
-  const env = { ...process.env };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.TWIG_DEV;
   if (process.argv.includes('--dev')) {
@@ -37,7 +37,7 @@ try {
   // exposed to the renderer has to fail this check rather than ship.
   assert.deepEqual(await page.evaluate(() => Object.keys(window.twig).sort()), [
     'applySelection', 'cancelSync', 'checkoutRef', 'cherryPick', 'compareCommits', 'copyText', 'createBranch',
-    'checkForUpdate', 'getUpdateState', 'downloadUpdate', 'cancelUpdate', 'installUpdate', 'setAutoUpdateCheck', 'onUpdateState', 'createCommit', 'createTag', 'getAppInfo', 'getCommit', 'getCommitFiles', 'getConsoleEntries', 'getConsoleOutput',
+    'checkForUpdate', 'getUpdateState', 'downloadUpdate', 'cancelUpdate', 'installUpdate', 'setAutoUpdateCheck', 'onUpdateState', 'createCommit', 'createTag', 'getAppInfo', 'getLanguage', 'setLanguage', 'getCommit', 'getCommitFiles', 'getConsoleEntries', 'getConsoleOutput',
     'getDivergence', 'getFileDiff', 'getImagePair', 'getFileText', 'getFileHistory', 'getGitProfile', 'getHistoryPage', 'getOperationState', 'getRebaseCandidates', 'getRefs',
     'getWorkspace', 'getWorktreeDiff', 'markConflictResolved', 'searchHistory', 'mergeRevision', 'onConsoleUpdate', 'openRepository',
     'readConflict', 'readWorktree', 'rebaseOnto', 'resetTo', 'revertCommit', 'rewordCommit', 'runSequencer', 'runSync',

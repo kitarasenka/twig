@@ -17,7 +17,7 @@ try {
     assert.equal(result.code, 0, result.stderr); return result.stdout.trim();
   };
   await git(['init', '--initial-branch=main']);
-  const env = { ...process.env, ...isolation }; delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
+  const env = { ...process.env, TWIG_LANGUAGE: 'en', ...isolation }; delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'app')}`], env });
   const page = await app.firstWindow(); page.setDefaultTimeout(15000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));

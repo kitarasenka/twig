@@ -1,5 +1,7 @@
+import { ui } from '../../renderer/src/i18n/i18n.js';
 // Shared by the console input (renderer) and the `console:run-command` IPC
-// handler, and exercised by scripts/checks/read-only-command.mjs. No imports.
+// handler, and exercised by scripts/checks/read-only-command.mjs. Imports only the
+// import-free i18n module (its messages are marked for translation).
 //
 // The console lets a user type a git command, but only a read-only one. This is
 // NOT a shell and NOT a universal exec: `tokenize` refuses shell operators and
@@ -18,10 +20,10 @@ const FORBIDDEN = /[;&|<>$`\n\r]/;
 export function tokenize(input) {
   if (typeof input !== 'string') throw new TypeError('A command must be a string.');
   const text = input.trim();
-  if (!text) throw new TypeError('Type a git command.');
-  if (text.length > 4096) throw new TypeError('This command is too long.');
+  if (!text) throw new TypeError(ui`Type a git command.`);
+  if (text.length > 4096) throw new TypeError(ui`This command is too long.`);
   if (FORBIDDEN.test(text)) {
-    throw new TypeError('A git command here cannot contain shell operators (& | ; < > $ ` or newlines).');
+    throw new TypeError(ui`A git command here cannot contain shell operators (& | ; < > $ \` or newlines).`);
   }
 
   const argv = [];
@@ -38,7 +40,7 @@ export function tokenize(input) {
     if (char === '"' || char === "'") { quote = char; hasToken = true; continue; }
     if (char === '\\') {
       const next = text[i + 1];
-      if (next === undefined) throw new TypeError('A command cannot end with a lone backslash.');
+      if (next === undefined) throw new TypeError(ui`A command cannot end with a lone backslash.`);
       current += next; i++; hasToken = true;
       continue;
     }
@@ -48,10 +50,10 @@ export function tokenize(input) {
     }
     current += char; hasToken = true;
   }
-  if (quote) throw new TypeError('This command has an unbalanced quote.');
+  if (quote) throw new TypeError(ui`This command has an unbalanced quote.`);
   if (hasToken) argv.push(current);
   if (argv.length > 0 && argv[0].toLowerCase() === 'git') argv.shift();
-  if (argv.length === 0) throw new TypeError('Type a git command.');
+  if (argv.length === 0) throw new TypeError(ui`Type a git command.`);
   return argv;
 }
 
@@ -135,13 +137,13 @@ const bareName = token => token.split('=', 1)[0];
  * @returns {{ ok: true } | { ok: false, reason: string }}
  */
 export function checkReadOnly(argv) {
-  if (!Array.isArray(argv) || argv.length === 0) return { ok: false, reason: 'Type a git command.' };
+  if (!Array.isArray(argv) || argv.length === 0) return { ok: false, reason: ui`Type a git command.` };
   const sub = argv[0];
   if (isOption(sub)) {
-    return { ok: false, reason: 'Global options (like -c or -C) are not allowed here — start with a git subcommand.' };
+    return { ok: false, reason: ui`Global options (like -c or -C) are not allowed here — start with a git subcommand.` };
   }
   if (!READ_ONLY.has(sub)) {
-    return { ok: false, reason: `"${sub}" is not an allowed read-only git command. Use the app for anything that changes the repository.` };
+    return { ok: false, reason: ui`"${sub}" is not an allowed read-only git command. Use the app for anything that changes the repository.` };
   }
 
   const rest = argv.slice(1);
@@ -150,19 +152,19 @@ export function checkReadOnly(argv) {
     if (!isOption(token)) continue;
     const option = forbiddenOption(sub, token);
     if (option) {
-      return { ok: false, reason: `${option} is not allowed here — it can read or write a file or run an external program.` };
+      return { ok: false, reason: ui`${option} is not allowed here — it can read or write a file or run an external program.` };
     }
   }
   // `git var -l` prints the whole config, credentials in URLs and headers included.
   if (sub === 'var' && rest.some(token => token === '-l')) {
-    return { ok: false, reason: '"git var -l" prints the whole configuration and is not allowed here.' };
+    return { ok: false, reason: ui`"git var -l" prints the whole configuration and is not allowed here.` };
   }
 
   const subverbs = MUTATING_SUBVERBS[sub];
   if (subverbs) {
     const first = rest.find(token => !isOption(token));
     if (first && subverbs.has(first)) {
-      return { ok: false, reason: `"git ${sub} ${first}" changes the repository and is not allowed here.` };
+      return { ok: false, reason: ui`"git ${sub} ${first}" changes the repository and is not allowed here.` };
     }
   }
 
@@ -170,7 +172,7 @@ export function checkReadOnly(argv) {
   if (listing) {
     const first = rest.find(token => !isOption(token));
     if (!first || !listing.has(first)) {
-      return { ok: false, reason: `"git ${sub}" only reads here as "${[...listing].map(verb => `${sub} ${verb}`).join('" or "')}".` };
+      return { ok: false, reason: ui`"git ${sub}" only reads here as "${[...listing].map(verb => `${sub} ${verb}`).join('" or "')}".` };
     }
   }
 
@@ -182,27 +184,27 @@ export function checkReadOnly(argv) {
 
   if (sub === 'branch') {
     for (const token of rest) if (BRANCH_WRITE.has(bareName(token))) {
-      return { ok: false, reason: `"git branch ${bareName(token)}" creates, deletes or moves a branch and is not allowed here.` };
+      return { ok: false, reason: ui`"git branch ${bareName(token)}" creates, deletes or moves a branch and is not allowed here.` };
     }
     const inListMode = rest.some(token => FILTERS.includes(bareName(token)));
     if (countPositionals(rest, VALUE_OPTS) > 0 && !inListMode) {
-      return { ok: false, reason: 'Give "git branch" a name only with -l to match it — a bare name would create a branch.' };
+      return { ok: false, reason: ui`Give "git branch" a name only with -l to match it — a bare name would create a branch.` };
     }
   }
 
   if (sub === 'tag') {
     for (const token of rest) if (TAG_WRITE.has(bareName(token))) {
-      return { ok: false, reason: `"git tag ${bareName(token)}" writes a tag and is not allowed here.` };
+      return { ok: false, reason: ui`"git tag ${bareName(token)}" writes a tag and is not allowed here.` };
     }
     const inListMode = rest.some(token => FILTERS.includes(bareName(token)) || /^-n\d*$/.test(token));
     if (countPositionals(rest, VALUE_OPTS) > 0 && !inListMode) {
-      return { ok: false, reason: 'Give "git tag" a name only with -l to match it — a bare name would create a tag.' };
+      return { ok: false, reason: ui`Give "git tag" a name only with -l to match it — a bare name would create a tag.` };
     }
   }
 
   if (sub === 'symbolic-ref') {
-    if (rest.some(token => ['-d', '--delete'].includes(token))) return { ok: false, reason: '"git symbolic-ref -d" deletes a ref and is not allowed here.' };
-    if (countPositionals(rest, new Set()) >= 2) return { ok: false, reason: '"git symbolic-ref <name> <ref>" writes a ref and is not allowed here.' };
+    if (rest.some(token => ['-d', '--delete'].includes(token))) return { ok: false, reason: ui`"git symbolic-ref -d" deletes a ref and is not allowed here.` };
+    if (countPositionals(rest, new Set()) >= 2) return { ok: false, reason: ui`"git symbolic-ref <name> <ref>" writes a ref and is not allowed here.` };
   }
 
   return { ok: true };

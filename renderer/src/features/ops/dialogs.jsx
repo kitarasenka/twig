@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
+import { t } from '../../i18n/i18n.js';
+import { tx } from '../../i18n/rich.js';
 
 /** An argument with a space or a quote is shown quoted, so it reads as the one word Git receives. */
 const shown = command => command.map(arg => (/[\s"'`$\\]/.test(arg) ? JSON.stringify(arg) : arg)).join(' ');
@@ -18,10 +20,10 @@ export function ConfirmDialog({ title, command, consequence, confirmLabel, dange
   return <Dialog title={title} onClose={onClose}>
     <div className="confirm-dialog">
       <p className="confirm-consequence"><AlertTriangle aria-hidden="true" />{consequence}</p>
-      <p className="muted">{commands.length === 1 ? 'This command will run:' : 'These commands will run, in order:'}</p>
+      <p className="muted">{commands.length === 1 ? t('This command will run:') : t('These commands will run, in order:')}</p>
       {commands.map((argv, index) => <code key={index} className="confirm-command">$ git {shown(argv)}</code>)}
       <div className="dialog-actions">
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{t('Cancel')}</Button>
         <Button className={danger ? 'danger' : 'primary'} onClick={() => { onClose(); onConfirm(); }}>{confirmLabel}</Button>
       </div>
     </div>
@@ -52,15 +54,16 @@ export function NameDialog({ title, label, placeholder, confirmLabel, extra, wit
       <input id="ref-name" value={name} placeholder={placeholder} autoComplete="off" spellCheck={false}
         onFocus={initialValue ? event => event.currentTarget.select() : undefined}
         aria-describedby={invalid ? 'ref-name-error' : undefined} onChange={event => setName(event.target.value)} />
-      {invalid && <p id="ref-name-error" role="alert" className="warn">A Git ref name cannot contain spaces, <code>..</code>, <code>~^:?*[\</code>, or end with <code>/</code> or <code>.lock</code>.</p>}
+      {invalid && <p id="ref-name-error" role="alert" className="warn">{tx('A Git ref name cannot contain spaces, {dots}, {symbols}, or end with {slash} or {lock}.',
+        { dots: <code>..</code>, symbols: <code>~^:?*[\</code>, slash: <code>/</code>, lock: <code>.lock</code> })}</p>}
       {withMessage && <>
-        <label htmlFor="tag-message">Message (optional — a message makes it an annotated tag)</label>
+        <label htmlFor="tag-message">{t('Message (optional — a message makes it an annotated tag)')}</label>
         <textarea id="tag-message" rows={3} value={message} onChange={event => setMessage(event.target.value)} />
       </>}
       {extra && <label className="checkbox-row"><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} />{extra}</label>}
       <div className="dialog-actions">
-        <Button type="button" onClick={onClose}>Cancel</Button>
-        <Button type="submit" className="primary" reason={name.trim().length === 0 ? 'Enter a name first' : invalid ? 'This name is not valid' : unchanged ? 'That is the current name' : undefined}>{confirmLabel}</Button>
+        <Button type="button" onClick={onClose}>{t('Cancel')}</Button>
+        <Button type="submit" className="primary" reason={name.trim().length === 0 ? t('Enter a name first') : invalid ? t('This name is not valid') : unchanged ? t('That is the current name') : undefined}>{confirmLabel}</Button>
       </div>
     </form>
   </Dialog>;
@@ -80,19 +83,19 @@ export function MessageDialog({ title, label, initial, confirmLabel, command, co
   // showModal() focuses the textarea; the caret belongs after the text, not before it.
   useEffect(() => { field.current?.setSelectionRange(initial.length, initial.length); }, [initial]);
   const subject = text.split('\n')[0];
-  const reason = text.trim().length === 0 ? 'Write a message first'
-    : !allowUnchanged && text === initial ? 'This is the message it already has' : undefined;
+  const reason = text.trim().length === 0 ? t('Write a message first')
+    : !allowUnchanged && text === initial ? t('This is the message it already has') : undefined;
   return <Dialog title={title} onClose={onClose}>
     <form className="name-dialog message-dialog" onSubmit={event => { event.preventDefault(); onClose(); onConfirm(text); }}>
       <label htmlFor="reword-message">{label}</label>
       <textarea id="reword-message" ref={field} rows={6} value={text} spellCheck={false}
         onChange={event => setText(event.target.value)} />
-      <p className={subject.length > 72 ? 'warn' : 'muted'}>{subject.length}/72 in the subject</p>
+      <p className={subject.length > 72 ? 'warn' : 'muted'}>{t`${subject.length}/72 in the subject`}</p>
       <p className="confirm-consequence"><AlertTriangle aria-hidden="true" />{consequence}</p>
-      <p className="muted">This command will run:</p>
+      <p className="muted">{t('This command will run:')}</p>
       <code className="confirm-command">$ git {shown(command)}</code>
       <div className="dialog-actions">
-        <Button type="button" onClick={onClose}>Cancel</Button>
+        <Button type="button" onClick={onClose}>{t('Cancel')}</Button>
         <Button type="submit" className="primary" reason={reason}>{confirmLabel}</Button>
       </div>
     </form>

@@ -1,8 +1,10 @@
 // The "Bump version" automation action: which package.json files a commit
-// bumps, the next version for each choice, and the text edit itself. No
-// imports — Vite (the editor and the commit panel), main and the Node check
+// bumps, the next version for each choice, and the text edit itself. Only the
+// i18n import — Vite (the editor and the commit panel), main and the Node check
 // all load it. The edit is textual: only the characters of the version string
 // change, so the file's own formatting, key order and line endings stay.
+
+import { t } from '../../i18n/i18n.js';
 
 export const BUMP_CHOICES = ['none', 'patch', 'minor', 'major'];
 export const BUMP_TARGETS = ['file', 'modules'];
@@ -128,7 +130,9 @@ export function validBumpPath(file) {
 
 /** `Patch — package.json 1.2.3 → 1.2.4`, or `Don’t bump the version`, for a choice of a plan. */
 export function bumpLabel(plan, choice) {
-  if (choice === 'none') return 'Don’t bump the version';
-  const name = { patch: 'Patch', minor: 'Minor', major: 'Major' }[choice];
-  return `${name} — ${plan.targets.map(target => `${target.path} ${target.current} → ${target.next[choice]}`).join(', ')}`;
+  if (choice === 'none') return t('Don’t bump the version');
+  const versions = plan.targets.map(target => `${target.path} ${target.current} → ${target.next[choice]}`).join(', ');
+  if (choice === 'major') return t`Major — ${versions}`;
+  if (choice === 'minor') return t`Minor — ${versions}`;
+  return t`Patch — ${versions}`;
 }

@@ -5,6 +5,7 @@
  * `crypto` is available.
  */
 import { HOOK_EVENTS } from './event-labels.js';
+import { t } from '../../i18n/i18n.js';
 import { parseCommand } from './command-parse.js';
 import { BUMP_CHOICES, validBumpPath } from './version-bump.js';
 
@@ -84,29 +85,29 @@ export function normalizeConfig(raw, source = 'local') {
 export function validatePipeline(pipeline) {
   const errors = [];
   const p = normalizePipeline(pipeline, pipeline?.source);
-  if (!KNOWN_EVENTS.has(p.event)) errors.push(`Unknown event "${p.event}".`);
-  if (typeof pipeline?.name !== 'string' || !pipeline.name.trim()) errors.push('The pipeline needs a name.');
-  if (p.actions.length === 0) errors.push('Add at least one action.');
+  if (!KNOWN_EVENTS.has(p.event)) errors.push(t`Unknown event "${p.event}".`);
+  if (typeof pipeline?.name !== 'string' || !pipeline.name.trim()) errors.push(t('The pipeline needs a name.'));
+  if (p.actions.length === 0) errors.push(t('Add at least one action.'));
   p.actions.forEach((action, index) => {
-    const where = `Action ${index + 1}`;
+    const number = index + 1;
     if (action.type === 'command' || action.type === 'custom') {
-      if (!action.command.trim()) errors.push(`${where}: enter a command.`);
-      else try { parseCommand(action.command); } catch (error) { errors.push(`${where}: ${error.message}`); }
+      if (!action.command.trim()) errors.push(t`Action ${number}: enter a command.`);
+      else try { parseCommand(action.command); } catch (error) { errors.push(t`Action ${number}: ${error.message}`); }
     }
     if (action.type === 'script') {
-      if (!action.path.trim()) errors.push(`${where}: choose a script path.`);
+      if (!action.path.trim()) errors.push(t`Action ${number}: choose a script path.`);
       else if (action.path.includes('..') || action.path.startsWith('/') || action.path.startsWith('~') || /\0/.test(action.path)) {
-        errors.push(`${where}: the script path must be inside the repository.`);
+        errors.push(t`Action ${number}: the script path must be inside the repository.`);
       }
-      if (action.args) try { parseCommand(`x ${action.args}`); } catch (error) { errors.push(`${where}: ${error.message}`); }
+      if (action.args) try { parseCommand(`x ${action.args}`); } catch (error) { errors.push(t`Action ${number}: ${error.message}`); }
     }
     if (action.type === 'bumpVersion') {
-      if (p.event !== 'pre-commit') errors.push(`${where}: a version bump belongs to Before Commit (pre-commit).`);
-      if (action.target === 'file' && !validBumpPath(action.path)) errors.push(`${where}: name a package.json inside the repository.`);
+      if (p.event !== 'pre-commit') errors.push(t`Action ${number}: a version bump belongs to Before Commit (pre-commit).`);
+      if (action.target === 'file' && !validBumpPath(action.path)) errors.push(t`Action ${number}: name a package.json inside the repository.`);
     }
-    if (action.type === 'checkBranch' && action.block.length === 0) errors.push(`${where}: list at least one protected branch.`);
+    if (action.type === 'checkBranch' && action.block.length === 0) errors.push(t`Action ${number}: list at least one protected branch.`);
     if (action.type === 'validateMessage' && !['conventional', 'regex', 'ticketPrefix'].includes(action.rule.mode)) {
-      errors.push(`${where}: choose a message rule.`);
+      errors.push(t`Action ${number}: choose a message rule.`);
     }
   });
   return { valid: errors.length === 0, errors };

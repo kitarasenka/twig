@@ -11,6 +11,7 @@ import FileStatus from '../diff/FileStatus.jsx';
 import FileTree from '../diff/FileTree.jsx';
 import { baseName } from '../diff/file-filter.js';
 import { isMenuKey } from '../../app/shortcuts.js';
+import { formatDateTime, t, tn } from '../../i18n/i18n.js';
 
 function ForgeIcon({ forge, ...props }) {
   if (forge === 'github') return <Github {...props} />;
@@ -43,8 +44,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** "9 Oct 2026, 14:32" in the machine's time zone; an unreadable date stays as Git wrote it. */
 function dateTime(value) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value || '') : date.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return value ? formatDateTime(value, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 }
 
 // The author card and message body start collapsed; the choice is remembered
@@ -84,7 +84,7 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
     let alive = true;
     setAllFiles(null); setFileError('');
     if (all && commit?.oid && !range) window.twig.getCommitFiles(repositoryId, commit.oid)
-      .then(files => { if (alive) setAllFiles(files); }).catch(() => { if (alive) setFileError('Could not load the file tree.'); });
+      .then(files => { if (alive) setAllFiles(files); }).catch(() => { if (alive) setFileError(t('Could not load the file tree.')); });
     return () => { alive = false; };
   }, [repositoryId, commit?.oid, all, range]);
   // Verifying runs gpg or ssh-keygen through Git, so it is read after the
@@ -112,64 +112,64 @@ export default function CommitPanel({ repositoryId, commit, loading, error, onCl
   // The file whose diff is open in the centre stays lit, as in the uncommitted panel.
   const fileButton = (file, label) => <button className="commit-file" key={file.path} aria-pressed={file.path === openPath}
     onClick={() => onFile(file.path)} title={file.path} {...fileMenuProps(file.path, onFileMenu)}><FileStatus status={file.status} /><span>{label}</span></button>;
-  return <aside className="commit-detail" aria-label="Commit details">
+  return <aside className="commit-detail" aria-label={t('Commit details')}>
     <header className="panel-heading">
-      <span>{range ? 'COMPARE' : 'COMMIT'} <code>{commit?.oid.slice(0, 8) || '…'}</code></span>
-      {links?.commit && <a className="forge-link" href={links.commit} rel="noreferrer" title={`Open this commit on ${forgeLabel(links.forge)}`}>
+      <span>{range ? t('COMPARE') : t('COMMIT')} <code>{commit?.oid.slice(0, 8) || '…'}</code></span>
+      {links?.commit && <a className="forge-link" href={links.commit} rel="noreferrer" title={t`Open this commit on ${forgeLabel(links.forge)}`}>
         <ForgeIcon forge={links.forge} aria-hidden="true" /><span>{forgeLabel(links.forge)}</span>
       </a>}
-      <Button icon={X} aria-label="Close commit details" onClick={onClose} />
+      <Button icon={X} aria-label={t('Close commit details')} onClick={onClose} />
     </header>
     <div className="detail-content">
-      {loading && <div aria-busy="true" aria-label="Loading commit">{Array.from({ length: 8 }, (_, i) => <div className="skeleton detail-skeleton" key={i} />)}</div>}
-      {error && <p role="alert">{error} <button onClick={onConsole}>Show output</button></p>}
+      {loading && <div aria-busy="true" aria-label={t('Loading commit')}>{Array.from({ length: 8 }, (_, i) => <div className="skeleton detail-skeleton" key={i} />)}</div>}
+      {error && <p role="alert">{error} <button onClick={onConsole}>{t('Show output')}</button></p>}
       {!loading && !error && commit && <>
-        {range && <p className="muted">Changes from {range.base.slice(0, 8)} to {range.oid.slice(0, 8)}</p>}
-        <h2>{commit.subject || '(no subject)'}</h2>
+        {range && <p className="muted">{t`Changes from ${range.base.slice(0, 8)} to ${range.oid.slice(0, 8)}`}</p>}
+        <h2>{commit.subject || t('(no subject)')}</h2>
         {!range && <p className="commit-byline">
           <span className={`author-dot author-tint-${authorTint(commit.author)}`} aria-hidden="true">{authorInitials(commit.author.name)}</span>
           <span className="commit-byline-name" title={email}>{commit.author.name}</span>
-          <time dateTime={commit.author.date} title={commit.committedAt !== commit.author.date ? `Committed ${dateTime(commit.committedAt)}` : undefined}>{dateTime(commit.author.date)}</time>
+          <time dateTime={commit.author.date} title={commit.committedAt !== commit.author.date ? t`Committed ${dateTime(commit.committedAt)}` : undefined}>{dateTime(commit.author.date)}</time>
         </p>}
         {!range && signature?.signed && <SignatureLine signature={signature} />}
         {!range && <button type="button" className="text-button details-toggle" aria-expanded={showDetails}
           onClick={() => { const next = !showDetails; setShowDetails(next); saveShowDetails(next); }}>
-          {showDetails ? 'Hide details' : 'Show details'}
+          {showDetails ? t('Hide details') : t('Show details')}
         </button>}
         {(showDetails || range) && <>
           {commit.body && <pre className="commit-body">{commit.body}</pre>}
           <div className="author-card"><span className="avatar">{commit.author.name.split(/\s+/).slice(0, 2).map(part => part[0]).join('')}</span><div>
-            <strong>{commit.author.name}{links?.authorCommits && <a className="forge-link" href={links.authorCommits} rel="noreferrer" title={`Commits by ${commit.author.name} on ${forgeLabel(links.forge)}`}><ForgeIcon forge={links.forge} aria-hidden="true" /></a>}</strong>
+            <strong>{commit.author.name}{links?.authorCommits && <a className="forge-link" href={links.authorCommits} rel="noreferrer" title={t`Commits by ${commit.author.name} on ${forgeLabel(links.forge)}`}><ForgeIcon forge={links.forge} aria-hidden="true" /></a>}</strong>
             <span>{EMAIL.test(email) ? <a className="text-link" href={`mailto:${email}`}>{email}</a> : email}</span>
           </div></div>
-          <dl className="metadata"><dt>Authored</dt><dd>{new Date(commit.author.date).toLocaleString('en-GB')}</dd><dt>Committed</dt><dd className={ageTextClass(age)} title={age === null ? undefined : AGE_STOPS[age].label}>{new Date(commit.committedAt).toLocaleString('en-GB')}</dd><dt>Parents</dt><dd>{commit.parents.length ? commit.parents.map(oid => <button key={oid} className="text-button" onClick={() => onParent(oid)}>{oid.slice(0, 8)}</button>) : 'Root commit'}</dd>
-            {!range && <><dt>Signature</dt><dd>{signature?.error ? 'Could not be read' : signatureView(signature).label}</dd></>}</dl>
+          <dl className="metadata"><dt>{t('Authored')}</dt><dd>{formatDateTime(commit.author.date, { dateStyle: 'short', timeStyle: 'medium' })}</dd><dt>{t('Committed')}</dt><dd className={ageTextClass(age)} title={age === null ? undefined : t(AGE_STOPS[age].label)}>{formatDateTime(commit.committedAt, { dateStyle: 'short', timeStyle: 'medium' })}</dd><dt>{t('Parents')}</dt><dd>{commit.parents.length ? commit.parents.map(oid => <button key={oid} className="text-button" onClick={() => onParent(oid)}>{oid.slice(0, 8)}</button>) : t('Root commit')}</dd>
+            {!range && <><dt>{t('Signature')}</dt><dd>{signature?.error ? t('Could not be read') : signatureView(signature).label}</dd></>}</dl>
         </>}
         {!range && onSetMark && <div className="mark-editor">
-          <div className="mark-swatches" role="group" aria-label="Commit mark colour">
-            <span className="mark-label">{mark ? 'Mark' : 'Mark this commit'}</span>
+          <div className="mark-swatches" role="group" aria-label={t('Commit mark colour')}>
+            <span className="mark-label">{mark ? t('Mark') : t('Mark this commit')}</span>
             {MARK_COLORS.map(color => <button key={color} type="button"
               className={`mark-swatch mark-${color} ${mark?.color === color ? 'active' : ''}`}
-              aria-pressed={mark?.color === color} aria-label={MARK_LABELS[color]} title={MARK_LABELS[color]}
+              aria-pressed={mark?.color === color} aria-label={t(MARK_LABELS[color])} title={t(MARK_LABELS[color])}
               onClick={() => onSetMark(commit.oid, color, noteDraft)} />)}
-            {mark && <button type="button" className="text-button mark-remove" onClick={() => onClearMark(commit.oid)}>Remove mark</button>}
+            {mark && <button type="button" className="text-button mark-remove" onClick={() => onClearMark(commit.oid)}>{t('Remove mark')}</button>}
           </div>
           {mark && <div className="mark-note">
-            <textarea aria-label="Mark note" placeholder="Note (optional)" rows={2} maxLength={2000}
+            <textarea aria-label={t('Mark note')} placeholder={t('Note (optional)')} rows={2} maxLength={2000}
               value={noteDraft} onChange={e => setNoteDraft(e.target.value)} />
             <Button className="secondary" onClick={() => onSetMark(commit.oid, mark.color, noteDraft)}
-              reason={noteDraft === (mark.note || '') ? 'The note is unchanged' : undefined}>Save note</Button>
+              reason={noteDraft === (mark.note || '') ? t('The note is unchanged') : undefined}>{t('Save note')}</Button>
           </div>}
         </div>}
-        <div className="files-heading"><FilePenLine /><strong>{commit.files.length} changed file{commit.files.length === 1 ? '' : 's'}</strong></div>
-        {commit.parents.length > 1 && !range && <p className="muted">Compared with first parent</p>}
-        <div className="file-controls"><div className="segmented"><button aria-pressed={!tree} onClick={() => setTree(false)}>Path</button><button aria-pressed={tree} onClick={() => setTree(true)}>Tree</button></div><label><input type="checkbox" checked={all && !range} disabled={Boolean(range)} onChange={e => setAll(e.target.checked)} /> All files</label></div>
-        <div className="file-controls"><input aria-label="Filter commit files" placeholder="Filter files" value={filter} onChange={e => setFilter(e.target.value)} /><select aria-label="Sort commit files" value={sort} onChange={e => setSort(e.target.value)}>{FILE_SORTS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
-        {fileError && <p role="alert">{fileError}<button onClick={onConsole}>Show output</button></p>}
-        {all && !allFiles && !range ? <div className="skeleton" aria-label="Loading files" /> : tree ? <FileTree files={files} startOpen={files.length <= FILE_STEP} resetKey={files}
+        <div className="files-heading"><FilePenLine /><strong>{tn(commit.files.length, '{n} changed file', '{n} changed files')}</strong></div>
+        {commit.parents.length > 1 && !range && <p className="muted">{t('Compared with first parent')}</p>}
+        <div className="file-controls"><div className="segmented"><button aria-pressed={!tree} onClick={() => setTree(false)}>{t('Path')}</button><button aria-pressed={tree} onClick={() => setTree(true)}>{t('Tree')}</button></div><label><input type="checkbox" checked={all && !range} disabled={Boolean(range)} onChange={e => setAll(e.target.checked)} /> {t('All files')}</label></div>
+        <div className="file-controls"><input aria-label={t('Filter commit files')} placeholder={t('Filter files')} value={filter} onChange={e => setFilter(e.target.value)} /><select aria-label={t('Sort commit files')} value={sort} onChange={e => setSort(e.target.value)}>{FILE_SORTS.map(option => <option key={option.value} value={option.value}>{t(option.label)}</option>)}</select></div>
+        {fileError && <p role="alert">{fileError}<button onClick={onConsole}>{t('Show output')}</button></p>}
+        {all && !allFiles && !range ? <div className="skeleton" aria-label={t('Loading files')} /> : tree ? <FileTree files={files} startOpen={files.length <= FILE_STEP} resetKey={files}
           renderFile={file => fileButton(file, baseName(file.path))} /> : <>{files.slice(0, fileLimit).map(file => fileButton(file, file.path))}
-          {files.length > fileLimit && <button type="button" className="text-button" onClick={() => setFileLimit(files.length)}>Show all {files.length} files</button>}</>}
-        {!files.length && (!all || allFiles) && <p className="muted">No matching files.</p>}
+          {files.length > fileLimit && <button type="button" className="text-button" onClick={() => setFileLimit(files.length)}>{tn(files.length, 'Show all {n} file', 'Show all {n} files')}</button>}</>}
+        {!files.length && (!all || allFiles) && <p className="muted">{t('No matching files.')}</p>}
       </>}
     </div>
   </aside>;

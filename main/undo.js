@@ -4,6 +4,7 @@ import { captureState } from './git/undo-snapshot.js';
 import { UNDOABLE_KINDS, buildUndoPlan, inverseReason } from './git/undo-plan.js';
 import { runGit } from './git/exec.js';
 import { readJsonFile, writeFileAtomic } from './json-file.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 // The state a skipped snapshot stands for when only a reason is needed: no
 // operation in progress, nothing left in the working tree to lose.
@@ -20,7 +21,7 @@ export class UndoService {
     } catch { this.#states.clear(); }
   }
   #state(cwd) {
-    if (!this.#states.has(cwd)) this.#states.set(cwd, { undo: [], redo: [], reason: 'No application actions to undo.' });
+    if (!this.#states.has(cwd)) this.#states.set(cwd, { undo: [], redo: [], reason: ui`No application actions to undo.` });
     return this.#states.get(cwd);
   }
   #break(cwd, reason) { this.#states.set(cwd, { undo: [], redo: [], reason }); }
@@ -45,22 +46,22 @@ export class UndoService {
   async inspect(cwd) {
     const state = this.#state(cwd);
     const summary = reason => ({ undo: false, redo: false, undoReason: reason, redoReason: reason });
-    if (this.#busy.has(cwd)) return summary('A repository action is running.');
+    if (this.#busy.has(cwd)) return summary(ui`A repository action is running.`);
     if (!state.undo.length && !state.redo.length) return summary(state.reason);
     const version = this.#versions.get(cwd);
     const current = await captureState({ cwd, log: this.log });
-    if (version !== this.#versions.get(cwd)) return summary('Repository actions changed while checking Undo.');
+    if (version !== this.#versions.get(cwd)) return summary(ui`Repository actions changed while checking Undo.`);
     const expected = state.redo.at(-1)?.redoState || state.undo.at(-1)?.after;
     if (current.digest !== expected?.digest) {
-      this.#break(cwd, 'The repository changed outside the recorded action. The Undo chain has ended.');
+      this.#break(cwd, ui`The repository changed outside the recorded action. The Undo chain has ended.`);
       await this.#save(); return summary(this.#state(cwd).reason);
     }
     return { undo: Boolean(state.undo.length), redo: Boolean(state.redo.length),
-      undoReason: state.undo.length ? `Undo ${state.undo.at(-1).kind.replaceAll(':', ' ')}` : 'No earlier action.',
-      redoReason: state.redo.length ? `Redo ${state.redo.at(-1).kind.replaceAll(':', ' ')}` : 'No next action.' };
+      undoReason: state.undo.length ? ui`Undo ${state.undo.at(-1).kind.replaceAll(':', ' ')}` : ui`No earlier action.`,
+      redoReason: state.redo.length ? ui`Redo ${state.redo.at(-1).kind.replaceAll(':', ' ')}` : ui`No next action.` };
   }
   async perform(cwd, kind, args, action) {
-    if (this.#busy.has(cwd)) throw new Error('Another repository action is running. Wait for it to finish.');
+    if (this.#busy.has(cwd)) throw new Error(ui`Another repository action is running. Wait for it to finish.`);
     this.#busy.add(cwd); this.#emit(cwd);
     let before; let result; let failure;
     try {
@@ -77,7 +78,7 @@ export class UndoService {
         try { result = await action(); } catch (error) { failure = error; }
         const finished = !failure && result?.ok !== false;
         if (attempted() || (finished && !fetchOnly)) {
-          const reason = finished ? inverseReason(kind, QUIET_STATE, QUIET_STATE, args) : 'The operation did not finish normally. Continue or abort it explicitly.';
+          const reason = finished ? inverseReason(kind, QUIET_STATE, QUIET_STATE, args) : ui`The operation did not finish normally. Continue or abort it explicitly.`;
           if (reason && reason !== state.reason) { this.#break(cwd, reason); await this.#save(); }
         }
         if (failure) throw failure;
@@ -85,21 +86,21 @@ export class UndoService {
       }
       before = await captureState({ cwd, log: this.log });
       const expected = state.redo.at(-1)?.redoState || state.undo.at(-1)?.after;
-      if (expected && before.digest !== expected.digest) this.#break(cwd, 'External changes ended the Undo chain.');
+      if (expected && before.digest !== expected.digest) this.#break(cwd, ui`External changes ended the Undo chain.`);
       try { result = await action(); } catch (error) { failure = error; }
       const after = await captureState({ cwd, log: this.log });
       const changed = before.digest !== after.digest;
       const irreversibleAttempt = attempted();
       if (changed || irreversibleAttempt) {
         let reason = inverseReason(kind, before, after, args);
-        if (failure || result?.ok === false) reason = 'The operation did not finish normally. Continue or abort it explicitly.';
-        if (!reason && kind === 'worktree:discard' && !result?.undo) reason = 'The discard did not record its backup. Its content is in refs/twig/discard.';
-        if (!reason && kind === 'reflog:move-branch' && !result?.undo) reason = 'The branch move did not report where it started.';
-        if (!reason && kind === 'worktree:ignore' && !result?.undo) reason = 'The .gitignore edit did not record its backup.';
-        if (!reason && kind === 'refs:create-tag' && !result?.undo) reason = 'The tag did not report what it points to.';
+        if (failure || result?.ok === false) reason = ui`The operation did not finish normally. Continue or abort it explicitly.`;
+        if (!reason && kind === 'worktree:discard' && !result?.undo) reason = ui`The discard did not record its backup. Its content is in refs/twig/discard.`;
+        if (!reason && kind === 'reflog:move-branch' && !result?.undo) reason = ui`The branch move did not report where it started.`;
+        if (!reason && kind === 'worktree:ignore' && !result?.undo) reason = ui`The .gitignore edit did not record its backup.`;
+        if (!reason && kind === 'refs:create-tag' && !result?.undo) reason = ui`The tag did not report what it points to.`;
         if (kind === 'refs:create-branch' && !reason) {
           const ancestor = await runGit({ cwd, log: this.log, argv: ['merge-base', '--is-ancestor', args[1], before.head], operation: 'Background: check safe branch deletion' });
-          if (ancestor.code !== 0) reason = 'The new branch contains unmerged commits; branch -d would refuse its deletion.';
+          if (ancestor.code !== 0) reason = ui`The new branch contains unmerged commits; branch -d would refuse its deletion.`;
         }
         if (reason) this.#break(cwd, reason);
         else {
@@ -125,7 +126,7 @@ export class UndoService {
     if (!['undo', 'redo'].includes(direction)) throw new TypeError('Invalid Undo direction');
     const available = await this.inspect(cwd);
     if (!available[direction]) throw new Error(available[`${direction}Reason`]);
-    if (this.#busy.has(cwd)) throw new Error('Another repository action is running.');
+    if (this.#busy.has(cwd)) throw new Error(ui`Another repository action is running.`);
     this.#busy.add(cwd); this.#emit(cwd);
     const state = this.#state(cwd); const entry = state[direction].at(-1);
     try {
@@ -133,7 +134,7 @@ export class UndoService {
       if (plan.destructive && !await confirm(plan, direction)) return { ok: false, cancelled: true };
       const current = await captureState({ cwd, log: this.log });
       if (current.digest !== (direction === 'undo' ? entry.after : entry.redoState).digest) {
-        this.#break(cwd, 'The repository changed before confirmation. Nothing was reversed.');
+        this.#break(cwd, ui`The repository changed before confirmation. Nothing was reversed.`);
         throw new Error(this.#state(cwd).reason);
       }
       for (const command of plan.commands) {
@@ -141,7 +142,7 @@ export class UndoService {
         const { argv, stdin = null } = Array.isArray(command) ? { argv: command } : command;
         const result = await runGit({ cwd, log: this.log, argv, stdin, operation: `${direction === 'undo' ? 'Undo' : 'Redo'} ${entry.kind}` });
         if (result.code !== 0) {
-          this.#break(cwd, 'The inverse stopped. Inspect Git output and resolve the repository explicitly.');
+          this.#break(cwd, ui`The inverse stopped. Inspect Git output and resolve the repository explicitly.`);
           throw new Error(this.#state(cwd).reason);
         }
       }

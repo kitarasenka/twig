@@ -106,7 +106,7 @@ for (const source of main) {
 
 // Parity: the console renders the two named filters and starts on "My".
 assert.ok(console_.includes("useState('mine')"), 'the console opens on My');
-assert.ok(console_.includes('>Full History<') && console_.includes('>My<'), 'the filters are named Full History and My');
+assert.ok(console_.includes(">{t('Full History')}<") && console_.includes(">{t('My')}<"), 'the filters are named Full History and My');
 assert.ok(console_.includes('isUserCommand(entry.operation)'), 'the console filters through the shared rule');
 // The toolbar no longer carries a second switch for the console.
 assert.ok(!/>Terminal</.test(app), 'the toolbar has no Terminal button');

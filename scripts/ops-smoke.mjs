@@ -48,7 +48,7 @@ try {
   await writeFile(path.join(cwd, 'poem.txt'), 'roses\nTRUNK\nsugar\n', 'utf8');
   await git(['commit', '--all', '--message', 'trunk rewrites the middle']);
 
-  const env = { ...process.env };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'profile')}`], env });

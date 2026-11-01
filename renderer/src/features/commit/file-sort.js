@@ -1,10 +1,11 @@
-// Order of the changed files in the commit panel. No imports: Vite and the
-// Node check load it alike.
+// Order of the changed files in the commit panel. Only the i18n module is imported: Vite
+// and the Node check load it alike. Labels are marked here and shown with t(label).
+import { mark } from '../../i18n/i18n.js';
 
 export const FILE_SORTS = [
-  { value: 'path', label: 'Sort by path' },
-  { value: 'status', label: 'Sort by status' },
-  { value: 'extension', label: 'Sort by extension' }
+  { value: 'path', label: mark('Sort by path') },
+  { value: 'status', label: mark('Sort by status') },
+  { value: 'extension', label: mark('Sort by extension') }
 ];
 
 /**

@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
 import { PANEL_DEFAULT, SIDEBAR_SIZE, clampPanelWidth, dragPanelWidth, panelWidthLimits } from './panel-width.js';
+import { t } from '../i18n/i18n.js';
 
 const STEP = 16;
 const PAGE = 64;
 
-export default function Splitter({ width, onWidth, side = 'right', label = 'Commit panel width', size: sizeProp }) {
+export default function Splitter({ width, onWidth, side = 'right', label = t('Commit panel width'), size: sizeProp }) {
   const size = sizeProp ?? (side === 'left' ? SIDEBAR_SIZE : undefined);
   const defaultWidth = size?.defaultWidth ?? PANEL_DEFAULT;
   const limits = panelWidthLimits(Infinity, size);
@@ -56,7 +57,7 @@ export default function Splitter({ width, onWidth, side = 'right', label = 'Comm
 
   return <div ref={element} className={`detail-splitter ${dragging ? 'dragging' : ''}`} role="separator" tabIndex={0}
     aria-orientation="vertical" aria-label={label} aria-valuenow={width} aria-valuemin={limits.min} aria-valuemax={limits.max}
-    title="Drag to resize · double-click to reset"
+    title={t('Drag to resize · double-click to reset')}
     onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
     onDoubleClick={() => onWidth(clampPanelWidth(defaultWidth, room(), size))} onKeyDown={key} />;
 }

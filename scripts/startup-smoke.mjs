@@ -19,7 +19,7 @@ try {
   await mkdir(profile);
   await writeFile(path.join(profile, 'marks.json'), '{"/some/repo": {"aaaa');
   await writeFile(path.join(profile, 'repositories.json'), '{"repositories": [{"id": ');
-  const env = { ...process.env };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' };
   delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${profile}`], env });
   const page = await app.firstWindow();

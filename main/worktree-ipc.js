@@ -11,6 +11,7 @@ import { loadCoAuthors } from './git/co-authors.js';
 import { loadStashDiff, loadStashes, loadStashFiles, runStashAction } from './git/stash.js';
 import { loadDivergence, pushRef, runSync } from './git/sync.js';
 import { runDrop, validateDropRequest } from './git/drop.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 /**
  * Working-tree and synchronisation channels.
@@ -31,7 +32,7 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
         || !isTrustedPage(event.senderFrame.url, entryUrl) || args.length !== count
         || typeof args[0] !== 'string') throw new Error('Invalid working tree request');
       const repo = repositories.snapshot().repositories.find(item => item.id === args[0]);
-      if (!repo || !repo.available) throw new Error('Repository is unavailable');
+      if (!repo || !repo.available) throw new Error(ui`Repository is unavailable`);
       const run = () => read({ cwd: repo.path, log: journal, repoId: repo.id }, ...args.slice(1));
       // Every discard is one kind for Undo: its inverse comes from the backup it recorded.
       const kind = channel === 'stash:action' && ['apply', 'pop'].includes(args[1]) ? `stash:${args[1]}`
@@ -87,7 +88,7 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     if (typeof staged !== 'boolean' || typeof digest !== 'string' || !Array.isArray(selection)) throw new Error('Invalid apply request');
     const file = asPath(path);
     const current = await loadWorktreeDiff({ ...options, path: file, staged });
-    if (current.digest !== digest) throw new Error('This file changed since the diff was read. Refresh and select again.');
+    if (current.digest !== digest) throw new Error(ui`This file changed since the diff was read. Refresh and select again.`);
     return applySelection({
       ...options, path: file, hunks: current.hunks, selection, reverse: staged,
       added: current.added, deleted: current.deleted, mode: current.mode
@@ -172,7 +173,7 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     running.set(key, controller);
     try {
       return await undo.perform(options.cwd, 'sync:run', [mode, branch], () => controller.signal.aborted
-        ? { ok: false, cancelled: true, notStarted: true, message: 'Cancelled before Git started.' }
+        ? { ok: false, cancelled: true, notStarted: true, message: ui`Cancelled before Git started.` }
         : runSync({ ...options, mode, branch, signal: controller.signal }));
     } finally {
       if (running.get(key) === controller) running.delete(key);
@@ -193,7 +194,7 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     running.set(key, controller);
     try {
       return await undo.perform(options.cwd, 'sync:push-ref', [], () => controller.signal.aborted
-        ? { ok: false, cancelled: true, notStarted: true, message: 'Cancelled before Git started.' }
+        ? { ok: false, cancelled: true, notStarted: true, message: ui`Cancelled before Git started.` }
         : pushRef({ ...options, remote, ref, remove, signal: controller.signal }));
     } finally {
       if (running.get(key) === controller) running.delete(key);
@@ -203,12 +204,12 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
   handler('sync:drop', 2, async (options, request) => {
     validateDropRequest(request);
     const key = options.cwd;
-    if (running.has(key)) return { ok: false, notStarted: true, message: 'Another sync operation is running.' };
+    if (running.has(key)) return { ok: false, notStarted: true, message: ui`Another sync operation is running.` };
     const controller = new AbortController();
     running.set(key, controller);
     try {
       return await undo.perform(key, 'sync:drop', [], () => controller.signal.aborted
-        ? { ok: false, cancelled: true, notStarted: true, message: 'Cancelled before Git started.' }
+        ? { ok: false, cancelled: true, notStarted: true, message: ui`Cancelled before Git started.` }
         : runDrop({ ...options, request, signal: controller.signal }));
     } finally {
       if (running.get(key) === controller) running.delete(key);

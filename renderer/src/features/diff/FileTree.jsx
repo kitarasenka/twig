@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ALL_TYPES, buildFileTree, extensionOptions } from './file-filter.js';
+import { t } from '../../i18n/i18n.js';
 
 /**
  * Files under collapsible folders. `renderFile(file)` draws one file row.
@@ -34,17 +35,17 @@ export function FileListControls({ view, onView, filter, onFilter, extension, on
   const options = extensionOptions(paths, extension);
   return <>
     <div className="file-controls">
-      <div className="segmented" role="group" aria-label={`Show ${label} as`}>
-        <button aria-pressed={view === 'path'} onClick={() => onView('path')}>Path</button>
-        <button aria-pressed={view === 'tree'} onClick={() => onView('tree')}>Tree</button>
+      <div className="segmented" role="group" aria-label={t`Show ${label} as`}>
+        <button aria-pressed={view === 'path'} onClick={() => onView('path')}>{t('Path')}</button>
+        <button aria-pressed={view === 'tree'} onClick={() => onView('tree')}>{t('Tree')}</button>
       </div>
-      <select aria-label={`Filter ${label} by type`} value={extension} onChange={event => onExtension(event.target.value)}>
-        <option value={ALL_TYPES}>All types</option>
+      <select aria-label={t`Filter ${label} by type`} value={extension} onChange={event => onExtension(event.target.value)}>
+        <option value={ALL_TYPES}>{t('All types')}</option>
         {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
     </div>
     <div className="file-controls">
-      <input aria-label={`Filter ${label}`} placeholder="Filter files" value={filter} onChange={event => onFilter(event.target.value)} />
+      <input aria-label={t`Filter ${label}`} placeholder={t('Filter files')} value={filter} onChange={event => onFilter(event.target.value)} />
     </div>
   </>;
 }

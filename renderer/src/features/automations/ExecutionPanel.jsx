@@ -1,27 +1,30 @@
 import { useState } from 'react';
 import { Check, X, Loader, Minus, ShieldAlert, ScrollText } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import { mark, t, tn, tr } from '../../i18n/i18n.js';
 
 function StepIcon({ status }) {
-  if (status === 'passed') return <Check aria-label="passed" />;
-  if (status === 'failed') return <X aria-label="failed" />;
-  if (status === 'skipped') return <Minus aria-label="skipped" />;
-  return <Loader className="spin" aria-label="running" />;
+  if (status === 'passed') return <Check aria-label={t('passed')} />;
+  if (status === 'failed') return <X aria-label={t('failed')} />;
+  if (status === 'skipped') return <Minus aria-label={t('skipped')} />;
+  return <Loader className="spin" aria-label={t('running')} />;
 }
 
 function StepRow({ step, open, onToggle }) {
   const hasOutput = Boolean(step.stdout || step.stderr);
+  // The action's name is the person's own words; only main's "Bypassed" row is a message.
+  const name = step.type === 'bypass' ? tr(step.name) : step.name;
   return <>
     <li className={`step-row ${step.status}`}>
       <span className="step-icon"><StepIcon status={step.status} /></span>
       <span className="step-name">
-        {step.name}
+        {name}
         {step.command && <small title={step.command}>{step.command}</small>}
-        {step.detail && step.status !== 'passed' && <span className="step-detail">{step.detail}</span>}
+        {step.detail && step.status !== 'passed' && <span className="step-detail">{tr(step.detail)}</span>}
       </span>
       <span className="step-ms">
-        {typeof step.ms === 'number' ? `${(step.ms / 1000).toFixed(1)}s` : ''}
-        {hasOutput && <Button onClick={onToggle} aria-expanded={open} aria-label={`${open ? 'Hide' : 'View'} output for ${step.name}`}>{open ? 'Hide' : 'Output'}</Button>}
+        {typeof step.ms === 'number' ? t`${(step.ms / 1000).toFixed(1)}s` : ''}
+        {hasOutput && <Button onClick={onToggle} aria-expanded={open} aria-label={open ? t`Hide output for ${name}` : t`View output for ${name}`}>{open ? t('Hide') : t('Output')}</Button>}
       </span>
     </li>
     {open && hasOutput && <li><pre className="step-output">{[step.stdout, step.stderr].filter(Boolean).join('\n').trim()}</pre></li>}
@@ -34,12 +37,18 @@ function StepRow({ step, open, onToggle }) {
  * next. Shown as an overlay while a Git action is gated, and reused as the
  * expanded body of a log entry.
  */
-const BLOCK_NOUN = { 'pre-commit': 'Commit', 'commit-msg': 'Commit', 'prepare-commit-msg': 'Commit', 'pre-push': 'Push', 'pre-rebase': 'Rebase', 'pre-merge-commit': 'Merge' };
+const COMMIT = { blocked: mark('Commit blocked'), bypassed: mark('Checks skipped for this commit') };
+const BLOCKED = {
+  'pre-commit': COMMIT, 'commit-msg': COMMIT, 'prepare-commit-msg': COMMIT,
+  'pre-push': { blocked: mark('Push blocked'), bypassed: mark('Checks skipped for this push') },
+  'pre-rebase': { blocked: mark('Rebase blocked'), bypassed: mark('Checks skipped for this rebase') },
+  'pre-merge-commit': { blocked: mark('Merge blocked'), bypassed: mark('Checks skipped for this merge') }
+};
 
 export default function ExecutionPanel({ event, label, steps, phase, result, blocked, bypassed,
   onRetry, onRunAgain, onBypass, onClose, embedded = false }) {
   const [openStep, setOpenStep] = useState(null);
-  const noun = BLOCK_NOUN[event] || label;
+  const words = BLOCKED[event];
   const passed = steps.filter(step => step.status === 'passed').length;
   const failed = steps.filter(step => step.status === 'failed').length;
   const done = result != null;
@@ -47,36 +56,36 @@ export default function ExecutionPanel({ event, label, steps, phase, result, blo
 
   const body = <>
     <div className={`execution-verdict ${verdict}`}>
-      {verdict === 'passed' && <><Check aria-hidden="true" /> All checks passed</>}
-      {verdict === 'failed' && <><X aria-hidden="true" /> {failed} check{failed === 1 ? '' : 's'} failed</>}
-      {verdict === 'blocked' && <><ShieldAlert aria-hidden="true" /> {noun} blocked</>}
-      {verdict === 'bypassed' && <><ShieldAlert aria-hidden="true" /> Checks skipped for this {noun.toLowerCase()}</>}
-      {verdict === 'running' && <><Loader className="spin" aria-hidden="true" /> Running checks…</>}
-      {steps.length > 0 && <span className="count">{passed} passed · {failed} failed</span>}
+      {verdict === 'passed' && <><Check aria-hidden="true" /> {t('All checks passed')}</>}
+      {verdict === 'failed' && <><X aria-hidden="true" /> {tn(failed, '{n} check failed', '{n} checks failed')}</>}
+      {verdict === 'blocked' && <><ShieldAlert aria-hidden="true" /> {words ? t(words.blocked) : t`${label} blocked`}</>}
+      {verdict === 'bypassed' && <><ShieldAlert aria-hidden="true" /> {words ? t(words.bypassed) : t`Checks skipped for this ${label.toLowerCase()}`}</>}
+      {verdict === 'running' && <><Loader className="spin" aria-hidden="true" /> {t('Running checks…')}</>}
+      {steps.length > 0 && <span className="count">{t`${passed} passed · ${failed} failed`}</span>}
     </div>
     <ul className="step-list">
       {steps.map((step, index) => <StepRow key={index} step={step} open={openStep === index}
         onToggle={() => setOpenStep(current => (current === index ? null : index))} />)}
       {steps.length === 0 && done && <li className="step-row skipped"><span className="step-icon"><Minus /></span>
-        <span className="step-name">No pipeline matched this event.</span><span /></li>}
+        <span className="step-name">{t('No pipeline matched this event.')}</span><span /></li>}
     </ul>
   </>;
 
   if (embedded) return <div className="execution-inline">{body}</div>;
 
-  return <div className="execution-overlay" role="dialog" aria-modal="true" aria-label={`${label} checks`}>
+  return <div className="execution-overlay" role="dialog" aria-modal="true" aria-label={t`${label} checks`}>
     <div className="execution-panel">
-      <header><ScrollText aria-hidden="true" /><h3>{label} checks</h3>
-        {done && <Button icon={X} aria-label="Close" onClick={onClose} />}</header>
+      <header><ScrollText aria-hidden="true" /><h3>{t`${label} checks`}</h3>
+        {done && <Button icon={X} aria-label={t('Close')} onClick={onClose} />}</header>
       {body}
       <div className="dialog-actions">
-        {!done && <Button onClick={onClose}>Run in background</Button>}
+        {!done && <Button onClick={onClose}>{t('Run in background')}</Button>}
         {done && blocked && <>
-          <Button className="primary" onClick={onRetry}>Fix and retry</Button>
-          <Button className="secondary" onClick={onRunAgain}>Run again</Button>
-          <Button className={phase === 'pre' ? 'danger quiet' : ''} onClick={onBypass}>{phase === 'pre' ? 'Bypass once' : 'Dismiss'}</Button>
+          <Button className="primary" onClick={onRetry}>{t('Fix and retry')}</Button>
+          <Button className="secondary" onClick={onRunAgain}>{t('Run again')}</Button>
+          <Button className={phase === 'pre' ? 'danger quiet' : ''} onClick={onBypass}>{phase === 'pre' ? t('Bypass once') : t('Dismiss')}</Button>
         </>}
-        {done && !blocked && <Button className="primary" onClick={onClose}>Close</Button>}
+        {done && !blocked && <Button className="primary" onClick={onClose}>{t('Close')}</Button>}
       </div>
     </div>
   </div>;

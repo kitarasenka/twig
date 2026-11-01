@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 import { lstat } from 'node:fs/promises';
 import nodePath from 'node:path';
 import { runGit } from '../git/exec.js';
@@ -36,7 +37,7 @@ export async function readProposalState({ cwd, log }) {
   const head = branch.oid || null;
   const numstat = await runGit({ cwd, log, operation: 'Read change sizes for a commit proposal',
     argv: ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '--numstat', '-z', '--find-renames', ...(head ? ['HEAD'] : ['--cached']), '--'] });
-  if (numstat.code !== 0) throw new Error('Git could not count the changed lines.');
+  if (numstat.code !== 0) throw new Error(ui`Git could not count the changed lines.`);
   const counts = parseNumstat(numstat.stdout);
 
   const byPath = new Map();
@@ -179,7 +180,7 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
     const limit = now() - PROPOSAL_TTL_MS;
     for (const [id, proposal] of proposals) {
       if ((proposal.settledAt ?? proposal.createdAt) < limit) {
-        if (!proposal.outcome) settle(proposal, 'expired: nobody confirmed it in 🌱 Twig');
+        if (!proposal.outcome) settle(proposal, ui`expired: nobody confirmed it in 🌱 Twig`);
         proposals.delete(id);
       }
     }
@@ -288,11 +289,11 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
      */
     async decide(id, { action, message, bump: choice = null, tag = null }) {
       const proposal = proposals.get(id);
-      if (!proposal || proposal.outcome) throw new Error('This proposal was already answered or has expired.');
-      if (action === 'cancel') { settle(proposal, 'cancelled by user'); return { outcome: 'cancelled by user', ok: false }; }
-      if (proposal.status === 'running') throw new Error('This proposal is already being committed.');
+      if (!proposal || proposal.outcome) throw new Error(ui`This proposal was already answered or has expired.`);
+      if (action === 'cancel') { settle(proposal, ui`cancelled by user`); return { outcome: ui`cancelled by user`, ok: false }; }
+      if (proposal.status === 'running') throw new Error(ui`This proposal is already being committed.`);
       if (!isAllowed()) {
-        settle(proposal, 'not committed: commits from agents were turned off in 🌱 Twig');
+        settle(proposal, ui`not committed: commits from agents were turned off in 🌱 Twig`);
         return { outcome: proposal.outcome, ok: false };
       }
       const bumping = Boolean(proposal.bumpPlan && choice && choice !== 'none');
@@ -303,10 +304,10 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
       }
       const cwd = proposal.repo.path;
       if (tag !== null) {
-        try { validateRefName(tag); } catch { return { invalid: `${tag} is not a valid tag name.` }; }
-        if (await readTagRef({ cwd, log, name: tag })) return { invalid: `The tag ${tag} already exists. Choose another name.` };
+        try { validateRefName(tag); } catch { return { invalid: ui`${tag} is not a valid tag name.` }; }
+        if (await readTagRef({ cwd, log, name: tag })) return { invalid: ui`The tag ${tag} already exists. Choose another name.` };
       }
-      if (!committing && tag === null) return { invalid: 'There is nothing to commit. Choose a version to bump or a tag to create.' };
+      if (!committing && tag === null) return { invalid: ui`There is nothing to commit. Choose a version to bump or a tag to create.` };
       const fresh = await readProposalState({ cwd, log });
       if (fresh.fingerprint !== proposal.state.fingerprint) {
         // Show what is there now and ask again; the agent's message may no longer describe it.
@@ -323,7 +324,7 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
         settle(proposal, outcome.text);
         return { outcome: outcome.text, ok: outcome.ok };
       } catch (error) {
-        settle(proposal, `not committed: ${error.message}`);
+        settle(proposal, ui`not committed: ${error.message}`);
         return { outcome: proposal.outcome, ok: false };
       }
     },
@@ -332,7 +333,7 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
     revokeAll() {
       const wasShown = shown;
       shown = null;
-      for (const proposal of open()) if (proposal.status === 'pending') settle(proposal, 'not committed: commits from agents were turned off in 🌱 Twig');
+      for (const proposal of open()) if (proposal.status === 'pending') settle(proposal, ui`not committed: commits from agents were turned off in 🌱 Twig`);
       // A proposal already being committed keeps the dialog until it finishes.
       const running = wasShown ? proposals.get(wasShown) : null;
       if (running && !running.outcome) shown = running.id;
@@ -362,22 +363,23 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
         let bumped = [];
         try {
           const pre = await pipeline('pre-commit');
-          if (pre.blocked) { await restore(); return { ok: false, text: `not committed: a pre-commit automation blocked it\n${stepReason(pre.steps)}` }; }
+          if (pre.blocked) { await restore(); return { ok: false, text: `${ui`not committed: a pre-commit automation blocked it`}\n${stepReason(pre.steps)}` }; }
           const check = await pipeline('commit-msg', { message });
-          if (check.blocked) { await restore(); return { ok: false, text: `not committed: a commit-msg automation blocked it\n${stepReason(check.steps)}` }; }
+          if (check.blocked) { await restore(); return { ok: false, text: `${ui`not committed: a commit-msg automation blocked it`}\n${stepReason(check.steps)}` }; }
           if (bump && choice) bumped = await bump.apply({ repo, choice, plan: proposal.bumpPlan });
           await createCommit({ cwd, log, message });
         } catch (error) {
           if (bumped.length) await bump.revert({ repo, applied: bumped }).catch(() => {});
           await restore();
-          return { ok: false, text: `not committed: ${error.message}${error.detail ? `\n${error.detail}` : ''}` };
+          return { ok: false, text: `${ui`not committed: ${error.message}`}${error.detail ? `\n${error.detail}` : ''}` };
         }
         const head = await runGit({ cwd, log, argv: ['rev-parse', 'HEAD'], operation: 'Read the agent commit' });
         return { ok: true, oid: head.stdout.trim(), bumped };
       });
       if (!committed.ok) return committed;
       void pipeline('post-commit').catch(() => {});
-      lines.push(`committed ${short(committed.oid)} on ${branch}: ${message.split('\n')[0]}${edited ? ' (message edited in 🌱 Twig)' : ''}`);
+      lines.push(edited ? ui`committed ${short(committed.oid)} on ${branch}: ${message.split('\n')[0]} (message edited in 🌱 Twig)`
+        : ui`committed ${short(committed.oid)} on ${branch}: ${message.split('\n')[0]}`);
       for (const item of committed.bumped || []) lines.push(`version ${item.path}: ${item.from} → ${item.to}`);
     }
 

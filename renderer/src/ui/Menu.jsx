@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
+import { t } from '../i18n/i18n.js';
 
 /**
  * A context menu that works without a mouse. Pointer users get it on
@@ -82,7 +83,7 @@ export default function Menu({ x, y, label, items, onClose, className = '' }) {
           {item.icon && <item.icon aria-hidden="true" />}<span>{item.text}</span>
           {item.hint && <small>{item.hint}</small>}
         </button>)}
-      {enabled.length === 0 && <p className="menu-empty">Nothing can be done here right now.</p>}
+      {enabled.length === 0 && <p className="menu-empty">{t('Nothing can be done here right now.')}</p>}
     </div>
   </div>;
 }

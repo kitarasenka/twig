@@ -5,6 +5,7 @@
 // reads the two texts and nothing else.
 // Imports only its pure neighbours: Vite and the Node check both load it.
 import { formatSize } from './lfs-pointer.js';
+import { t, tn, tr } from '../../i18n/i18n.js';
 
 /** The largest version the view reads; main enforces the same number (MAX_TEXT_BYTES). */
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -67,12 +68,12 @@ export function stepChange(starts, line, direction) {
 export function versionLabels(source) {
   switch (source?.kind) {
     case 'commit': return source.base
-      ? { toggle: 'With the compared changes', after: `at ${short(source.oid)}`, before: `at ${short(source.base)}` }
-      : { toggle: 'With this commit’s changes', after: `at ${short(source.oid)}`, before: `before ${short(source.oid)}` };
-    case 'stash': return { toggle: 'With the stashed changes', after: 'in the stash', before: 'before the stash' };
-    case 'staged': return { toggle: 'With staged changes', after: 'in the index', before: 'at HEAD' };
-    case 'unstaged': return { toggle: 'With unstaged changes', after: 'on disk', before: 'in the index' };
-    default: return { toggle: null, after: 'on disk', before: null };
+      ? { toggle: t('With the compared changes'), after: t`at ${short(source.oid)}`, before: t`at ${short(source.base)}` }
+      : { toggle: t('With this commit’s changes'), after: t`at ${short(source.oid)}`, before: t`before ${short(source.oid)}` };
+    case 'stash': return { toggle: t('With the stashed changes'), after: t('in the stash'), before: t('before the stash') };
+    case 'staged': return { toggle: t('With staged changes'), after: t('in the index'), before: t('at HEAD') };
+    case 'unstaged': return { toggle: t('With unstaged changes'), after: t('on disk'), before: t('in the index') };
+    default: return { toggle: null, after: t('on disk'), before: null };
   }
 }
 
@@ -83,21 +84,21 @@ export function versionLabels(source) {
  */
 export function versionProblem(side, { source, withChanges }) {
   if (!side || side.state === 'ok') return null;
-  if (side.state === 'binary') return 'This version is a binary file: there is no text to show.';
-  if (side.state === 'large') return `This version is ${formatSize(side.size)}, too large to show here: 🌱 Twig shows files up to ${formatSize(MAX_FILE_BYTES)}.`;
-  if (side.state === 'other') return side.reason || 'Git holds something other than a file here.';
+  if (side.state === 'binary') return t('This version is a binary file: there is no text to show.');
+  if (side.state === 'large') return t`This version is ${formatSize(side.size)}, too large to show here: 🌱 Twig shows files up to ${formatSize(MAX_FILE_BYTES)}.`;
+  if (side.state === 'other') return side.reason ? tr(side.reason) : t('Git holds something other than a file here.');
   const kind = source?.kind;
   if (withChanges) {
-    if (kind === 'commit') return source.base ? `The file does not exist at ${short(source.oid)}.` : 'This commit deletes the file.';
-    if (kind === 'stash') return 'The stash deletes the file.';
-    if (kind === 'staged') return 'The file is staged for deletion.';
-    return 'The file is not on disk.';
+    if (kind === 'commit') return source.base ? t`The file does not exist at ${short(source.oid)}.` : t('This commit deletes the file.');
+    if (kind === 'stash') return t('The stash deletes the file.');
+    if (kind === 'staged') return t('The file is staged for deletion.');
+    return t('The file is not on disk.');
   }
-  if (kind === 'commit') return source.base ? `The file did not exist at ${short(source.base)}.` : 'The file did not exist before this commit.';
-  if (kind === 'stash') return 'The file did not exist before the stash.';
-  if (kind === 'staged') return 'HEAD has no version of this file: it is new.';
-  if (kind === 'unstaged') return 'The index has no version of this file.';
-  return 'Git has no earlier version of an untracked file.';
+  if (kind === 'commit') return source.base ? t`The file did not exist at ${short(source.base)}.` : t('The file did not exist before this commit.');
+  if (kind === 'stash') return t('The file did not exist before the stash.');
+  if (kind === 'staged') return t('HEAD has no version of this file: it is new.');
+  if (kind === 'unstaged') return t('The index has no version of this file.');
+  return t('Git has no earlier version of an untracked file.');
 }
 
 /**
@@ -106,7 +107,7 @@ export function versionProblem(side, { source, withChanges }) {
  * version before; a change that only adds has nothing to light before it.
  */
 export function changeSummary({ starts, withChanges, patched }) {
-  if (!patched) return 'Unchanged here';
-  if (!starts.length) return withChanges ? 'Only removes lines' : 'Only adds lines';
-  return `${starts.length} change${starts.length === 1 ? '' : 's'}`;
+  if (!patched) return t('Unchanged here');
+  if (!starts.length) return withChanges ? t('Only removes lines') : t('Only adds lines');
+  return tn(starts.length, '{n} change', '{n} changes');
 }

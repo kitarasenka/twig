@@ -8,13 +8,15 @@ import useHighlighter from '../diff/useHighlighter.js';
 import { splitByRanges } from '../diff/diff-view.js';
 import useDiffPrefs from '../diff/useDiffPrefs.js';
 import { matchesShortcut } from '../../app/shortcuts.js';
+import { formatDateTime, t, tn, tr } from '../../i18n/i18n.js';
+import { tx } from '../../i18n/rich.js';
 
 const ROW = 22;
 const OVERSCAN = 8;
 
 function shortDate(value) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-GB');
+  return Number.isNaN(date.getTime()) ? '' : formatDateTime(date, { dateStyle: 'short' });
 }
 
 /** Stable colour index per commit, assigned in first-seen order and cycled. */
@@ -86,7 +88,7 @@ export default function BlameView({ repository, seed, onBack, onJump, onConsole,
       writeCache(key, result);
       finish(result);
     } catch {
-      if (id === request.current) { setData({ error: 'Could not blame this file. Show output in the console.' }); setLoading(false); }
+      if (id === request.current) { setData({ error: t('Could not blame this file. Show output in the console.') }); setLoading(false); }
     }
   }, [repository.id]);
 
@@ -148,7 +150,7 @@ export default function BlameView({ repository, seed, onBack, onJump, onConsole,
       const key = cacheKey({ repositoryId: repository.id, mode: 'blame', oid: result.oid, path: result.path, endOid: '' });
       writeCache(key, result);
       push({ mode: 'blame', oid: result.oid, path: result.path, mapping: result.mapping, via: result.via });
-    } catch { setNotice({ kind: 'warn', text: 'Could not step back from this line. Show output in the console.' }); }
+    } catch { setNotice({ kind: 'warn', text: t('Could not step back from this line. Show output in the console.') }); }
   };
 
   const toReverse = () => {
@@ -194,58 +196,58 @@ export default function BlameView({ repository, seed, onBack, onJump, onConsole,
   const headerOid = mode === 'reverse' ? data?.startOid || entry.oid : entry.oid;
   const rangeChanged = mode === 'reverse' && data && !data.error;
 
-  return <section className="diff-view blame-view" aria-label="Blame">
+  return <section className="diff-view blame-view" aria-label={t('Blame')}>
     <header className="panel-heading blame-heading">
-      <Button icon={ArrowLeft} onClick={onBack}>Back to history</Button>
+      <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
       <span className="blame-title">
         <History aria-hidden="true" />
         <code title={entry.path}>{entry.path}</code>
-        <span className="blame-at">at <code>{(headerOid || '').slice(0, 8)}</code>{entry.via && <em> · via {entry.via}</em>}</span>
+        <span className="blame-at">{tx('at {oid}', { oid: <code>{(headerOid || '').slice(0, 8)}</code> })}{entry.via && <em> · {t`via ${entry.via}`}</em>}</span>
       </span>
       <div className="blame-actions">
-        <div className="segmented blame-mode" role="group" aria-label="Blame direction">
+        <div className="segmented blame-mode" role="group" aria-label={t('Blame direction')}>
           <button aria-pressed={mode === 'blame'} onClick={toForward}
-            disabled={mode === 'blame' || !(data?.startOid || /^[0-9a-f]{40,64}$/i.test(entry.oid))}>Blame</button>
-          <button aria-pressed={mode === 'reverse'} onClick={toReverse} disabled={mode === 'reverse'}>Reverse blame</button>
+            disabled={mode === 'blame' || !(data?.startOid || /^[0-9a-f]{40,64}$/i.test(entry.oid))}>{t('Blame')}</button>
+          <button aria-pressed={mode === 'reverse'} onClick={toReverse} disabled={mode === 'reverse'}>{t('Reverse blame')}</button>
         </div>
-        <Button icon={ArrowLeft} aria-label="Back" title="The previous blame in this chain" reason={pos === 0 ? 'No earlier step' : undefined} onClick={() => go(-1)} />
-        <Button icon={ArrowRight} aria-label="Forward" title="The next blame in this chain" reason={pos === chain.length - 1 ? 'No later step' : undefined} onClick={() => go(1)} />
-        {chain.length > 1 && <span className="blame-step" aria-label={`Step ${pos + 1} of ${chain.length}`}>{pos + 1}/{chain.length}</span>}
+        <Button icon={ArrowLeft} aria-label={t('Back')} title={t('The previous blame in this chain')} reason={pos === 0 ? t('No earlier step') : undefined} onClick={() => go(-1)} />
+        <Button icon={ArrowRight} aria-label={t('Forward')} title={t('The next blame in this chain')} reason={pos === chain.length - 1 ? t('No later step') : undefined} onClick={() => go(1)} />
+        {chain.length > 1 && <span className="blame-step" aria-label={t`Step ${pos + 1} of ${chain.length}`}>{pos + 1}/{chain.length}</span>}
       </div>
     </header>
 
     {reverseForm && <form className="blame-reverse-form" onSubmit={event => { event.preventDefault(); applyReverse(); }}>
-      <label>Start<input aria-label="Reverse blame start" value={reverseForm.start} onChange={e => setReverseForm(f => ({ ...f, start: e.target.value }))} /></label>
-      <label>End<input aria-label="Reverse blame end" value={reverseForm.end} placeholder="HEAD" onChange={e => setReverseForm(f => ({ ...f, end: e.target.value }))} /></label>
-      <Button type="submit">Apply</Button>
-      <Button type="button" onClick={() => setReverseForm(null)}>Cancel</Button>
-      <p className="blame-hint">Start must be an ancestor of End and the file must exist in Start. Start = End shows every line as present at end.</p>
+      <label>{t('Start')}<input aria-label={t('Reverse blame start')} value={reverseForm.start} onChange={e => setReverseForm(f => ({ ...f, start: e.target.value }))} /></label>
+      <label>{t('End')}<input aria-label={t('Reverse blame end')} value={reverseForm.end} placeholder="HEAD" onChange={e => setReverseForm(f => ({ ...f, end: e.target.value }))} /></label>
+      <Button type="submit">{t('Apply')}</Button>
+      <Button type="button" onClick={() => setReverseForm(null)}>{t('Cancel')}</Button>
+      <p className="blame-hint">{t('Start must be an ancestor of End and the file must exist in Start. Start = End shows every line as present at end.')}</p>
     </form>}
 
     {mode === 'reverse' && rangeChanged && !reverseForm && <p className="blame-range-note">
-      Forward view · <code>{(data.startOid || '').slice(0, 8)}</code> → <code>{(data.endOid || '').slice(0, 8)}</code>
+      {t('Forward view')} · <code>{(data.startOid || '').slice(0, 8)}</code> → <code>{(data.endOid || '').slice(0, 8)}</code>
       {data.endRef && data.endRef !== data.endOid ? ` (${data.endRef})` : ''}
-      {data.endAtStart ? ' · Start = End' : ''}
-      <button type="button" className="text-button" onClick={toReverse}>Change range</button>
+      {data.endAtStart ? ` · ${t('Start = End')}` : ''}
+      <button type="button" className="text-button" onClick={toReverse}>{t('Change range')}</button>
     </p>}
 
     {mode === 'reverse' && data?.error && !reverseForm && <p className="blame-range-note">
-      <button type="button" className="text-button" onClick={toReverse}>Change range</button></p>}
+      <button type="button" className="text-button" onClick={toReverse}>{t('Change range')}</button></p>}
 
-    {notice && <p className={`blame-notice ${notice.kind}`} role="status">{notice.text}
-      {notice.kind === 'warn' && <button type="button" onClick={onConsole}>Show output</button>}</p>}
+    {notice && <p className={`blame-notice ${notice.kind}`} role="status">{tr(notice.text)}
+      {notice.kind === 'warn' && <button type="button" onClick={onConsole}>{t('Show output')}</button>}</p>}
 
-    {parentPick && <div className="blame-parent-pick" role="group" aria-label="Choose a parent">
-      <p>{parentPick.message}</p>
+    {parentPick && <div className="blame-parent-pick" role="group" aria-label={t('Choose a parent')}>
+      <p>{tr(parentPick.message)}</p>
       {parentPick.parents.map((parent, index) => <button key={parent.oid} type="button" onClick={() => blameBefore(parentPick.line, index)}>
-        <code>{parent.short}</code> <span>{parent.subject || '(no subject)'}</span></button>)}
-      <button type="button" className="text-button" onClick={() => setParentPick(null)}>Cancel</button>
+        <code>{parent.short}</code> <span>{parent.subject || t('(no subject)')}</span></button>)}
+      <button type="button" className="text-button" onClick={() => setParentPick(null)}>{t('Cancel')}</button>
     </div>}
 
-    {loading && !lines.length ? <div className="loading-shell" aria-label="Loading blame"><div className="skeleton" /><div className="skeleton" /><div className="skeleton" /></div>
-      : data?.error ? <p className="empty-inline" role="alert">{data.error} <button onClick={onConsole}>Show output</button></p>
-      : !lines.length ? <p className="empty-inline">{mode === 'reverse' ? 'No lines to trace forward.' : 'This file is empty in that version.'}</p>
-      : <div className="blame-scroll" ref={scroller} tabIndex={0} role="grid" aria-label="Blame lines" aria-rowcount={total}
+    {loading && !lines.length ? <div className="loading-shell" aria-label={t('Loading blame')}><div className="skeleton" /><div className="skeleton" /><div className="skeleton" /></div>
+      : data?.error ? <p className="empty-inline" role="alert">{tr(data.error)} <button onClick={onConsole}>{t('Show output')}</button></p>
+      : !lines.length ? <p className="empty-inline">{mode === 'reverse' ? t('No lines to trace forward.') : t('This file is empty in that version.')}</p>
+      : <div className="blame-scroll" ref={scroller} tabIndex={0} role="grid" aria-label={t('Blame lines')} aria-rowcount={total}
           onKeyDown={keydown}
           onScroll={event => setViewport({ top: event.currentTarget.scrollTop, height: event.currentTarget.clientHeight })}>
         <div className="blame-rows" style={{ height: total * ROW }}>
@@ -266,8 +268,8 @@ export default function BlameView({ repository, seed, onBack, onJump, onConsole,
                 {firstOfRun && <>
                   <code className="blame-hash">{line.oid.slice(0, 7)}</code>
                   {mode === 'reverse'
-                    ? <span className={`blame-reverse-tag ${presentAtEnd ? 'at-end' : 'last-seen'}`}>{presentAtEnd ? '→ present at end' : `× last in ${line.oid.slice(0, 7)}`}</span>
-                    : <span className="blame-who">{commit.author?.name || 'Unknown'} · {shortDate(commit.author?.date)}</span>}
+                    ? <span className={`blame-reverse-tag ${presentAtEnd ? 'at-end' : 'last-seen'}`}>{presentAtEnd ? t('→ present at end') : t`× last in ${line.oid.slice(0, 7)}`}</span>
+                    : <span className="blame-who">{commit.author?.name || t('Unknown')} · {shortDate(commit.author?.date)}</span>}
                   <span className="blame-summary" title={commit.summary}>{commit.summary || ''}</span>
                 </>}
               </span>
@@ -281,17 +283,17 @@ export default function BlameView({ repository, seed, onBack, onJump, onConsole,
       </div>}
 
     <footer className="blame-footer">
-      <span>{total ? `${total} lines` : ''}{selHi > selLo ? ` · ${selHi - selLo + 1} selected` : ''}</span>
-      {mode === 'blame' && activeLine && <Button icon={ChevronsLeft} onClick={() => void blameBefore(active)}>Blame before this change</Button>}
-      {activeLine && <Button icon={GitBranch} onClick={() => onJump(activeLine.oid)}>Go to commit</Button>}
-      {selectionCommits.length > 1 && <span className="blame-multi">{selectionCommits.length} commits in selection</span>}
+      <span>{total ? tn(total, '{n} line', '{n} lines') : ''}{selHi > selLo ? ` · ${tn(selHi - selLo + 1, '{n} selected', '{n} selected')}` : ''}</span>
+      {mode === 'blame' && activeLine && <Button icon={ChevronsLeft} onClick={() => void blameBefore(active)}>{t('Blame before this change')}</Button>}
+      {activeLine && <Button icon={GitBranch} onClick={() => onJump(activeLine.oid)}>{t('Go to commit')}</Button>}
+      {selectionCommits.length > 1 && <span className="blame-multi">{tn(selectionCommits.length, '{n} commit in selection', '{n} commits in selection')}</span>}
     </footer>
 
-    {rowMenu && <Menu x={rowMenu.x} y={rowMenu.y} label={`Line ${rowMenu.line.line}`} onClose={() => setRowMenu(null)}
+    {rowMenu && <Menu x={rowMenu.x} y={rowMenu.y} label={t`Line ${rowMenu.line.line}`} onClose={() => setRowMenu(null)}
       items={[
-        mode === 'blame' && { key: 'before', text: 'Blame before this change', icon: RotateCcw, hint: 'The version before this line’s commit', run: () => void blameBefore(rowMenu.line.line) },
-        { key: 'jump', text: 'Go to commit', icon: GitBranch, run: () => onJump(rowMenu.line.oid) },
-        { key: 'copy', text: 'Copy commit SHA', run: () => void window.twig.copyText(rowMenu.line.oid) }
+        mode === 'blame' && { key: 'before', text: t('Blame before this change'), icon: RotateCcw, hint: t('The version before this line’s commit'), run: () => void blameBefore(rowMenu.line.line) },
+        { key: 'jump', text: t('Go to commit'), icon: GitBranch, run: () => onJump(rowMenu.line.oid) },
+        { key: 'copy', text: t('Copy commit SHA'), run: () => void window.twig.copyText(rowMenu.line.oid) }
       ].filter(Boolean)} />}
   </section>;
 }

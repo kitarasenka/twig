@@ -1,6 +1,7 @@
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runGit } from './exec.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * The demo tab is a real Git repository, not a mock: Twig creates it under
@@ -111,7 +112,7 @@ export async function runSeed({ dir, remoteDir, log }) {
   await mkdir(dir, { recursive: true });
   const git = async (argv, extraEnv = null) => {
     const result = await runGit({ argv, cwd: dir, log, operation: 'Seed demo workspace', env: extraEnv });
-    if (result.code !== 0) throw new Error(`Seed step failed: git ${argv.join(' ')}\n${result.stderr}`);
+    if (result.code !== 0) throw new Error(ui`Seed step failed: git ${argv.join(' ')}\n${result.stderr}`);
     return result.stdout.trimEnd();
   };
 

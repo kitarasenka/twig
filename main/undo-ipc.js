@@ -1,6 +1,7 @@
 import { dialog, ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { BASE_ARGS } from './git/exec.js';
+import { native, nt } from './language.js';
 
 export function registerUndoIpc(getWindow, entryUrl, { repositories, undo }) {
   const register = (channel, count, action) => ipcMain.handle(channel, (event, ...args) => {
@@ -14,8 +15,8 @@ export function registerUndoIpc(getWindow, entryUrl, { repositories, undo }) {
   register('undo:state', 1, cwd => undo.inspect(cwd));
   register('undo:move', 2, (cwd, direction) => undo.move(cwd, direction, async (plan, direction) => {
     const command = plan.commands.map(argv => ['git', ...BASE_ARGS, ...argv].map(value => JSON.stringify(value)).join(' ')).join('\n');
-    const result = await dialog.showMessageBox(getWindow(), { type: 'warning', title: `${direction === 'undo' ? 'Undo' : 'Redo'} Git action`,
-      message: plan.explanation, detail: `${command}\n\nRepository: ${cwd}`, buttons: ['Cancel', 'Run these commands'], defaultId: 0, cancelId: 0 });
+    const result = await dialog.showMessageBox(getWindow(), { type: 'warning', title: direction === 'undo' ? nt('Undo Git action') : nt('Redo Git action'),
+      message: native.tr(plan.explanation), detail: `${command}\n\n${nt`Repository: ${cwd}`}`, buttons: [nt('Cancel'), nt('Run these commands')], defaultId: 0, cancelId: 0 });
     return result.response === 1;
   }));
   undo.onChange(cwd => { const window = getWindow(); if (window && !window.isDestroyed()) window.webContents.send('undo:update', { cwd }); });

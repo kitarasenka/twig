@@ -2,6 +2,7 @@ import { lstat, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runGit } from './exec.js';
 import { validateFile } from './commit.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * The three sides of a conflicted file plus the merged text Git left in the
@@ -40,14 +41,14 @@ async function conflictFile(cwd, log, file) {
   const absolute = resolveInside(cwd, file);
   const root = await realpath(cwd);
   const info = await lstat(absolute);
-  if (info.isSymbolicLink() || !info.isFile()) throw new Error('This conflict is not a regular file. Take a whole side instead.');
+  if (info.isSymbolicLink() || !info.isFile()) throw new Error(ui`This conflict is not a regular file. Take a whole side instead.`);
   const inside = path.relative(root, await realpath(absolute));
   if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) throw new TypeError('Invalid file path');
   const unmerged = await runGit({
     argv: ['ls-files', '--unmerged', '-z', '--', `:(literal)${validateFile(file)}`], cwd, log,
     operation: 'Read conflict state'
   });
-  if (unmerged.code !== 0 || !unmerged.stdout) throw new Error('This file is no longer in conflict.');
+  if (unmerged.code !== 0 || !unmerged.stdout) throw new Error(ui`This file is no longer in conflict.`);
   return absolute;
 }
 
@@ -76,7 +77,7 @@ async function readStage(cwd, log, stage, file) {
 export async function loadConflict({ cwd, log, path: file }) {
   const absolute = await conflictFile(cwd, log, file);
   const info = await stat(absolute);
-  if (info.size > MAX_BYTES) throw new Error('This file is too large to open in the conflict editor.');
+  if (info.size > MAX_BYTES) throw new Error(ui`This file is too large to open in the conflict editor.`);
   const buffer = await readFile(absolute);
   const binary = isBinary(buffer);
   const sides = Object.fromEntries(await Promise.all(
@@ -104,7 +105,7 @@ export async function saveResolution({ cwd, log, path: file, content, mtimeMs, s
   const absolute = await conflictFile(cwd, log, file);
   const info = await stat(absolute);
   if (info.mtimeMs !== mtimeMs || info.size !== size) {
-    throw new Error('This file changed on disk while the editor was open. Reopen it to see the current version.');
+    throw new Error(ui`This file changed on disk while the editor was open. Reopen it to see the current version.`);
   }
   await writeFile(absolute, content, 'utf8');
   return markResolved({ cwd, log, path: file });
@@ -113,7 +114,7 @@ export async function saveResolution({ cwd, log, path: file, content, mtimeMs, s
 /** @param {{ cwd: string, log: object, path: string }} options */
 export async function markResolved({ cwd, log, path: file }) {
   const result = await runGit({ argv: buildMarkResolvedArgv(file), cwd, log, operation: 'Mark conflict resolved' });
-  if (result.code !== 0) throw new Error('Git could not mark this file resolved. See the command console.');
+  if (result.code !== 0) throw new Error(ui`Git could not mark this file resolved. See the command console.`);
   return true;
 }
 
@@ -123,6 +124,6 @@ export async function markResolved({ cwd, log, path: file }) {
  */
 export async function takeSide({ cwd, log, path: file, side }) {
   const result = await runGit({ argv: buildTakeSideArgv(side, file), cwd, log, operation: `Take ${side} version` });
-  if (result.code !== 0) throw new Error(`Git could not take the ${side} version. See the command console.`);
+  if (result.code !== 0) throw new Error(side === 'ours' ? ui`Git could not take the ours version. See the command console.` : ui`Git could not take the theirs version. See the command console.`);
   return markResolved({ cwd, log, path: file });
 }

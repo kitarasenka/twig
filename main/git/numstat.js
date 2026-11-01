@@ -1,5 +1,6 @@
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * @typedef {Object} LineCount
@@ -79,7 +80,7 @@ export async function loadWorktreeNumstat({ cwd, log, env = null }) {
   const [staged, unstaged] = await Promise.all([true, false].map(async cached => {
     const result = await runGit({ argv: buildWorktreeNumstatArgv({ staged: cached }), cwd, log, env,
       operation: cached ? 'Read staged change sizes' : 'Read working tree change sizes' });
-    if (result.code !== 0) throw new Error('Git could not count the changed lines.');
+    if (result.code !== 0) throw new Error(ui`Git could not count the changed lines.`);
     return parseNumstat(result.stdout);
   }));
   return { staged, unstaged };
@@ -91,6 +92,6 @@ export async function loadWorktreeNumstat({ cwd, log, env = null }) {
  */
 export async function loadCommitNumstat({ cwd, log, oid, parent = null }) {
   const result = await runGit({ argv: buildCommitNumstatArgv(oid, parent), cwd, log, operation: 'Read commit change sizes' });
-  if (result.code !== 0) throw new Error('Git could not count the lines this commit changed.');
+  if (result.code !== 0) throw new Error(ui`Git could not count the lines this commit changed.`);
   return parseNumstat(result.stdout);
 }

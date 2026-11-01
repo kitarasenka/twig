@@ -1,5 +1,6 @@
 import { runGit } from './exec.js';
 import { parseChangedFiles, validateFile, validateOid } from './commit.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * The stash list and the contents of one stash.
@@ -96,7 +97,7 @@ export function parseStashList(output) {
 
 async function execute(cwd, log, argv, operation) {
   const result = await runGit({ cwd, log, argv, operation });
-  if (result.code !== 0) throw new Error(`${operation} failed. See the command console.`);
+  if (result.code !== 0) throw new Error(ui`${operation} failed. See the command console.`);
   return result.stdout;
 }
 
@@ -142,10 +143,10 @@ export async function runStashAction({ cwd, log, action, index, expectedOid, nam
   validateOid(expectedOid);
   const entry = (await loadStashes({ cwd, log })).find(item => item.index === index);
   if (!entry || entry.oid !== expectedOid) {
-    return { ok: false, message: 'The stash list changed since it was read. Refresh and try again.' };
+    return { ok: false, message: ui`The stash list changed since it was read. Refresh and try again.` };
   }
   const operation = `Stash ${action}: ${entry.ref}`;
   const result = await runGit({ cwd, log, argv, operation });
-  if (result.code !== 0) return { ok: false, message: `${operation} did not finish. Show output in the console.` };
+  if (result.code !== 0) return { ok: false, message: ui`Stash ${action}: ${entry.ref} did not finish. Show output in the console.` };
   return { ok: true, message: null };
 }

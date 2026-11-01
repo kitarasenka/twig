@@ -3,14 +3,16 @@ import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
 import { matchesShortcut } from '../../app/shortcuts.js';
+import { mark, t, tn } from '../../i18n/i18n.js';
 
+// The action words are Git's own and stay as they are; only what they do is translated.
 const ACTIONS = [
-  ['pick', 'Pick — keep the commit as it is'],
-  ['reword', 'Reword — keep the changes, change the message'],
-  ['edit', 'Edit — stop here so the commit can be amended'],
-  ['squash', 'Squash — melt into the commit above, keep both messages'],
-  ['fixup', 'Fixup — melt into the commit above, drop this message'],
-  ['drop', 'Drop — remove the commit entirely']
+  ['pick', 'Pick', mark('keep the commit as it is')],
+  ['reword', 'Reword', mark('keep the changes, change the message')],
+  ['edit', 'Edit', mark('stop here so the commit can be amended')],
+  ['squash', 'Squash', mark('melt into the commit above, keep both messages')],
+  ['fixup', 'Fixup', mark('melt into the commit above, drop this message')],
+  ['drop', 'Drop', mark('remove the commit entirely')]
 ];
 const MELDING = new Set(['squash', 'fixup']);
 
@@ -48,16 +50,18 @@ export default function RebaseDialog({ commits, onRun, onClose }) {
 
   const kept = entries.filter(entry => entry.action !== 'drop');
   const missingMessage = entries.some(entry => entry.action === 'reword' && entry.message.trim().length === 0);
-  const problem = kept.length === 0 ? 'A rebase has to keep at least one commit'
-    : MELDING.has(kept[0].action) ? 'The oldest kept commit has nothing above it to melt into'
-      : missingMessage ? 'A reworded commit needs a message' : null;
-  const summary = `${kept.filter(entry => !MELDING.has(entry.action)).length} kept · `
-    + `${entries.filter(entry => MELDING.has(entry.action)).length} melted · `
-    + `${entries.filter(entry => entry.action === 'drop').length} dropped`;
+  const problem = kept.length === 0 ? t('A rebase has to keep at least one commit')
+    : MELDING.has(kept[0].action) ? t('The oldest kept commit has nothing above it to melt into')
+      : missingMessage ? t('A reworded commit needs a message') : null;
+  const keptCount = kept.filter(entry => !MELDING.has(entry.action)).length;
+  const melted = entries.filter(entry => MELDING.has(entry.action)).length;
+  const dropped = entries.filter(entry => entry.action === 'drop').length;
+  const summary = t`${keptCount} kept · ${melted} melted · ${dropped} dropped`;
 
-  return <Dialog title="Interactive rebase" wide onClose={onClose}>
+  return <Dialog title={t('Interactive rebase')} wide onClose={onClose}>
     <div className="rebase-dialog">
-      <p className="muted">Oldest first — the order Git will replay them in. {commits.length} commit{commits.length === 1 ? '' : 's'} will be rewritten.</p>
+      <p className="muted">{tn(commits.length, 'Oldest first — the order Git will replay them in. {n} commit will be rewritten.',
+        'Oldest first — the order Git will replay them in. {n} commits will be rewritten.')}</p>
       <ol className="rebase-rows" ref={rows}>
         {entries.map((entry, index) => <li key={entry.oid} className={`rebase-row ${entry.action}`} draggable
           onDragStart={event => { dragging.current = index; event.dataTransfer.effectAllowed = 'move'; }}
@@ -71,26 +75,26 @@ export default function RebaseDialog({ commits, onRun, onClose }) {
           }}>
           <GripVertical aria-hidden="true" className="rebase-grip" />
           <div className="rebase-move">
-            <Button icon={ChevronUp} aria-label={`Move ${entry.subject} earlier`} reason={index === 0 ? 'Already the oldest' : undefined} onClick={() => reorder(index, index - 1)} />
-            <Button icon={ChevronDown} aria-label={`Move ${entry.subject} later`} reason={index === entries.length - 1 ? 'Already the newest' : undefined} onClick={() => reorder(index, index + 1)} />
+            <Button icon={ChevronUp} aria-label={t`Move ${entry.subject} earlier`} reason={index === 0 ? t('Already the oldest') : undefined} onClick={() => reorder(index, index - 1)} />
+            <Button icon={ChevronDown} aria-label={t`Move ${entry.subject} later`} reason={index === entries.length - 1 ? t('Already the newest') : undefined} onClick={() => reorder(index, index + 1)} />
           </div>
           <code className="rebase-oid">{entry.oid.slice(0, 7)}</code>
-          <span className="rebase-subject" title={entry.subject}>{entry.subject || '(no subject)'}<small>{entry.author}</small></span>
-          <select aria-label={`Action for ${entry.subject}`} value={entry.action} onChange={event => update(index, { action: event.target.value })}>
-            {ACTIONS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+          <span className="rebase-subject" title={entry.subject}>{entry.subject || t('(no subject)')}<small>{entry.author}</small></span>
+          <select aria-label={t`Action for ${entry.subject}`} value={entry.action} onChange={event => update(index, { action: event.target.value })}>
+            {ACTIONS.map(([value, word, text]) => <option key={value} value={value}>{`${word} — ${t(text)}`}</option>)}
           </select>
           {entry.action === 'reword' && <label className="rebase-message">
-            <span>New message</span>
-            <textarea rows={2} value={entry.message} aria-label={`New message for ${entry.oid.slice(0, 7)}`}
+            <span>{t('New message')}</span>
+            <textarea rows={2} value={entry.message} aria-label={t`New message for ${entry.oid.slice(0, 7)}`}
               onChange={event => update(index, { message: event.target.value })} />
           </label>}
         </li>)}
       </ol>
       <div className="dialog-actions">
         <span className="muted" role="status">{problem || summary}</span>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{t('Cancel')}</Button>
         <Button className="primary" reason={problem || undefined}
-          onClick={() => { onClose(); onRun(entries.map(({ oid, action, message }) => ({ oid, action, message }))); }}>Start rebase</Button>
+          onClick={() => { onClose(); onRun(entries.map(({ oid, action, message }) => ({ oid, action, message }))); }}>{t('Start rebase')}</Button>
       </div>
     </div>
   </Dialog>;

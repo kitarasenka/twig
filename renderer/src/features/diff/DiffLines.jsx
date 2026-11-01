@@ -7,6 +7,7 @@ import useHighlighter from './useHighlighter.js';
 import useDiffPrefs from './useDiffPrefs.js';
 import { formatSize, lfsChangeLabel, lfsPointerDiff } from './lfs-pointer.js';
 import { VIRTUAL_FROM, visibleRange, widestRow } from './virtual-rows.js';
+import { t } from '../../i18n/i18n.js';
 
 /** A row's text: the marker, then pieces carrying syntax and change classes. */
 export function DiffPieces({ marker, pieces }) {
@@ -25,12 +26,12 @@ const digits = (rows, side) => String(rows.reduce((max, row) => Math.max(max, ro
 export function DiffToolbar({ language, words = true }) {
   const [prefs, update] = useDiffPrefs();
   return <div className="diff-toolbar">
-    <span className="diff-language" title={prefs.syntax ? undefined : 'Syntax highlighting is off in Settings'}>
-      {languageLabel(language)}{language && !prefs.syntax ? ' · no highlighting' : ''}</span>
-    {words && <div className="segmented" role="group" aria-label="Diff view">
-      <button type="button" aria-pressed={prefs.mode === 'lines'} onClick={() => update({ mode: 'lines' })}>Lines</button>
+    <span className="diff-language" title={prefs.syntax ? undefined : t('Syntax highlighting is off in Settings')}>
+      {languageLabel(language)}{language && !prefs.syntax ? ` · ${t('no highlighting')}` : ''}</span>
+    {words && <div className="segmented" role="group" aria-label={t('Diff view')}>
+      <button type="button" aria-pressed={prefs.mode === 'lines'} onClick={() => update({ mode: 'lines' })}>{t('Lines')}</button>
       <button type="button" aria-pressed={prefs.mode === 'words'} onClick={() => update({ mode: 'words' })}
-        title="Show a changed line once, with removed and added words inline">Words</button>
+        title={t('Show a changed line once, with removed and added words inline')}>{t('Words')}</button>
     </div>}
   </div>;
 }
@@ -42,9 +43,9 @@ export function DiffToolbar({ language, words = true }) {
  * file after another is opened.
  */
 export function FileViewSwitch({ full, onFull }) {
-  return <div className="segmented file-view-switch" role="group" aria-label="Show">
-    <button type="button" aria-pressed={!full} onClick={() => onFull(false)}>Changes</button>
-    <button type="button" aria-pressed={full} onClick={() => onFull(true)} title="The whole file, before or after this change">Full file</button>
+  return <div className="segmented file-view-switch" role="group" aria-label={t('Show')}>
+    <button type="button" aria-pressed={!full} onClick={() => onFull(false)}>{t('Changes')}</button>
+    <button type="button" aria-pressed={full} onClick={() => onFull(true)} title={t('The whole file, before or after this change')}>{t('Full file')}</button>
   </div>;
 }
 
@@ -55,11 +56,11 @@ export function FileViewSwitch({ full, onFull }) {
  */
 export function LfsPointerCard({ diff, onRaw }) {
   const side = (label, pointer) => pointer && <><dt>{label}</dt><dd>{formatSize(pointer.size)} · <code title={`sha256:${pointer.oid}`}>sha256:{pointer.oid.slice(0, 12)}…</code></dd></>;
-  return <div className="lfs-card" role="group" aria-label="Git LFS file">
+  return <div className="lfs-card" role="group" aria-label={t('Git LFS file')}>
     <p className="lfs-title"><HardDrive aria-hidden="true" /><strong>{lfsChangeLabel(diff)}</strong></p>
-    <p className="muted">Git keeps a small pointer for this file; its content is stored in Git LFS, not in the commit. This is not a broken binary.</p>
-    <dl className="metadata">{side('Before', diff.before)}{side('After', diff.after)}</dl>
-    <button type="button" className="text-button" onClick={onRaw}>Show pointer text</button>
+    <p className="muted">{t('Git keeps a small pointer for this file; its content is stored in Git LFS, not in the commit. This is not a broken binary.')}</p>
+    <dl className="metadata">{side(t('Before'), diff.before)}{side(t('After'), diff.after)}</dl>
+    <button type="button" className="text-button" onClick={onRaw}>{t('Show pointer text')}</button>
   </div>;
 }
 
@@ -69,7 +70,7 @@ export function LfsPointerCard({ diff, onRaw }) {
  * removes and adds back — or, in word mode, those pairs folded into one line.
  * Shared by the commit panel, the stash view and the blame detail.
  */
-export default function DiffLines({ patch, path = null, className = '', label = 'Diff lines' }) {
+export default function DiffLines({ patch, path = null, className = '', label = t('Diff lines') }) {
   const [prefs] = useDiffPrefs();
   const lfs = useMemo(() => lfsPointerDiff(patch), [patch]);
   const [rawPointer, setRawPointer] = useState(false);

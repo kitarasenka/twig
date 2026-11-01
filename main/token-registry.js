@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 /**
  * Paths the person picked in a native dialog — a patch file to apply, a folder
@@ -18,7 +19,7 @@ export function createTokenRegistry({ now = Date.now, lifetime = 15 * 60 * 1000 
     },
     take(cwd, token) {
       const entry = typeof token === 'string' ? entries.get(token) : null;
-      if (!entry || entry.cwd !== cwd || entry.expires < now()) throw new TypeError('Choose the file or folder again.');
+      if (!entry || entry.cwd !== cwd || entry.expires < now()) throw new TypeError(ui`Choose the file or folder again.`);
       entries.delete(token);
       return entry;
     }

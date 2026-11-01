@@ -2,33 +2,36 @@
  * Keyboard shortcuts: every rebindable action, the key that triggers it, and
  * the person's changes, kept in localStorage. Handlers ask `matchesShortcut`
  * at the moment of the key press, so a change in Settings applies at once
- * without re-rendering anything. No imports: Vite and the Node check load it.
+ * without re-rendering anything. Vite and the Node check load it.
  *
  * A combo is a string like `Mod+Shift+Z`. `Mod` is Cmd on macOS and Ctrl
  * elsewhere, so one stored value means the same key on every platform. Keys
  * come from the physical key (`event.code`) where there is one: Alt+D on a Mac
  * types "∂", and Cmd+J on a Russian layout reports "о".
+ *
+ * Labels and groups are marked here and shown with t(); i18n is the only import.
  */
+import { mark, t } from '../i18n/i18n.js';
 
 export const SHORTCUTS_KEY = 'twig:shortcuts';
 
 // `global` actions fire anywhere in the window, so they need a modifier (or a
 // function key): a bare letter would be taken from the person typing in a field.
 export const SHORTCUTS = [
-  { id: 'console', group: 'Window', label: 'Show or hide the console', default: 'Mod+J', global: true },
-  { id: 'settings', group: 'Window', label: 'Open Settings', default: 'Mod+,', global: true },
-  { id: 'newTab', group: 'Window', label: 'New repository tab', default: 'Mod+T', global: true },
-  { id: 'closeTab', group: 'Window', label: 'Close the tab', default: 'Mod+W', global: true },
-  { id: 'search', group: 'Window', label: 'Search branches and commits', default: 'Mod+F', global: true },
-  { id: 'undo', group: 'Actions', label: 'Undo the last action', default: 'Mod+Z', global: true },
-  { id: 'redo', group: 'Actions', label: 'Redo', default: 'Mod+Shift+Z', global: true },
-  { id: 'menu', group: 'Lists', label: 'Open the menu of the focused row', default: 'Shift+F10' },
-  { id: 'rename', group: 'Lists', label: 'Rename the focused branch', default: 'F2' },
-  { id: 'moveUp', group: 'Lists', label: 'Move a rebase step or automation action up', default: 'Alt+ArrowUp' },
-  { id: 'moveDown', group: 'Lists', label: 'Move a rebase step or automation action down', default: 'Alt+ArrowDown' },
-  { id: 'pickUp', group: 'Drag and drop', label: 'Pick up the focused branch or commit', default: 'Alt+D' },
-  { id: 'drop', group: 'Drag and drop', label: 'Drop on the focused branch or commit', default: 'Alt+Enter' },
-  { id: 'blameBefore', group: 'Blame', label: 'Blame the version before the selected line’s change', default: '[' },
+  { id: 'console', group: mark('Window'), label: mark('Show or hide the console'), default: 'Mod+J', global: true },
+  { id: 'settings', group: mark('Window'), label: mark('Open Settings'), default: 'Mod+,', global: true },
+  { id: 'newTab', group: mark('Window'), label: mark('New repository tab'), default: 'Mod+T', global: true },
+  { id: 'closeTab', group: mark('Window'), label: mark('Close the tab'), default: 'Mod+W', global: true },
+  { id: 'search', group: mark('Window'), label: mark('Search branches and commits'), default: 'Mod+F', global: true },
+  { id: 'undo', group: mark('Actions'), label: mark('Undo the last action'), default: 'Mod+Z', global: true },
+  { id: 'redo', group: mark('Actions'), label: mark('Redo'), default: 'Mod+Shift+Z', global: true },
+  { id: 'menu', group: mark('Lists'), label: mark('Open the menu of the focused row'), default: 'Shift+F10' },
+  { id: 'rename', group: mark('Lists'), label: mark('Rename the focused branch'), default: 'F2' },
+  { id: 'moveUp', group: mark('Lists'), label: mark('Move a rebase step or automation action up'), default: 'Alt+ArrowUp' },
+  { id: 'moveDown', group: mark('Lists'), label: mark('Move a rebase step or automation action down'), default: 'Alt+ArrowDown' },
+  { id: 'pickUp', group: mark('Drag and drop'), label: mark('Pick up the focused branch or commit'), default: 'Alt+D' },
+  { id: 'drop', group: mark('Drag and drop'), label: mark('Drop on the focused branch or commit'), default: 'Alt+Enter' },
+  { id: 'blameBefore', group: mark('Blame'), label: mark('Blame the version before the selected line’s change'), default: '[' },
 ];
 
 const BY_ID = new Map(SHORTCUTS.map(item => [item.id, item]));
@@ -40,11 +43,12 @@ const CODE_KEYS = {
 // Keys that move through lists and fields; alone or with Shift they stay theirs.
 const NAVIGATION = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown',
   'Enter', 'Space', 'Backspace', 'Delete']);
-// Copy, paste, select all, and what the system menu already answers to.
+// Copy, paste, select all, and what the system menu already answers to, as the
+// refusal reads (`{combo}` is filled in with the key as the platform names it).
 const RESERVED = new Map([
-  ['Mod+C', 'copies'], ['Mod+V', 'pastes'], ['Mod+X', 'cuts'], ['Mod+A', 'selects all'], ['Mod+Q', 'quits 🌱 Twig'],
-  ['Mod+H', 'hides the window'], ['Mod+M', 'minimises the window'], ['Mod+R', 'reloads the window'],
-  ['Mod+0', 'resets the zoom'], ['Mod+=', 'zooms in'], ['Mod+Shift+=', 'zooms in'], ['Mod+-', 'zooms out'],
+  ['Mod+C', mark('{combo} already copies.')], ['Mod+V', mark('{combo} already pastes.')], ['Mod+X', mark('{combo} already cuts.')], ['Mod+A', mark('{combo} already selects all.')], ['Mod+Q', mark('{combo} already quits 🌱 Twig.')],
+  ['Mod+H', mark('{combo} already hides the window.')], ['Mod+M', mark('{combo} already minimises the window.')], ['Mod+R', mark('{combo} already reloads the window.')],
+  ['Mod+0', mark('{combo} already resets the zoom.')], ['Mod+=', mark('{combo} already zooms in.')], ['Mod+Shift+=', mark('{combo} already zooms in.')], ['Mod+-', mark('{combo} already zooms out.')],
 ]);
 
 export function isMac() { return /Mac/.test(globalThis.navigator?.platform || ''); }
@@ -156,18 +160,18 @@ export function isMenuKey(event, mac = isMac()) {
 export function shortcutProblem(id, combo, mac = isMac()) {
   const item = BY_ID.get(id);
   const parsed = parse(combo);
-  if (!item || !parsed) return { reason: 'Press a key, with or without modifiers.' };
+  if (!item || !parsed) return { reason: t('Press a key, with or without modifiers.') };
   const normal = normalizeCombo(combo);
   const plain = parsed.modifiers.every(name => name === 'Shift');
-  if (parsed.key === 'Escape') return { reason: 'Esc closes dialogs and menus and cancels a drag.' };
-  if (parsed.key === 'Tab') return { reason: 'Tab moves between controls.' };
-  if (plain && NAVIGATION.has(parsed.key)) return { reason: `${formatCombo(normal, mac)} moves through lists and text.` };
+  if (parsed.key === 'Escape') return { reason: t('Esc closes dialogs and menus and cancels a drag.') };
+  if (parsed.key === 'Tab') return { reason: t('Tab moves between controls.') };
+  if (plain && NAVIGATION.has(parsed.key)) return { reason: t`${formatCombo(normal, mac)} moves through lists and text.` };
   if (item.global && plain && !/^F([1-9]|1[0-9]|2[0-4])$/.test(parsed.key)) {
-    return { reason: `Add ${mac ? 'Cmd, Ctrl or Option' : 'Ctrl or Alt'}: on its own this key would type into text fields.` };
+    return { reason: mac ? t('Add Cmd, Ctrl or Option: on its own this key would type into text fields.') : t('Add Ctrl or Alt: on its own this key would type into text fields.') };
   }
-  if (RESERVED.has(normal)) return { reason: `${formatCombo(normal, mac)} already ${RESERVED.get(normal)}.` };
+  if (RESERVED.has(normal)) return { reason: t(RESERVED.get(normal), { combo: formatCombo(normal, mac) }) };
   const other = SHORTCUTS.find(entry => entry.id !== id && shortcut(entry.id) === normal);
-  if (other) return { reason: `${formatCombo(normal, mac)} is already “${other.label}”.`, conflict: other.id };
+  if (other) return { reason: t`${formatCombo(normal, mac)} is already “${t(other.label)}”.`, conflict: other.id };
   return null;
 }
 
@@ -191,7 +195,7 @@ export function setShortcut(id, combo, storage = globalThis.localStorage, mac = 
 /** Back to the default; refused when another action has taken that key since. */
 export function resetShortcut(id, storage = globalThis.localStorage, mac = isMac()) {
   const item = BY_ID.get(id);
-  if (!item) return { ok: false, reason: 'Unknown shortcut.' };
+  if (!item) return { ok: false, reason: t('Unknown shortcut.') };
   return setShortcut(id, item.default, storage, mac);
 }
 

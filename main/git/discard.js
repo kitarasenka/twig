@@ -6,6 +6,7 @@ import { runGit } from './exec.js';
 import { buildPatch } from './patch-builder.js';
 import { loadWorktree, loadWorktreeDiff } from './worktree.js';
 import { DISCARD_REF, discardCommand, validDiscardPath } from './discard-plan.js';
+import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Discarding changes — the one everyday action that destroys work — made
@@ -30,7 +31,7 @@ const CHAIN_LIMIT = 200;
 
 async function git({ cwd, log, argv, operation, stdin = null, env = null }) {
   const result = await runGit({ cwd, log, argv, operation, stdin, env });
-  if (result.code !== 0) throw new Error(`${operation} failed. See the command console.`);
+  if (result.code !== 0) throw new Error(ui`${operation} failed. See the command console.`);
   return result.stdout;
 }
 
@@ -43,7 +44,7 @@ async function expand({ cwd, log, entries }) {
       operation: 'Background: list untracked files to back up' });
     files.push(...out.split('\0').filter(Boolean));
   }
-  for (const file of files) if (!validDiscardPath(file)) throw new Error(`🌱 Twig cannot back up ${JSON.stringify(file)} safely, so it was not discarded.`);
+  for (const file of files) if (!validDiscardPath(file)) throw new Error(ui`🌱 Twig cannot back up ${JSON.stringify(file)} safely, so it was not discarded.`);
   return files;
 }
 
@@ -70,7 +71,7 @@ export async function snapshot({ cwd, log, files, message }) {
     } else if (info.isFile()) {
       regular.push({ file, mode: info.mode & 0o111 ? '100755' : '100644' });
     } else {
-      throw new Error(`${file} is not a regular file; discard it outside 🌱 Twig.`);
+      throw new Error(ui`${file} is not a regular file; discard it outside 🌱 Twig.`);
     }
   }
   if (regular.length) {
@@ -78,7 +79,7 @@ export async function snapshot({ cwd, log, files, message }) {
     // and `-w` stores each blob, filtered exactly as `git add` would.
     const oids = (await git({ cwd, log, argv: ['hash-object', '-w', '--stdin-paths'], stdin: `${regular.map(item => item.file).join('\n')}\n`,
       operation: `Background: back up ${regular.length} file${regular.length === 1 ? '' : 's'} before discarding` })).trim().split('\n');
-    if (oids.length !== regular.length) throw new Error('Could not back up the files; nothing was discarded.');
+    if (oids.length !== regular.length) throw new Error(ui`Could not back up the files; nothing was discarded.`);
     regular.forEach((item, index) => records.push(`${item.mode} ${oids[index]}\t${item.file}`));
   }
   // A throwaway index builds the tree, so the real index is never touched.
@@ -105,13 +106,16 @@ export async function snapshot({ cwd, log, files, message }) {
 
 function refuseConflicts(entries) {
   const conflicts = entries.filter(entry => entry.status === 'U');
-  if (conflicts.length) throw new Error(`Resolve ${conflicts.length === 1 ? 'the conflict' : `${conflicts.length} conflicts`} first: discarding would throw away the conflict itself.`);
+  if (conflicts.length) {
+    throw new Error(conflicts.length === 1 ? ui`Resolve the conflict first: discarding would throw away the conflict itself.`
+      : uiN(conflicts.length, 'Resolve {n} conflict first: discarding would throw away the conflict itself.', 'Resolve {n} conflicts first: discarding would throw away the conflict itself.'));
+  }
 }
 function refuseSpecial(entry) {
-  if (entry.submodule) throw new Error(`${entry.path} is a submodule; update it from inside the submodule.`);
+  if (entry.submodule) throw new Error(ui`${entry.path} is a submodule; update it from inside the submodule.`);
   // `git add -N` records a path with no content; restoring the "index version"
   // of it would mean an empty file, which is not what discard promises.
-  if (entry.status === 'A') throw new Error(`${entry.path} is only marked for tracking. Unstage it first, then delete it from Untracked.`);
+  if (entry.status === 'A') throw new Error(ui`${entry.path} is only marked for tracking. Unstage it first, then delete it from Untracked.`);
 }
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
@@ -136,7 +140,7 @@ export async function discardFile({ cwd, log, path: file, section }) {
   if (!validDiscardPath(file)) throw new TypeError('Invalid file path');
   const tree = await loadWorktree({ cwd, log });
   const entry = tree[section].find(item => item.path === file);
-  if (!entry) throw new Error(`${file} has nothing to discard any more. Refresh to see the current state.`);
+  if (!entry) throw new Error(ui`${file} has nothing to discard any more. Refresh to see the current state.`);
   refuseConflicts([entry]);
   refuseSpecial(entry);
   if (section === 'untracked') {
@@ -184,8 +188,8 @@ export async function discardAll({ cwd, log, scope }) {
 export async function discardSelection({ cwd, log, path: file, digest, selection }) {
   if (!validDiscardPath(file)) throw new TypeError('Invalid file path');
   const current = await loadWorktreeDiff({ cwd, log, path: file, staged: false });
-  if (current.digest !== digest) throw new Error('This file changed since the diff was read. Refresh and select again.');
-  if (current.added || current.deleted) throw new Error('Lines of a new or deleted file cannot be discarded one by one. Discard the whole file instead.');
+  if (current.digest !== digest) throw new Error(ui`This file changed since the diff was read. Refresh and select again.`);
+  if (current.added || current.deleted) throw new Error(ui`Lines of a new or deleted file cannot be discarded one by one. Discard the whole file instead.`);
   // The unstaged diff's new side *is* the working tree, so it is reverse-applied
   // there — the same mirrored build unstaging uses against the index.
   const patch = buildPatch({ path: file, hunks: current.hunks, selection, reverse: true, mode: current.mode });

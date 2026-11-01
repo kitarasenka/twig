@@ -2,6 +2,7 @@ import { runGit } from './exec.js';
 import { validateFile, validateOid } from './commit.js';
 import { parseFilePatchV1 } from './diff-parser.js';
 import { mapLineBack } from './blame-map.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 const MAX_LINES = 50000;
@@ -140,23 +141,23 @@ export function parseBlamePorcelain(output) {
     }
     entry.content = content;
     lines.push(entry);
-    if (lines.length > MAX_LINES) throw new BlameError('This file is too large to blame.', 'too-large');
+    if (lines.length > MAX_LINES) throw new BlameError(ui`This file is too large to blame.`, 'too-large');
   }
   return { lines, commits };
 }
 
 function classify(stderr) {
   const text = (stderr || '').trim();
-  if (/no such path|does not exist in|no such ref/i.test(text)) return new BlameError('This file does not exist in that version.', 'absent');
-  if (/is a directory/i.test(text)) return new BlameError('That path is a directory, not a file.', 'absent');
-  return new BlameError('Git could not blame this file. Show output in the console.', 'git');
+  if (/no such path|does not exist in|no such ref/i.test(text)) return new BlameError(ui`This file does not exist in that version.`, 'absent');
+  if (/is a directory/i.test(text)) return new BlameError(ui`That path is a directory, not a file.`, 'absent');
+  return new BlameError(ui`Git could not blame this file. Show output in the console.`, 'git');
 }
 
 /** @param {{ cwd: string, log: object, oid: string, path: string, signal?: ?AbortSignal }} options */
 export async function loadBlame({ cwd, log, oid, path, signal = null }) {
   const argv = buildBlameArgv(oid, path);
   const result = await runGit({ argv, cwd, log, operation: 'Blame file', signal });
-  if (result.cancelled) throw new BlameError('Blame was cancelled.', 'cancelled');
+  if (result.cancelled) throw new BlameError(ui`Blame was cancelled.`, 'cancelled');
   if (result.code !== 0) throw classify(result.stderr);
   const parsed = parseBlamePorcelain(result.stdout);
   return { mode: 'blame', oid, path, ...parsed };
@@ -173,7 +174,7 @@ export async function loadReverseBlame({ cwd, log, startOid, endOid, path, signa
   if (startOid === endOid) throw new TypeError('Reverse blame needs a non-empty range');
   const argv = buildReverseBlameArgv(startOid, endOid, path);
   const result = await runGit({ argv, cwd, log, operation: 'Reverse blame file', signal });
-  if (result.cancelled) throw new BlameError('Reverse blame was cancelled.', 'cancelled');
+  if (result.cancelled) throw new BlameError(ui`Reverse blame was cancelled.`, 'cancelled');
   if (result.code !== 0) throw classify(result.stderr);
   const parsed = parseBlamePorcelain(result.stdout);
   return { mode: 'reverse', startOid, endOid, path, ...parsed };
@@ -202,11 +203,11 @@ export function buildBlameRangeArgv({ oid = null, path, start = null, end = null
  */
 export async function loadBlameRange({ cwd, log, env = null, signal = null, ...options }) {
   const result = await runGit({ argv: buildBlameRangeArgv(options), cwd, log, env, signal, operation: 'Blame lines' });
-  if (result.cancelled) throw new BlameError('Blame was cancelled.', 'cancelled');
+  if (result.cancelled) throw new BlameError(ui`Blame was cancelled.`, 'cancelled');
   if (result.code !== 0) {
     const short = /has only (\d+) lines?/.exec(result.stderr);
-    if (short) throw new BlameError(`The file has only ${short[1]} lines.`, 'range');
-    if (options.oid === null && /no such path .* in HEAD/i.test(result.stderr)) throw new BlameError('Not in HEAD: a file that was never committed has no history.', 'absent');
+    if (short) throw new BlameError(ui`The file has only ${short[1]} lines.`, 'range');
+    if (options.oid === null && /no such path .* in HEAD/i.test(result.stderr)) throw new BlameError(ui`Not in HEAD: a file that was never committed has no history.`, 'absent');
     throw classify(result.stderr);
   }
   return parseBlamePorcelain(result.stdout);
@@ -235,16 +236,16 @@ export async function loadBlameBefore({ cwd, log, oid, path, line, parentIndex =
   const parentsRaw = await git(cwd, log, ['rev-list', '--parents', '-n', '1', oid], 'Read commit parents', signal);
   if (parentsRaw.code !== 0) throw classify(parentsRaw.stderr);
   const ids = parentsRaw.stdout.trim().split(/\s+/).slice(1).filter(id => OID.test(id));
-  if (ids.length === 0) return { kind: 'root', message: 'This is the first commit; the file has no earlier version here.' };
+  if (ids.length === 0) return { kind: 'root', message: ui`This is the first commit; the file has no earlier version here.` };
   if (parentIndex !== null && parentIndex >= ids.length) throw new TypeError('Invalid parent index');
 
   let target = null;
   if (parentIndex === null) {
     const current = await loadBlame({ cwd, log, oid, path, signal });
     const row = current.lines.find(item => item.line === line);
-    if (!row) throw new BlameError('That line is not in this version of the file.', 'absent');
+    if (!row) throw new BlameError(ui`That line is not in this version of the file.`, 'absent');
     if (row.previous) target = { oid: row.previous.oid, path: row.previous.path };
-    else if (row.boundary) return { kind: 'shallow', message: 'The earlier version is outside this clone (shallow history).' };
+    else if (row.boundary) return { kind: 'shallow', message: ui`The earlier version is outside this clone (shallow history).` };
     else if (ids.length > 1) target = null; // fall through to parent picker
     else target = { oid: ids[0], path };
   } else {
@@ -256,7 +257,7 @@ export async function loadBlameBefore({ cwd, log, oid, path, line, parentIndex =
       const shown = await git(cwd, log, ['show', '--no-patch', '--format=%s', id], 'Read parent subject', signal);
       return { oid: id, short: id.slice(0, 7), subject: shown.code === 0 ? shown.stdout.trim() : '' };
     }));
-    return { kind: 'need-parent', message: 'This is a merge commit. Choose which parent to step back into.', parents: summaries };
+    return { kind: 'need-parent', message: ui`This is a merge commit. Choose which parent to step back into.`, parents: summaries };
   }
 
   // Confirm the path exists in the parent; otherwise look for a rename whose
@@ -271,7 +272,7 @@ export async function loadBlameBefore({ cwd, log, oid, path, line, parentIndex =
         if (/^R\d+$/.test(tokens[i]) && tokens[i + 2] === path) { renamed = tokens[i + 1]; break; }
       }
     }
-    if (!renamed) return { kind: 'absent-in-parent', parent: target.oid.slice(0, 7), message: `The file did not exist in ${target.oid.slice(0, 7)}; there is nothing to blame before this.` };
+    if (!renamed) return { kind: 'absent-in-parent', parent: target.oid.slice(0, 7), message: ui`The file did not exist in ${target.oid.slice(0, 7)}; there is nothing to blame before this.` };
     target = { oid: target.oid, path: renamed };
   }
 

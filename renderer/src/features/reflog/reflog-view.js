@@ -1,4 +1,5 @@
 import { moveBranchCommand } from '../../../../main/git/reflog-plan.js';
+import { mark, t } from '../../i18n/i18n.js';
 
 export { relativeTime } from '../../ui/relative-time.js';
 
@@ -8,19 +9,20 @@ export { relativeTime } from '../../ui/relative-time.js';
  * Vite and the Node check both load it.
  */
 
+// Display labels of Git's operations; the screen's language may keep the Git verbs.
 const ACTIONS = [
-  [/^commit \(initial\)/, 'First commit'], [/^commit \(amend\)/, 'Amend'], [/^commit \(merge\)/, 'Merge commit'],
-  [/^commit/, 'Commit'], [/^checkout/, 'Checkout'], [/^switch/, 'Checkout'], [/^reset/, 'Reset'],
-  [/^rebase/, 'Rebase'], [/^pull/, 'Pull'], [/^merge/, 'Merge'], [/^cherry-pick/, 'Cherry-pick'],
-  [/^revert/, 'Revert'], [/^branch/, 'Branch created'], [/^clone/, 'Clone'], [/^fetch/, 'Fetch'],
-  [/^push|^update by push/, 'Push'], [/^🌱 Twig/, '🌱 Twig']
+  [/^commit \(initial\)/, mark('First commit')], [/^commit \(amend\)/, mark('Amend')], [/^commit \(merge\)/, mark('Merge commit')],
+  [/^commit/, mark('Commit')], [/^checkout/, mark('Checkout')], [/^switch/, mark('Checkout')], [/^reset/, mark('Reset')],
+  [/^rebase/, mark('Rebase')], [/^pull/, mark('Pull')], [/^merge/, mark('Merge')], [/^cherry-pick/, mark('Cherry-pick')],
+  [/^revert/, mark('Revert')], [/^branch/, mark('Branch created')], [/^clone/, mark('Clone')], [/^fetch/, mark('Fetch')],
+  [/^push|^update by push/, mark('Push')], [/^🌱 Twig/, '🌱 Twig']
 ];
 
 /** "commit (amend)" → "Amend"; an action Git added later keeps its own words. */
 export function actionLabel(action) {
   const text = typeof action === 'string' ? action.trim() : '';
-  for (const [pattern, label] of ACTIONS) if (pattern.test(text)) return label;
-  return text || 'Move';
+  for (const [pattern, label] of ACTIONS) if (pattern.test(text)) return t(label);
+  return text || t('Move');
 }
 
 /** "moving to 420ea50bb14ff5e4…" → "moving to 420ea50": full ids are for Git, not for reading. */
@@ -71,15 +73,15 @@ export function suggestBranchName(entries, position, taken) {
  */
 export function moveBranchDialog({ branch, oid, expected, current }) {
   const short = oid.slice(0, 7);
-  const where = `${branch} moves to ${short}; it points at ${expected.slice(0, 7)} now.`;
-  const files = current
-    ? ' It is checked out, so your files follow it. Uncommitted changes stay; if one is in a file that differs there, Git refuses and nothing moves.'
-    : ' It is not checked out, so your files are not touched.';
-  const strand = ` Commits only ${branch} holds now stay in its reflog, on this screen.`;
+  const now = expected.slice(0, 7);
+  // Whole sentences: each language orders them its own way.
+  const consequence = current
+    ? t`${branch} moves to ${short}; it points at ${now} now. It is checked out, so your files follow it. Uncommitted changes stay; if one is in a file that differs there, Git refuses and nothing moves. Commits only ${branch} holds now stay in its reflog, on this screen. Undo in the toolbar moves it back.`
+    : t`${branch} moves to ${short}; it points at ${now} now. It is not checked out, so your files are not touched. Commits only ${branch} holds now stay in its reflog, on this screen. Undo in the toolbar moves it back.`;
   return {
-    title: `Move ${branch} to ${short}`, command: moveBranchCommand({ branch, oid, expected, current }),
-    consequence: `${where}${files}${strand} Undo in the toolbar moves it back.`,
-    confirmLabel: `Move ${branch}`
+    title: t`Move ${branch} to ${short}`, command: moveBranchCommand({ branch, oid, expected, current }),
+    consequence,
+    confirmLabel: t`Move ${branch}`
   };
 }
 
@@ -88,10 +90,10 @@ export function moveBranchDialog({ branch, oid, expected, current }) {
  * @param {{ branch: ?string, tip: ?string, oid: string, operation: string, busy: boolean }} state
  */
 export function moveReason({ branch, tip, oid, operation, busy }) {
-  if (busy) return 'Git is working';
-  if (!branch) return 'HEAD is detached: there is no branch to move. Create a branch here instead.';
-  if (!tip) return `${branch} does not exist any more. Create a branch here instead.`;
-  if (operation !== 'none') return `Finish or abort the ${operation} first`;
-  if (tip === oid) return `${branch} already points here`;
+  if (busy) return t('Git is working');
+  if (!branch) return t('HEAD is detached: there is no branch to move. Create a branch here instead.');
+  if (!tip) return t`${branch} does not exist any more. Create a branch here instead.`;
+  if (operation !== 'none') return t`Finish or abort the ${operation} first`;
+  if (tip === oid) return t`${branch} already points here`;
   return undefined;
 }

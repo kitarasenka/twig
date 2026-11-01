@@ -15,18 +15,21 @@
  * floor is also never wider than the lanes need (`graphFloor`): narrowing a
  * small graph must not make it jump wider.
  *
- * No imports: Vite loads this for the graph and Node loads it in the
- * self-check, and both read the same file.
+ * Only the i18n module is imported: Vite loads this for the graph and Node
+ * loads it in the self-check, and both read the same file. Labels are marked
+ * here and shown with t(label).
  */
+import { mark } from '../../i18n/i18n.js';
+
 export const MIN_SHARE = 0.1;
 const column = (label, max, defaultWidth) => ({ label, min: Math.round(max * MIN_SHARE), max, defaultWidth });
 
 export const HISTORY_COLUMNS = {
-  branch: column('Branch / tag', 340, 140),
-  graph: column('Graph', 640, null),
-  message: column('Commit message', 1200, 300),
-  author: column('Author', 320, 100),
-  date: column('Date', 260, 104),
+  branch: column(mark('Branch / tag'), 340, 140),
+  graph: column(mark('Graph'), 640, null),
+  message: column(mark('Commit message'), 1200, 300),
+  author: column(mark('Author'), 320, 100),
+  date: column(mark('Date'), 260, 104),
 };
 
 /** The automatic graph width never goes below this, however few lanes there are. */

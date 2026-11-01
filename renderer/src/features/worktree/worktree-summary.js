@@ -10,15 +10,26 @@
  * lists, because that is how Git models it — so `paths` counts distinct paths,
  * not the sum of the three lists.
  *
- * No imports: Vite and the Node self-check both load this file directly.
+ * Only the translator is imported (it has no imports of its own): Vite and the
+ * Node self-check both load this file directly. Labels stay English at module
+ * scope (`mark`) and are translated where they are shown.
  */
+
+import { mark, t, tn } from '../../i18n/i18n.js';
 
 /** The three lists, in the order the staging screen and the panel show them. */
 export const SECTIONS = [
-  { key: 'staged', title: 'Staged', word: 'staged', empty: 'Nothing staged yet.' },
-  { key: 'unstaged', title: 'Changed', word: 'changed', empty: 'No unstaged changes.' },
-  { key: 'untracked', title: 'Untracked', word: 'untracked', empty: 'No untracked files.' }
+  { key: 'staged', title: mark('Staged'), word: 'staged', empty: mark('Nothing staged yet.') },
+  { key: 'unstaged', title: mark('Changed'), word: 'changed', empty: mark('No unstaged changes.') },
+  { key: 'untracked', title: mark('Untracked'), word: 'untracked', empty: mark('No untracked files.') }
 ];
+
+/** "2 staged", "1 changed", "3 untracked": one whole phrase per list, for word order. */
+const CHIP_TEXT = {
+  staged: count => tn(count, '{n} staged', '{n} staged'),
+  unstaged: count => tn(count, '{n} changed', '{n} changed'),
+  untracked: count => tn(count, '{n} untracked', '{n} untracked')
+};
 
 function change(entry, status) {
   return { path: entry.path, originalPath: entry.originalPath ?? null, status };
@@ -57,13 +68,13 @@ export function summaryChips(summary) {
   if (!summary) return [];
   return SECTIONS
     .filter(section => summary[section.key]?.length)
-    .map(section => ({ key: section.key, count: summary[section.key].length, text: `${summary[section.key].length} ${section.word}` }));
+    .map(section => ({ key: section.key, count: summary[section.key].length, text: CHIP_TEXT[section.key](summary[section.key].length) }));
 }
 
 /** The same breakdown as one string, for a title or an accessible name. */
 export function summaryLabel(summary) {
   const chips = summaryChips(summary);
-  return chips.length ? chips.map(chip => chip.text).join(' · ') : 'no changes';
+  return chips.length ? chips.map(chip => chip.text).join(' · ') : t('no changes');
 }
 
 /** Conflicted paths block a commit; the row says so instead of only counting. */

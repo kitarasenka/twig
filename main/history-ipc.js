@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { loadCommit, loadCommitFiles, loadFileDiff, loadRangeFiles } from './git/commit.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 /** Only registered repository IDs cross IPC; revisions and files are validated by each reader. */
 export function registerHistoryIpc(getWindow, entryUrl, { repositories, journal }) {
@@ -11,7 +12,7 @@ export function registerHistoryIpc(getWindow, entryUrl, { repositories, journal 
         || !isTrustedPage(event.senderFrame.url, entryUrl) || args.length !== count
         || typeof args[0] !== 'string') throw new Error('Invalid history request');
       const repo = repositories.snapshot().repositories.find(item => item.id === args[0]);
-      if (!repo || !repo.available) throw new Error('Repository is unavailable');
+      if (!repo || !repo.available) throw new Error(ui`Repository is unavailable`);
       return read({ cwd: repo.path, log: journal }, ...args.slice(1));
     });
   }

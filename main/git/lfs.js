@@ -1,6 +1,7 @@
 import { access, constants } from 'node:fs/promises';
 import path from 'node:path';
 import { runGit } from './exec.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Git LFS: files kept on an LFS server, with only a small pointer committed.
@@ -62,17 +63,17 @@ export async function loadLfsStatus({ cwd, log }) {
   // Every read here exits 0 whatever it finds: a "no match" exit code would
   // read as a failed command in the journal, and "Show output" would point at it.
   const listed = await runGit({ cwd, log, argv: ['ls-files', '--cached', '-z', '--', ':(glob)**/.gitattributes'], operation: 'Read whether the repository uses Git LFS' });
-  if (listed.code !== 0) throw new Error('Git could not list .gitattributes.');
+  if (listed.code !== 0) throw new Error(ui`Git could not list .gitattributes.`);
   const files = listed.stdout.split('\0').filter(file => file && !file.includes('\n'));
   if (!files.length) return none;
   const attributes = await runGit({ cwd, log, argv: ['cat-file', '--batch'], stdin: files.map(file => `:${file}\n`).join(''), operation: 'Read .gitattributes for Git LFS' });
-  if (attributes.code !== 0) throw new Error('Git could not read .gitattributes.');
+  if (attributes.code !== 0) throw new Error(ui`Git could not read .gitattributes.`);
   if (!/\bfilter=lfs\b/.test(attributes.stdout)) return none;
   if (!await findLfsProgram({ cwd, log })) return { ...none, used: true, installed: false };
   const version = await runGit({ cwd, log, argv: ['lfs', 'version'], operation: 'Read Git LFS version' });
   if (version.code !== 0) return { ...none, used: true, installed: false };
   const tracked = await runGit({ cwd, log, argv: ['lfs', 'ls-files', '--long'], operation: 'Read Git LFS files' });
-  if (tracked.code !== 0) throw new Error('git lfs could not list the files it tracks.');
+  if (tracked.code !== 0) throw new Error(ui`git lfs could not list the files it tracks.`);
   const lfsFiles = parseLfsFiles(tracked.stdout);
   const missing = lfsFiles.filter(file => !file.present);
   return { used: true, installed: true, version: parseLfsVersion(version.stdout), files: lfsFiles.length,
@@ -88,7 +89,7 @@ export async function loadLfsStatus({ cwd, log }) {
  */
 export async function pullLfs({ cwd, log, signal = null }) {
   const result = await runGit({ cwd, log, signal, argv: ['lfs', 'pull'], operation: 'Download Git LFS files' });
-  if (signal?.aborted) return { ok: false, cancelled: true, message: 'Git LFS download cancelled.' };
-  if (result.code !== 0) return { ok: false, cancelled: false, message: 'git lfs pull did not finish. Show output in the console.' };
+  if (signal?.aborted) return { ok: false, cancelled: true, message: ui`Git LFS download cancelled.` };
+  if (result.code !== 0) return { ok: false, cancelled: false, message: ui`git lfs pull did not finish. Show output in the console.` };
   return { ok: true, cancelled: false, message: null };
 }

@@ -17,6 +17,8 @@
  * No imports from Electron, so the Node check drives it with a fake clock.
  */
 
+import { ui } from '../renderer/src/i18n/i18n.js';
+
 /** Minutes between fetches; 0 is Off. */
 export const FETCH_INTERVALS = Object.freeze([0, 5, 15, 30, 60]);
 /** A repository never fetched in this session is fetched this soon after it becomes active. */
@@ -89,7 +91,7 @@ export function createFetchScheduler({ run, isBusy = () => false, onUpdate = () 
     else {
       current.lastAttempt = now();
       if (result.ok) { current.lastSuccess = current.lastAttempt; current.error = null; }
-      else current.error = result.message || 'The background fetch failed.';
+      else current.error = result.message || ui`The background fetch failed.`;
     }
     onUpdate(cwd);
     arm();

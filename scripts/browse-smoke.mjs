@@ -60,7 +60,7 @@ try {
   await writeFile(path.join(cwd, 'app.txt'), 'line 12\nBUG\nsomething else\n', 'utf8');
   await git(['stash', 'push', '--message', 'newer work']);
 
-  const env = { ...process.env };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'profile')}`], env });

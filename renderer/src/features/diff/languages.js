@@ -4,9 +4,12 @@
  * `null` and are shown as plain text, which is always correct if dull.
  *
  * The ids are Prism grammar names; `syntax.js` loads exactly these, and the
- * self-check keeps the two lists in step. No imports: Vite and the Node check
- * both load this file.
+ * self-check keeps the two lists in step. Imports only the import-free i18n
+ * module: Vite and the Node check both load this file. Language names are
+ * product names and stay as they are; only "Plain text" is translated.
  */
+
+import { t } from '../../i18n/i18n.js';
 
 /** Grammar id → the name shown above a diff. */
 export const LANGUAGES = Object.freeze({
@@ -68,5 +71,5 @@ export function languageFor(path) {
 
 /** The name shown above a diff: the language, or "Plain text". */
 export function languageLabel(language) {
-  return language && Object.hasOwn(LANGUAGES, language) ? LANGUAGES[language] : 'Plain text';
+  return language && Object.hasOwn(LANGUAGES, language) ? LANGUAGES[language] : t('Plain text');
 }

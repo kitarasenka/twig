@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Patches: work carried between repositories without a shared remote.
@@ -33,9 +34,9 @@ export function exportName(oids, subject) {
 }
 
 export function validateExport(oids) {
-  if (!Array.isArray(oids) || oids.length < 1 || oids.length > MAX_EXPORTED) throw new TypeError('Choose between 1 and 100 commits to export');
+  if (!Array.isArray(oids) || oids.length < 1 || oids.length > MAX_EXPORTED) throw new TypeError(ui`Choose between 1 and 100 commits to export`);
   oids.forEach(validateOid);
-  if (new Set(oids.map(oid => oid.toLowerCase())).size !== oids.length) throw new TypeError('A commit is named twice');
+  if (new Set(oids.map(oid => oid.toLowerCase())).size !== oids.length) throw new TypeError(ui`A commit is named twice`);
   return oids;
 }
 
@@ -55,16 +56,16 @@ export async function exportPatches({ cwd, log, oids, target }) {
   if (typeof target !== 'string' || !path.isAbsolute(target)) throw new TypeError('Invalid export destination');
   // A merge has no single diff; `git am` could not rebuild it from one.
   const merges = await runGit({ cwd, log, argv: ['rev-list', '--no-walk=unsorted', '--min-parents=2', ...oids, '--'], operation: 'Background: check the selection for merge commits' });
-  if (merges.code !== 0) return { ok: false, message: 'Git could not read the selected commits.', count: 0, bytes: 0, path: null };
-  if (merges.stdout.trim()) return { ok: false, message: `${merges.stdout.trim().slice(0, 7)} is a merge commit and cannot be exported as a patch. Leave merge commits out of the selection.`, count: 0, bytes: 0, path: null };
+  if (merges.code !== 0) return { ok: false, message: ui`Git could not read the selected commits.`, count: 0, bytes: 0, path: null };
+  if (merges.stdout.trim()) return { ok: false, message: ui`${merges.stdout.trim().slice(0, 7)} is a merge commit and cannot be exported as a patch. Leave merge commits out of the selection.`, count: 0, bytes: 0, path: null };
   const directory = await mkdtemp(path.join(os.tmpdir(), 'twig-format-patch-'));
   try {
     for (const [index, oid] of oids.entries()) {
       const result = await runGit({ cwd, log, argv: buildFormatPatchArgv(oid, index + 1, directory), operation: `Export ${oid.slice(0, 7)} as a patch` });
-      if (result.code !== 0) return { ok: false, message: `Git could not format ${oid.slice(0, 7)}. Show output in the console.`, count: 0, bytes: 0, path: null };
+      if (result.code !== 0) return { ok: false, message: ui`Git could not format ${oid.slice(0, 7)}. Show output in the console.`, count: 0, bytes: 0, path: null };
     }
     const files = (await readdir(directory)).filter(name => name.endsWith('.patch')).sort();
-    if (files.length !== oids.length) return { ok: false, message: 'Git did not write a patch for every commit. Show output in the console.', count: 0, bytes: 0, path: null };
+    if (files.length !== oids.length) return { ok: false, message: ui`Git did not write a patch for every commit. Show output in the console.`, count: 0, bytes: 0, path: null };
     const content = Buffer.concat(await Promise.all(files.map(name => readFile(path.join(directory, name)))));
     await writeFile(target, content);
     return { ok: true, message: null, count: files.length, bytes: content.length, path: target };
@@ -105,7 +106,7 @@ export function buildApplyArgv({ kind, file, index = false }) {
  */
 export async function checkPatch({ cwd, log, file, index = false }) {
   const result = await runGit({ cwd, log, argv: ['apply', '--check', ...(index ? ['--index'] : []), '--', file], operation: 'Read whether the patch applies' });
-  return { applies: result.code === 0, reason: result.code === 0 ? null : result.stderr.split('\n').find(line => line.startsWith('error: ')) || 'The patch does not apply to the current files.' };
+  return { applies: result.code === 0, reason: result.code === 0 ? null : result.stderr.split('\n').find(line => line.startsWith('error: ')) || ui`The patch does not apply to the current files.` };
 }
 
 /** @param {{ cwd: string, log: object, kind: 'mbox'|'diff', file: string, index?: boolean }} options */
@@ -113,11 +114,11 @@ export async function applyPatch({ cwd, log, kind, file, index = false }) {
   const argv = buildApplyArgv({ kind, file, index });
   const result = await runGit({ cwd, log, argv, operation: kind === 'mbox' ? 'Apply patches as commits (am)' : 'Apply a patch to the files' });
   if (result.code === 0) return { ok: true, message: null };
-  return { ok: false, message: kind === 'mbox' ? 'git am stopped. Show output in the console.' : 'The patch did not apply; nothing was changed. Show output in the console.' };
+  return { ok: false, message: kind === 'mbox' ? ui`git am stopped. Show output in the console.` : ui`The patch did not apply; nothing was changed. Show output in the console.` };
 }
 
 export async function readPatchFile(file) {
   const content = await readFile(file);
-  if (content.length > MAX_PATCH_BYTES) throw new Error('This file is larger than 50 MB; it is not a patch 🌱 Twig will apply.');
+  if (content.length > MAX_PATCH_BYTES) throw new Error(ui`This file is larger than 50 MB; it is not a patch 🌱 Twig will apply.`);
   return content;
 }

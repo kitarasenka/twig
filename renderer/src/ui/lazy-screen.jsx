@@ -1,4 +1,5 @@
 import { Suspense, lazy } from 'react';
+import { t } from '../i18n/i18n.js';
 
 /**
  * A screen or dialog that is opened rarely, loaded the first time it is shown
@@ -8,7 +9,7 @@ import { Suspense, lazy } from 'react';
 export default function lazyScreen(load) {
   const Screen = lazy(load);
   function LazyScreen(props) {
-    return <Suspense fallback={<div className="loading-shell" aria-label="Loading screen"><div className="skeleton" /></div>}><Screen {...props} /></Suspense>;
+    return <Suspense fallback={<div className="loading-shell" aria-label={t('Loading screen')}><div className="skeleton" /></div>}><Screen {...props} /></Suspense>;
   }
   return LazyScreen;
 }

@@ -1,6 +1,7 @@
 import { streamGit } from './exec.js';
 import { buildHistoryStreamArgv, loadHistoryPage } from './history.js';
 import { HISTORY_FIELD_COUNT, commitFromFields } from './history-parser.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * The history graph's pages, read from one `git log` per repository.
@@ -35,7 +36,7 @@ const IDLE = 'Stopped by 🌱 Twig: no more of this history was asked for.\n';
 
 /** A page asked of a read that was replaced meanwhile. The reader that asked has moved on too. */
 export class HistoryReadReplaced extends Error {
-  constructor() { super('This history read was replaced by a newer one.'); this.name = 'HistoryReadReplaced'; }
+  constructor() { super(ui`This history read was replaced by a newer one.`); this.name = 'HistoryReadReplaced'; }
 }
 
 /** Splits streamed text into commits: eight NUL-terminated fields each, across chunk boundaries. */
@@ -99,7 +100,7 @@ export function createHistoryStreams({ log, readAhead = READ_AHEAD, idleMs = IDL
       onEnd: ({ code, cancelled }) => {
         stream.done = true;
         if (!cancelled && !stream.failure) {
-          if (code !== 0) stream.failure = new Error('Git could not read commit history.');
+          if (code !== 0) stream.failure = new Error(ui`Git could not read commit history.`);
           else try { stream.reader.end(); } catch (error) { stream.failure = error; }
         }
         wake(stream);

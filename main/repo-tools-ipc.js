@@ -1,4 +1,5 @@
 import { app, dialog, ipcMain } from 'electron';
+import { nt } from './language.js';
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { isTrustedPage } from './security.js';
@@ -13,6 +14,7 @@ import { compareWorktrees, excludeAgentFolder, finishWorktree, loadWorktreeBoard
   squashWorktree } from './git/worktree-board.js';
 import { validateOid } from './git/commit.js';
 import { validateRefName } from './git/refs-ops.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 /**
  * Channels for the repository tools beyond history: Git LFS, patches,
@@ -40,7 +42,7 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
   }
   /** One long job per repository (LFS download, submodule update, maintenance), cancellable. */
   async function job(cwd, run) {
-    if (jobs.has(cwd)) throw new Error('Another download or maintenance task is running in this repository.');
+    if (jobs.has(cwd)) throw new Error(ui`Another download or maintenance task is running in this repository.`);
     const controller = new AbortController();
     jobs.set(cwd, controller);
     try { return await run(controller.signal); } finally { jobs.delete(cwd); }
@@ -57,9 +59,9 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
     const subject = oids.length === 1
       ? (await runGit({ ...options, argv: ['show', '-s', '--format=%s', oids[0], '--'], operation: 'Read commit subject' })).stdout.trim() : '';
     const choice = await dialog.showSaveDialog(getWindow(), {
-      title: oids.length === 1 ? 'Export commit as a patch' : `Export ${oids.length} commits as a patch`,
+      title: oids.length === 1 ? nt('Export commit as a patch') : nt`Export ${oids.length} commits as a patch`,
       defaultPath: path.join(app.getPath('downloads'), exportName(oids, subject)),
-      filters: [{ name: 'Patch', extensions: ['patch', 'mbox'] }]
+      filters: [{ name: nt('Patch'), extensions: ['patch', 'mbox'] }]
     });
     if (choice.canceled || !choice.filePath) return { ok: false, cancelled: true, message: null };
     return exportPatches({ ...options, oids, target: choice.filePath });
@@ -70,14 +72,14 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
    */
   handler('patch:choose', 1, async options => {
     const choice = await dialog.showOpenDialog(getWindow(), {
-      title: 'Apply a patch', properties: ['openFile'],
-      filters: [{ name: 'Patches', extensions: ['patch', 'diff', 'mbox', 'eml', 'txt'] }, { name: 'All files', extensions: ['*'] }]
+      title: nt('Apply a patch'), properties: ['openFile'],
+      filters: [{ name: nt('Patches'), extensions: ['patch', 'diff', 'mbox', 'eml', 'txt'] }, { name: nt('All files'), extensions: ['*'] }]
     });
     if (choice.canceled || !choice.filePaths[0]) return null;
     const file = choice.filePaths[0];
     const content = await readPatchFile(file);
     const summary = inspectPatch(content);
-    if (!summary.valid) return { name: path.basename(file), invalid: true, reason: 'This file holds no diff that Git could apply.' };
+    if (!summary.valid) return { name: path.basename(file), invalid: true, reason: ui`This file holds no diff that Git could apply.` };
     const check = await checkPatch({ ...options, file });
     const token = patchFiles.add(options.cwd, { file, kind: summary.kind });
     return { token, name: path.basename(file), bytes: content.length, ...summary, check };
@@ -110,7 +112,7 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
     const branch = where === 'agent' ? validateRefName(agentBranch(name)) : name;
     let parent = null;
     if (where === 'choose') {
-      const picked = await dialog.showOpenDialog(getWindow(), { title: 'Choose where the new worktree goes', properties: ['openDirectory', 'createDirectory'] });
+      const picked = await dialog.showOpenDialog(getWindow(), { title: nt('Choose where the new worktree goes'), properties: ['openDirectory', 'createDirectory'] });
       if (picked.canceled || !picked.filePaths[0]) return null;
       parent = picked.filePaths[0];
     }
@@ -156,7 +158,7 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
   /** Opens another worktree of this repository as a tab. */
   handler('worktrees:open', 2, async (options, folder) => {
     const found = await findWorktree({ ...options, path: folder });
-    if (found.prunable) throw new Error('This worktree’s folder is gone. Prune it instead.');
+    if (found.prunable) throw new Error(ui`This worktree’s folder is gone. Prune it instead.`);
     return repositories.add(found.path);
   });
   /** Everything a worktree changed since its branch left the base, and one file of it. */

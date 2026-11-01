@@ -12,6 +12,7 @@ import { buildDeleteBranchArgv, validateRefName } from './refs-ops.js';
 import { buildCommitArgv, createCommit, gitReason, validateCommitMessage } from './commit-ops.js';
 import { loadOperationState } from './operation-state.js';
 import { AGENT_FOLDER, findWorktree, loadWorktrees, removeWorktree } from './worktrees.js';
+import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * The Worktrees board: what each worktree of a repository holds — commits
@@ -36,7 +37,7 @@ const heads = name => `refs/heads/${validateRefName(name)}`;
 
 async function read(cwd, log, argv, operation) {
   const result = await runGit({ cwd, log, argv, operation });
-  if (result.code !== 0) throw new Error(`${operation} failed. See the command console.`);
+  if (result.code !== 0) throw new Error(ui`${operation} failed. See the command console.`);
   return result.stdout;
 }
 
@@ -172,8 +173,8 @@ export async function loadWorktreeBoard({ cwd, log, pending = new Set(), agents 
 /** The worktree the screen named, as Git lists it now, with the main one beside it. */
 async function agentWorktree({ cwd, log, folder }) {
   const entry = await findWorktree({ cwd, log, path: folder });
-  if (entry.main) throw new Error('The main worktree is the base; review a worktree next to it.');
-  if (entry.bare || entry.prunable) throw new Error('This worktree has no files to show.');
+  if (entry.main) throw new Error(ui`The main worktree is the base; review a worktree next to it.`);
+  if (entry.bare || entry.prunable) throw new Error(ui`This worktree has no files to show.`);
   const list = await loadWorktrees({ cwd, log });
   return { entry, main: list[0], base: list[0].branch || null };
 }
@@ -217,8 +218,8 @@ export async function loadWorktreeFileDiff({ cwd, log, folder, path: file, untra
   const { entry, base } = await agentWorktree({ cwd, log, folder });
   if (untracked) {
     const patch = await loadUntrackedDiff({ cwd: entry.path, log, path: file });
-    if (patch.directory) return { patch: '', note: 'A folder Git lists as one entry.' };
-    if (patch.tooLarge) return { patch: '', note: `${patch.size} bytes, too large to show.` };
+    if (patch.directory) return { patch: '', note: ui`A folder Git lists as one entry.` };
+    if (patch.tooLarge) return { patch: '', note: ui`${patch.size} bytes, too large to show.` };
     return { patch: patch.text, note: null };
   }
   const against = (await forkPoint(entry.path, log, base)) || 'HEAD';
@@ -262,21 +263,22 @@ export async function planSquash({ cwd, log, folder }) {
   const { entry, main, base } = await agentWorktree({ cwd, log, folder });
   const plan = { folder: entry.path, branch: entry.branch, base, basePath: main.path, branchOid: entry.head, baseOid: main.head,
     commits: [], message: '', commands: [], problem: null, warnings: [] };
-  if (!entry.branch) return { ...plan, problem: 'This worktree is not on a branch.' };
-  if (!base) return { ...plan, problem: 'The main worktree is not on a branch, so there is nothing to squash into.' };
-  if (entry.branch === base) return { ...plan, problem: `This worktree is on ${base} itself.` };
+  if (!entry.branch) return { ...plan, problem: ui`This worktree is not on a branch.` };
+  if (!base) return { ...plan, problem: ui`The main worktree is not on a branch, so there is nothing to squash into.` };
+  if (entry.branch === base) return { ...plan, problem: ui`This worktree is on ${base} itself.` };
   plan.commits = await readCommits(cwd, log, `${heads(base)}..${heads(entry.branch)}`);
   plan.message = squashMessage(plan.commits);
   plan.commands = squashCommands(entry.head);
   const own = await readChanges(entry.path, log);
-  if (own.files) plan.warnings.push(`${own.files === 1 ? '1 file' : `${own.files} files`} in this worktree ${own.files === 1 ? 'is' : 'are'} not committed and will not be included. Commit ${own.files === 1 ? 'it' : 'them'} first to bring ${own.files === 1 ? 'it' : 'them'} along.`);
-  if (!plan.commits.length) return { ...plan, problem: `${entry.branch} has no commits that ${base} does not have.` };
+  if (own.files) plan.warnings.push(uiN(own.files, '{n} file in this worktree is not committed and will not be included. Commit it first to bring it along.',
+    '{n} files in this worktree are not committed and will not be included. Commit them first to bring them along.'));
+  if (!plan.commits.length) return { ...plan, problem: ui`${entry.branch} has no commits that ${base} does not have.` };
   const operation = await loadOperationState({ cwd: main.path, log });
-  if (operation.kind !== 'none') return { ...plan, problem: `A ${operation.kind} is in progress in ${base}. Finish or abort it first.` };
+  if (operation.kind !== 'none') return { ...plan, problem: ui`A ${operation.kind} is in progress in ${base}. Finish or abort it first.` };
   const there = await readChanges(main.path, log);
-  if (there.conflicts) return { ...plan, problem: `${base} has unresolved conflicts. Resolve them first.` };
-  if (there.staged) return { ...plan, problem: `${base} has staged changes; they would go into the squashed commit. Commit or unstage them first.` };
-  if (there.files) plan.warnings.push(`${base} has uncommitted files. Git stops if the squash would change any of them.`);
+  if (there.conflicts) return { ...plan, problem: ui`${base} has unresolved conflicts. Resolve them first.` };
+  if (there.staged) return { ...plan, problem: ui`${base} has staged changes; they would go into the squashed commit. Commit or unstage them first.` };
+  if (there.files) plan.warnings.push(ui`${base} has uncommitted files. Git stops if the squash would change any of them.`);
   return plan;
 }
 
@@ -294,7 +296,7 @@ export async function squashWorktree({ cwd, log, folder, message, branchOid, bas
   if (!check.valid) throw new TypeError(check.error);
   const plan = await planSquash({ cwd, log, folder });
   if (plan.problem) return { ok: false, message: plan.problem };
-  if (plan.branchOid !== branchOid || plan.baseOid !== baseOid) return { ok: false, moved: true, message: `${plan.branch} or ${plan.base} moved since you opened this. Review it again.` };
+  if (plan.branchOid !== branchOid || plan.baseOid !== baseOid) return { ok: false, moved: true, message: ui`${plan.branch} or ${plan.base} moved since you opened this. Review it again.` };
   const target = plan.basePath;
   const restore = () => runGit({ cwd: target, log, argv: ['reset', '--merge'], operation: 'Put the base back after a squash that did not finish' });
   const merged = await runGit({ cwd: target, log, argv: plan.commands[0], operation: `Squash ${plan.branch} into ${plan.base}` });
@@ -303,15 +305,15 @@ export async function squashWorktree({ cwd, log, folder, message, branchOid, bas
     const conflicts = after.entries.filter(entry => entry.kind === 'unmerged').map(entry => entry.path);
     await restore();
     if (conflicts.length) {
-      return { ok: false, conflicts, message: `Squashing ${plan.branch} conflicts with ${plan.base} in ${conflicts.join(', ')}. Nothing changed. Merge or rebase it from the graph to resolve the conflicts.` };
+      return { ok: false, conflicts, message: ui`Squashing ${plan.branch} conflicts with ${plan.base} in ${conflicts.join(', ')}. Nothing changed. Merge or rebase it from the graph to resolve the conflicts.` };
     }
-    return { ok: false, message: `Git refused the squash: ${gitReason(merged) || 'see the command console.'}` };
+    return { ok: false, message: gitReason(merged) ? ui`Git refused the squash: ${gitReason(merged)}` : ui`Git refused the squash: see the command console.` };
   }
   try {
     await createCommit({ cwd: target, log, message });
   } catch (error) {
     await restore();
-    return { ok: false, message: `Not committed, ${plan.base} is as it was: ${error.message}${error.detail ? `\n${error.detail}` : ''}` };
+    return { ok: false, message: error.detail ? ui`Not committed, ${plan.base} is as it was: ${error.message}\n${error.detail}` : ui`Not committed, ${plan.base} is as it was: ${error.message}` };
   }
   const head = (await read(target, log, ['rev-parse', 'HEAD'], 'Read the squashed commit')).trim();
   await read(cwd, log, ['update-ref', '-m', `🌱 Twig: squashed ${plan.branch}`, `${SQUASH_REFS}/${plan.branch}`, head], 'Remember the squash');
@@ -327,10 +329,10 @@ export async function squashWorktree({ cwd, log, folder, message, branchOid, bas
  */
 export async function finishWorktree({ cwd, log, folder }) {
   const { entry, base } = await agentWorktree({ cwd, log, folder });
-  if (!entry.branch || !base) return { ok: false, message: 'This worktree is not on a branch next to a base branch.' };
+  if (!entry.branch || !base) return { ok: false, message: ui`This worktree is not on a branch next to a base branch.` };
   const records = await readSquashRecords(cwd, log);
   const state = await integration({ cwd, log, base, branch: entry.branch, tip: entry.head, records });
-  if (!state.integrated) return { ok: false, message: `${entry.branch} has work that is not in ${base} yet. Squash it first, or remove only the worktree.` };
+  if (!state.integrated) return { ok: false, message: ui`${entry.branch} has work that is not in ${base} yet. Squash it first, or remove only the worktree.` };
   const removed = await removeWorktree({ cwd, log, path: entry.path });
   if (!removed.ok) return removed;
   const deleted = await runGit({ cwd, log, argv: buildDeleteBranchArgv(entry.branch, true), operation: `Delete branch ${entry.branch}` });
@@ -339,7 +341,7 @@ export async function finishWorktree({ cwd, log, folder }) {
       await runGit({ cwd, log, argv: ['update-ref', '-d', `${prefix}/${entry.branch}`], operation: 'Forget the squash' });
     }
   }
-  if (deleted.code !== 0) return { ok: false, path: entry.path, message: `The worktree is removed, but Git kept the branch: ${gitReason(deleted)}` };
+  if (deleted.code !== 0) return { ok: false, path: entry.path, message: ui`The worktree is removed, but Git kept the branch: ${gitReason(deleted)}` };
   return { ok: true, path: entry.path, branch: entry.branch };
 }
 
@@ -380,7 +382,7 @@ async function journaled({ log, cwd, argv, operation, output, run }) {
   } catch (error) {
     await log.output(id, 'stderr', `${error.message}\n`);
     await log.finish(id, { code: 1, stdout: '', stderr: error.message, cancelled: false, ms: Math.round(performance.now() - started), startedAt });
-    throw new Error('Could not write .git/info/exclude. See the command console.');
+    throw new Error(ui`Could not write .git/info/exclude. See the command console.`);
   }
 }
 
@@ -395,7 +397,7 @@ const summary = review => ({ folder: review.folder, branch: review.branch, fork:
  * @param {{ cwd: string, log: object, left: string, right: string }} options
  */
 export async function compareWorktrees({ cwd, log, left, right }) {
-  if (typeof left !== 'string' || typeof right !== 'string' || path.resolve(left) === path.resolve(right)) throw new TypeError('Choose two different worktrees');
+  if (typeof left !== 'string' || typeof right !== 'string' || path.resolve(left) === path.resolve(right)) throw new TypeError(ui`Choose two different worktrees`);
   const [a, b] = await Promise.all([loadWorktreeReview({ cwd, log, folder: left }), loadWorktreeReview({ cwd, log, folder: right })]);
   const rows = new Map();
   for (const [side, review] of [['left', a], ['right', b]]) {
@@ -414,12 +416,12 @@ async function compareSide(folder, file) {
   const full = path.join(folder, file);
   let info;
   try { info = await lstat(full); } catch (error) { if (error.code === 'ENOENT') return { path: null }; throw error; }
-  if (!info.isFile()) return { note: `${file} is not a regular file in ${path.basename(folder)}.` };
+  if (!info.isFile()) return { note: ui`${file} is not a regular file in ${path.basename(folder)}.` };
   // A folder on the way could be a link leading out of the worktree.
   const [root, resolved] = [realpathSync.native(folder), realpathSync.native(full)];
   const relative = path.relative(root, resolved);
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return { note: `${file} leads outside ${path.basename(folder)}.` };
-  if (info.size > COMPARE_LIMIT) return { note: `${file} is larger than 1 MB in ${path.basename(folder)}.` };
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return { note: ui`${file} leads outside ${path.basename(folder)}.` };
+  if (info.size > COMPARE_LIMIT) return { note: ui`${file} is larger than 1 MB in ${path.basename(folder)}.` };
   return { path: resolved };
 }
 
@@ -431,16 +433,16 @@ async function compareSide(folder, file) {
  */
 export async function loadWorktreeCompareDiff({ cwd, log, left, right, path: file }) {
   validateFile(file);
-  if (typeof left !== 'string' || typeof right !== 'string') throw new TypeError('Choose two different worktrees');
+  if (typeof left !== 'string' || typeof right !== 'string') throw new TypeError(ui`Choose two different worktrees`);
   const [a, b] = await Promise.all([agentWorktree({ cwd, log, folder: left }), agentWorktree({ cwd, log, folder: right })]);
   const sides = await Promise.all([compareSide(a.entry.path, file), compareSide(b.entry.path, file)]);
   const note = sides.find(side => side.note)?.note;
   if (note) return { patch: '', note, same: false };
-  if (!sides[0].path && !sides[1].path) return { patch: '', note: 'Neither worktree has this file now.', same: false };
+  if (!sides[0].path && !sides[1].path) return { patch: '', note: ui`Neither worktree has this file now.`, same: false };
   const result = await runGit({ cwd, log, operation: 'Read a file compared across two worktrees',
     argv: ['diff', '--no-index', ...PLAIN, '--', sides[0].path ?? '/dev/null', sides[1].path ?? '/dev/null'] });
   // `--no-index` answers 1 when the files differ, which is the usual case here.
-  if (result.code !== 0 && result.code !== 1) throw new Error('Git could not compare the two files.');
+  if (result.code !== 0 && result.code !== 1) throw new Error(ui`Git could not compare the two files.`);
   if (result.code === 0) return { patch: '', note: null, same: true };
   const start = result.stdout.search(/^(?:@@ |Binary files )/m);
   const body = start < 0 ? '' : result.stdout.slice(start);

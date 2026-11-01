@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { nt } from './language.js';
 import { randomUUID } from 'node:crypto';
 import { accessSync, constants } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -6,6 +7,7 @@ import path from 'node:path';
 import { dialog, ipcMain, shell } from 'electron';
 import { isTrustedPage } from './security.js';
 import { EDITOR_PRESETS, editorLabel, planOpen, resolveRepositoryFile, validPreset } from './editor.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 const OPEN_TIMEOUT_MS = 15_000;
 const STDERR_CAP = 8192;
@@ -46,12 +48,12 @@ function launch({ executable, args, wait, cwd, log, pathString }) {
         env: { ...process.env, PATH: pathString || process.env.PATH || '' }
       });
     } catch (error) { done(-1, error.message); return; }
-    child.on('error', error => done(-1, error.code === 'ENOENT' ? `${executable} was not found.` : error.message));
+    child.on('error', error => done(-1, error.code === 'ENOENT' ? ui`${executable} was not found.` : error.message));
     if (!wait) {
       child.on('spawn', () => { child.unref(); done(0, null, 'Started. 🌱 Twig does not wait for the editor to close.\n'); });
       return;
     }
-    const timer = setTimeout(() => { try { child.kill(); } catch { /* already gone */ } done(-1, 'The editor did not answer in time.'); }, OPEN_TIMEOUT_MS);
+    const timer = setTimeout(() => { try { child.kill(); } catch { /* already gone */ } done(-1, ui`The editor did not answer in time.`); }, OPEN_TIMEOUT_MS);
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', chunk => {
       if (stderr.length >= STDERR_CAP) return;
@@ -60,7 +62,7 @@ function launch({ executable, args, wait, cwd, log, pathString }) {
     });
     child.on('close', code => {
       clearTimeout(timer);
-      done(code ?? -1, code === 0 ? null : (stderr.trim().split('\n').at(-1) || `The editor exited with code ${code}.`).slice(0, 300));
+      done(code ?? -1, code === 0 ? null : (stderr.trim().split('\n').at(-1) || ui`The editor exited with code ${code}.`).slice(0, 300));
     });
   });
 }
@@ -101,11 +103,11 @@ export function registerFilesIpc(getWindow, entryUrl, { repositories, journal, e
     if (args[0] !== 'custom') { await editor.save({ preset: args[0], customPath: null }); return describe(); }
     const mac = process.platform === 'darwin';
     const choice = await dialog.showOpenDialog(getWindow(), {
-      title: 'Choose the application that opens files',
+      title: nt('Choose the application that opens files'),
       defaultPath: mac ? '/Applications' : undefined,
       properties: ['openFile'],
-      filters: mac ? [{ name: 'Applications', extensions: ['app'] }]
-        : process.platform === 'win32' ? [{ name: 'Programs', extensions: ['exe'] }] : []
+      filters: mac ? [{ name: nt('Applications'), extensions: ['app'] }]
+        : process.platform === 'win32' ? [{ name: nt('Programs'), extensions: ['exe'] }] : []
     });
     if (choice.canceled || !choice.filePaths[0]) return describe();
     await editor.save({ preset: 'custom', customPath: choice.filePaths[0] });
@@ -117,8 +119,8 @@ export function registerFilesIpc(getWindow, entryUrl, { repositories, journal, e
     const [id, file] = args;
     const { root, absolute } = repositoryFile(id, file);
     const info = await statOrNull(absolute);
-    if (!info) return { ok: false, reason: 'missing', message: `${file} is not in the working tree — it was deleted or renamed since.` };
-    if (!info.isFile()) return { ok: false, reason: 'not-file', message: `${file} is not a regular file.` };
+    if (!info) return { ok: false, reason: 'missing', message: ui`${file} is not in the working tree — it was deleted or renamed since.` };
+    if (!info.isFile()) return { ok: false, reason: 'not-file', message: ui`${file} is not a regular file.` };
     const pathString = await loginPath; // resolved behind the launch, see main/index.js
     const plan = planOpen({ settings: editor.get(), file: absolute, platform: process.platform,
       pathString, exists, executableBit: (info.mode & 0o111) !== 0 });

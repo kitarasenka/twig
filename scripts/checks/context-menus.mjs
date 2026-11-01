@@ -253,7 +253,7 @@ assert.equal(byKey(buildSectionMenu({ type: 'tag', head, operation: { kind: 'reb
   const refsScreen = readFileSync(new URL('../../renderer/src/features/refs/RefsScreen.jsx', import.meta.url), 'utf8');
   const dialogs = readFileSync(new URL('../../renderer/src/features/ops/dialogs.jsx', import.meta.url), 'utf8');
   for (const [name, source] of [['HistoryWorkspace', workspace], ['RefsScreen', refsScreen]]) {
-    assert.match(source, /title: `Rename \$\{name\}`.*initialValue: name/, `${name} prefills the rename dialog`);
+    assert.match(source, /title: t?`Rename \$\{name\}`.*initialValue: name/, `${name} prefills the rename dialog`);
   }
   assert.match(dialogs, /useState\(initialValue\)/);
   assert.match(dialogs, /'That is the current name'/, 'an unchanged name is refused');

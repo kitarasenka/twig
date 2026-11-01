@@ -31,6 +31,7 @@ import path from 'node:path';
 import { plainFs } from './plain-fs.js';
 import { checkForUpdate } from './update-check.js';
 import { BUNDLE_ID } from './update-target.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 // Bundles are moved and deleted here: through Electron's fs a recursive rm
 // stops at app.asar (see plain-fs.js).
@@ -84,7 +85,7 @@ export async function downloadAsset({ asset, file, fetchImpl, signal, userAgent,
   let idle = null;
   const touch = () => {
     clearTimeout(idle);
-    idle = setTimeout(() => controller.abort(new UpdateError('The download stalled. Try again.')), IDLE_TIMEOUT_MS);
+    idle = setTimeout(() => controller.abort(new UpdateError(ui`The download stalled. Try again.`)), IDLE_TIMEOUT_MS);
   };
   let handle = null;
   let iterator = null;
@@ -92,19 +93,19 @@ export async function downloadAsset({ asset, file, fetchImpl, signal, userAgent,
     let url = asset.url;
     let response = null;
     for (let hop = 0; ; hop++) {
-      if (!allowedDownloadUrl(url)) throw new UpdateError('The download was redirected somewhere other than GitHub.');
+      if (!allowedDownloadUrl(url)) throw new UpdateError(ui`The download was redirected somewhere other than GitHub.`);
       touch();
       response = await fetchImpl(url, {
         redirect: 'manual', signal: controller.signal,
         headers: { accept: 'application/octet-stream', 'user-agent': userAgent }
       });
       if (![301, 302, 303, 307, 308].includes(response.status)) break;
-      if (hop >= MAX_REDIRECTS) throw new UpdateError('The download was redirected too many times.');
+      if (hop >= MAX_REDIRECTS) throw new UpdateError(ui`The download was redirected too many times.`);
       const location = response.headers.get('location');
-      if (!location) throw new UpdateError('GitHub sent a redirect without a location.');
+      if (!location) throw new UpdateError(ui`GitHub sent a redirect without a location.`);
       url = new URL(location, url).href;
     }
-    if (!response.ok || !response.body) throw new UpdateError(`GitHub answered ${response.status} for the download.`);
+    if (!response.ok || !response.body) throw new UpdateError(ui`GitHub answered ${response.status} for the download.`);
     const hash = createHash('sha256');
     let received = 0;
     handle = await open(file, 'w');
@@ -122,23 +123,23 @@ export async function downloadAsset({ asset, file, fetchImpl, signal, userAgent,
       if (done) break;
       touch();
       received += chunk.byteLength;
-      if (received > asset.size) throw new UpdateError('The download is larger than the release says. It was discarded.');
+      if (received > asset.size) throw new UpdateError(ui`The download is larger than the release says. It was discarded.`);
       hash.update(chunk);
       await handle.write(chunk);
       onProgress(received, asset.size);
     }
     await handle.close();
     handle = null;
-    if (received !== asset.size) throw new UpdateError('The download ended early. Try again.');
-    if (hash.digest('hex') !== asset.sha256) throw new UpdateError('The download does not match the checksum of the release. It was discarded.');
+    if (received !== asset.size) throw new UpdateError(ui`The download ended early. Try again.`);
+    if (hash.digest('hex') !== asset.sha256) throw new UpdateError(ui`The download does not match the checksum of the release. It was discarded.`);
   } catch (error) {
     void iterator?.return?.()?.catch?.(() => {});
     await handle?.close().catch(() => {});
     await rm(file, { force: true });
-    if (signal?.aborted) throw new UpdateError('Download cancelled.');
+    if (signal?.aborted) throw new UpdateError(ui`Download cancelled.`);
     if (error instanceof UpdateError) throw error;
     if (controller.signal.reason instanceof UpdateError) throw controller.signal.reason;
-    throw new UpdateError('The download failed. Check your connection and try again.');
+    throw new UpdateError(ui`The download failed. Check your connection and try again.`);
   } finally {
     clearTimeout(idle);
     signal?.removeEventListener('abort', abort);
@@ -221,7 +222,7 @@ export function createUpdater({
         set({
           status: 'available', latest: result.latest, url: result.url, notes: result.notes || '', checkedAt,
           installReason: !installable ? target.reason
-            : asset ? null : 'This release has no installer for this system that 🌱 Twig can verify.'
+            : asset ? null : ui`This release has no installer for this system that 🌱 Twig can verify.`
         });
       } else if (result.status === 'current') {
         asset = null;
@@ -229,7 +230,7 @@ export function createUpdater({
       } else {
         asset = null;
         set({ status: 'error', url: result.url, checkedAt,
-          error: result.status === 'unknown' ? 'Could not tell which release is the latest.' : result.message });
+          error: result.status === 'unknown' ? ui`Could not tell which release is the latest.` : result.message });
       }
       return snapshot();
     })().finally(() => { checking = null; });
@@ -247,12 +248,12 @@ export function createUpdater({
         for (const name of await readdir(mount)) {
           if (name.endsWith('.app') && (await lstat(path.join(mount, name))).isDirectory()) apps.push(name);
         }
-        if (apps.length !== 1) throw new UpdateError('The disk image does not hold exactly one app.');
+        if (apps.length !== 1) throw new UpdateError(ui`The disk image does not hold exactly one app.`);
         await rm(staged, { recursive: true, force: true });
         try {
           await tool(['ditto', path.join(mount, apps[0]), staged], 'Update: copy the new version');
         } catch (error) {
-          throw new UpdateError(`Could not write next to ${path.basename(target.appPath)} in ${parent}. ${error.message}`);
+          throw new UpdateError(ui`Could not write next to ${path.basename(target.appPath)} in ${parent}. ${error.message}`);
         }
       } finally {
         await runTool(['hdiutil', 'detach', mount, '-force'], 'Update: unmount the disk image').catch(() => {});
@@ -260,8 +261,8 @@ export function createUpdater({
       const plist = path.join(staged, 'Contents/Info.plist');
       const id = (await tool(['plutil', '-extract', 'CFBundleIdentifier', 'raw', '-o', '-', plist], 'Update: read the bundle id')).trim();
       const version = (await tool(['plutil', '-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', plist], 'Update: read the bundle version')).trim();
-      if (id !== BUNDLE_ID) throw new UpdateError(`The disk image holds ${id || 'an unknown app'}, not 🌱 Twig.`);
-      if (version !== state.latest) throw new UpdateError(`The disk image holds version ${version}, not ${state.latest}.`);
+      if (id !== BUNDLE_ID) throw new UpdateError(id ? ui`The disk image holds ${id}, not 🌱 Twig.` : ui`The disk image holds an unknown app, not 🌱 Twig.`);
+      if (version !== state.latest) throw new UpdateError(ui`The disk image holds version ${version}, not ${state.latest}.`);
       await tool(['codesign', '--verify', '--deep', '--strict', '-R', `=${signatureRequirement}`, staged],
         'Update: verify the new version is signed by 🌱 Twig’s developer');
       // Nothing should carry the flag (this process wrote the files), but an
@@ -279,7 +280,7 @@ export function createUpdater({
 
   async function prepareAppImage(file) {
     if (!await startsWith(file, [0x7f, 0x45, 0x4c, 0x46]) || !await startsWith(file, [0x41, 0x49, 0x02], 8)) {
-      throw new UpdateError('The download is not an AppImage.');
+      throw new UpdateError(ui`The download is not an AppImage.`);
     }
     const staged = path.join(path.dirname(target.appImage), APPIMAGE_STAGED);
     try {
@@ -287,18 +288,18 @@ export function createUpdater({
       await chmod(staged, 0o755);
     } catch (error) {
       await rm(staged, { force: true }).catch(() => {});
-      throw new UpdateError(`Could not write next to the AppImage in ${path.dirname(target.appImage)} (${error.code || error.message}).`);
+      throw new UpdateError(ui`Could not write next to the AppImage in ${path.dirname(target.appImage)} (${error.code || error.message}).`);
     } finally { await rm(file, { force: true }); }
     return { staged };
   }
 
   async function prepareWin(file) {
-    if (!await startsWith(file, [0x4d, 0x5a])) throw new UpdateError('The download is not a Windows installer.');
+    if (!await startsWith(file, [0x4d, 0x5a])) throw new UpdateError(ui`The download is not a Windows installer.`);
     return { installer: file };
   }
 
   async function prepareDeb(file) {
-    if (!await startsWith(file, [...Buffer.from('!<arch>\n')])) throw new UpdateError('The download is not a .deb package.');
+    if (!await startsWith(file, [...Buffer.from('!<arch>\n')])) throw new UpdateError(ui`The download is not a .deb package.`);
     await mkdir(downloadsDir, { recursive: true });
     const saved = path.join(downloadsDir, asset.name);
     try { await copyFile(file, saved); } finally { await rm(file, { force: true }); }
@@ -322,7 +323,7 @@ export function createUpdater({
           if (next !== percent) { percent = next; set({ progress: { received, total } }); }
         }
       });
-      if (controller.signal.aborted) throw new UpdateError('Download cancelled.');
+      if (controller.signal.aborted) throw new UpdateError(ui`Download cancelled.`);
       set({ status: 'preparing', progress: null });
       prepared = target.kind === 'mac' ? await prepareMac(file)
         : target.kind === 'appimage' ? await prepareAppImage(file)
@@ -332,7 +333,7 @@ export function createUpdater({
     } catch (error) {
       prepared = null;
       const cancelled = controller.signal.aborted;
-      set({ status: 'available', progress: null, error: cancelled ? null : error instanceof UpdateError ? error.message : `The update could not be prepared: ${error.message}` });
+      set({ status: 'available', progress: null, error: cancelled ? null : error instanceof UpdateError ? error.message : ui`The update could not be prepared: ${error.message}` });
     } finally {
       download = null;
     }
@@ -340,7 +341,7 @@ export function createUpdater({
   }
 
   function cancel() {
-    download?.abort(new UpdateError('Download cancelled.'));
+    download?.abort(new UpdateError(ui`Download cancelled.`));
     return snapshot();
   }
 
@@ -349,7 +350,7 @@ export function createUpdater({
     try {
       if (target.kind === 'deb') {
         const failure = await openPath(prepared.deb);
-        if (failure) throw new UpdateError(`Could not open the package: ${failure}. It is saved in ${prepared.deb}.`);
+        if (failure) throw new UpdateError(ui`Could not open the package: ${failure}. It is saved in ${prepared.deb}.`);
         set({ status: 'handed-off' });
         return snapshot();
       }
@@ -361,13 +362,13 @@ export function createUpdater({
           await rename(target.appPath, previous);
         } catch (error) {
           throw new UpdateError(error.code === 'EPERM'
-            ? 'macOS did not let 🌱 Twig replace itself. Allow it in System Settings → Privacy & Security → App Management, then try again.'
-            : `Could not move the current version aside (${error.code || error.message}).`);
+            ? ui`macOS did not let 🌱 Twig replace itself. Allow it in System Settings → Privacy & Security → App Management, then try again.`
+            : ui`Could not move the current version aside (${error.code || error.message}).`);
         }
         try { await rename(prepared.staged, target.appPath); }
         catch (error) {
           await rename(previous, target.appPath).catch(() => {});
-          throw new UpdateError(`Could not put the new version in place (${error.code || error.message}). The current version was kept.`);
+          throw new UpdateError(ui`Could not put the new version in place (${error.code || error.message}). The current version was kept.`);
         }
         launch('/bin/sh', ['-c', RELAUNCH_SCRIPT, 'twig-relaunch', String(pid), '/usr/bin/open', target.appPath], 'Update: restart into the new version');
       } else if (target.kind === 'appimage') {
@@ -380,7 +381,7 @@ export function createUpdater({
       }
       quit();
     } catch (error) {
-      set({ status: 'ready', error: error instanceof UpdateError ? error.message : `The update could not be installed: ${error.message}` });
+      set({ status: 'ready', error: error instanceof UpdateError ? error.message : ui`The update could not be installed: ${error.message}` });
     }
     return snapshot();
   }

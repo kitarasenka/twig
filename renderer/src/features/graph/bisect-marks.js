@@ -5,8 +5,9 @@
  * bisect terms (a bisect started with `--term-old/--term-new` says "old"/"new"),
  * and every chip carries a word and an icon, so colour is never the only cue.
  *
- * No imports: Vite and the Node check both load this file.
+ * Only the i18n module is imported: Vite and the Node check both load this file.
  */
+import { t } from '../../i18n/i18n.js';
 
 export const BISECT_KINDS = ['culprit', 'bad', 'good', 'skip', 'testing'];
 
@@ -22,9 +23,9 @@ export function bisectMarkMap(state) {
   if (!state?.active) return result;
   const terms = state.terms?.bad && state.terms?.good ? state.terms : DEFAULT_TERMS;
   const describe = {
-    bad: { word: terms.bad, title: `BugHunter: marked ${terms.bad} — the bug is present in this commit` },
-    good: { word: terms.good, title: `BugHunter: marked ${terms.good} — the bug is absent in this commit` },
-    skip: { word: 'skipped', title: 'BugHunter: skipped — this commit could not be tested' }
+    bad: { word: terms.bad, title: t`BugHunter: marked ${terms.bad} — the bug is present in this commit` },
+    good: { word: terms.good, title: t`BugHunter: marked ${terms.good} — the bug is absent in this commit` },
+    skip: { word: t('skipped'), title: t('BugHunter: skipped — this commit could not be tested') }
   };
   const put = (oid, kind, text) => {
     if (typeof oid === 'string' && /^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(oid)) result.set(oid.toLowerCase(), { kind, ...text });
@@ -37,10 +38,10 @@ export function bisectMarkMap(state) {
   // The revision on test is by definition not answered yet; if it somehow is,
   // the answer is what the graph should keep showing.
   if (state.expected && !state.done && !result.has(state.expected.toLowerCase())) {
-    put(state.expected, 'testing', { word: 'testing', title: 'BugHunter: the version checked out for the current test' });
+    put(state.expected, 'testing', { word: t('testing'), title: t('BugHunter: the version checked out for the current test') });
   }
   if (state.done && state.firstBad) {
-    put(state.firstBad, 'culprit', { word: `first ${terms.bad}`, title: `BugHunter: the first ${terms.bad} commit — the search ended here` });
+    put(state.firstBad, 'culprit', { word: t`first ${terms.bad}`, title: t`BugHunter: the first ${terms.bad} commit — the search ended here` });
   }
   return result;
 }

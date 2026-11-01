@@ -1,7 +1,7 @@
 /**
  * Where two versions of an image differ, as rectangles — the arithmetic of
- * the image viewer, kept free of the DOM and of imports so the Node checks
- * run it on plain pixel arrays.
+ * the image viewer, kept free of the DOM and of imports (but the import-free
+ * i18n module) so the Node checks run it on plain pixel arrays.
  *
  * Both versions are laid on one canvas, aligned at the top-left corner, as
  * wide and tall as the larger of them. A pixel has changed when any of its
@@ -11,6 +11,8 @@
  * Changed pixels are gathered into cells, neighbouring cells into areas, and
  * each area is reported as the tightest rectangle around its changed pixels.
  */
+
+import { mark, t, tn } from '../../i18n/i18n.js';
 
 /** Pixels compared at most; a larger canvas is compared scaled down. */
 export const COMPARE_BUDGET = 8_000_000;
@@ -174,31 +176,31 @@ export const dimensions = image => `${image.width} × ${image.height}`;
 
 /** One area for the list: where it is and how big, in image pixels. */
 export function regionLabel(region) {
-  return `${region.width} × ${region.height} at ${region.x}, ${region.y}`;
+  return t`${region.width} × ${region.height} at ${region.x}, ${region.y}`;
 }
 
 /** The sentence above the viewer about what the comparison found. */
 export function compareSummary({ before, after, changed, total, regions, more, scale }) {
   const parts = [];
-  if (before.width !== after.width || before.height !== after.height) parts.push(`Size ${dimensions(before)} → ${dimensions(after)}`);
+  if (before.width !== after.width || before.height !== after.height) parts.push(t`Size ${dimensions(before)} → ${dimensions(after)}`);
   else parts.push(dimensions(after));
   if (changed === 0) {
-    parts.push(scale < 1 ? 'No visible difference at the compared scale' : 'Pixels are identical — only the file’s bytes changed');
+    parts.push(scale < 1 ? t('No visible difference at the compared scale') : t('Pixels are identical — only the file’s bytes changed'));
     return parts.join(' · ');
   }
   const areas = regions.length + more;
-  parts.push(`${areas} changed ${areas === 1 ? 'area' : 'areas'}`);
+  parts.push(tn(areas, '{n} changed area', '{n} changed areas'));
   const share = changed / total * 100;
-  parts.push(`${share < 0.1 ? '<0.1' : share.toFixed(share < 10 ? 1 : 0)}% of pixels`);
-  if (scale < 1) parts.push(`compared at ${Math.round(scale * 100)}% scale`);
+  parts.push(t`${share < 0.1 ? '<0.1' : share.toFixed(share < 10 ? 1 : 0)}% of pixels`);
+  if (scale < 1) parts.push(t`compared at ${Math.round(scale * 100)}% scale`);
   return parts.join(' · ');
 }
 
 export const IMAGE_MODES = Object.freeze([
-  { id: 'side', label: 'Side by side', title: 'Before and after next to each other' },
-  { id: 'swipe', label: 'Swipe', title: 'Drag across the image: before on the left, after on the right' },
-  { id: 'onion', label: 'Onion skin', title: 'After laid over before; the slider fades between them' },
-  { id: 'difference', label: 'Difference', title: 'Only the changed pixels, coloured; the rest greyed out' }
+  { id: 'side', label: mark('Side by side'), title: mark('Before and after next to each other') },
+  { id: 'swipe', label: mark('Swipe'), title: mark('Drag across the image: before on the left, after on the right') },
+  { id: 'onion', label: mark('Onion skin'), title: mark('After laid over before; the slider fades between them') },
+  { id: 'difference', label: mark('Difference'), title: mark('Only the changed pixels, coloured; the rest greyed out') }
 ]);
 
 const MODE_KEY = 'twig:image-mode';

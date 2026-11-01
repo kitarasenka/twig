@@ -6,6 +6,7 @@ import { evaluateConditions } from '../../renderer/src/features/automations/cond
 import {
   LOCK_PATHS, bumpTargets, findStringValue, nextVersions, replaceStringValue, validBumpPath
 } from '../../renderer/src/features/automations/version-bump.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /** Reads a regular file inside the repository, or null; a symlink is not followed out of it. */
 async function readInside(cwd, file) {
@@ -96,7 +97,7 @@ export function createBumper({ log, automations }) {
         const to = target.next[choice];
         const before = await readInside(cwd, target.path);
         const after = before === null ? null : replaceStringValue(before, ['version'], target.current, to);
-        if (after === null) throw new Error(`${target.path} no longer has version ${target.current}; open the commit again.`);
+        if (after === null) throw new Error(ui`${target.path} no longer has version ${target.current}; open the commit again.`);
         const entry = { path: target.path, from: target.current, to, files: [] };
         applied.push(entry);
         await writeFile(path.resolve(cwd, target.path), after, 'utf8');
@@ -114,7 +115,7 @@ export function createBumper({ log, automations }) {
       const paths = applied.flatMap(entry => entry.files.map(item => item.file));
       if (paths.length) {
         const staged = await runGit({ cwd, log, argv: ['add', '--', ...paths.map(file => `:(literal)${file}`)], operation: `Stage the version bump (${paths.join(', ')})` });
-        if (staged.code !== 0) throw new Error('Git could not stage the version bump.');
+        if (staged.code !== 0) throw new Error(ui`Git could not stage the version bump.`);
       }
       return applied;
     } catch (error) {
@@ -144,14 +145,14 @@ export function createBumper({ log, automations }) {
 export async function commitWithBump({ request, repo, choice, bumper, commit }) {
   const { cwd, log } = request;
   const saved = await runGit({ cwd, log, argv: ['write-tree'], operation: 'Save the index before a version bump' });
-  if (saved.code !== 0) throw new Error('The index has entries Git cannot save; resolve them before bumping the version.');
+  if (saved.code !== 0) throw new Error(ui`The index has entries Git cannot save; resolve them before bumping the version.`);
   const staged = await runGit({ cwd, log, argv: ['diff', '--cached', '--name-only', '-z'], operation: 'Background: staged files' });
   const plan = await bumper.plan({ repo, files: staged.stdout.split('\0').filter(Boolean) });
   if (!plan) return commit(request);
   const applied = await bumper.apply({ repo, choice, plan });
   try {
     const warnings = await commit(request);
-    return [...warnings, ...applied.map(entry => `Version of ${entry.path}: ${entry.from} → ${entry.to}.`)];
+    return [...warnings, ...applied.map(entry => ui`Version of ${entry.path}: ${entry.from} → ${entry.to}.`)];
   } catch (error) {
     await bumper.revert({ repo, applied });
     await runGit({ cwd, log, argv: ['read-tree', saved.stdout.trim()], operation: 'Restore the index after a failed commit' });

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
 import { validateRefName } from './refs-ops.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Worktrees: more than one checkout of the same repository, each in its own
@@ -26,7 +27,7 @@ export function parseWorktreeList(output) {
     else if (key === 'detached') current.detached = true;
     else if (key === 'bare') current.bare = true;
     else if (key === 'locked') current.locked = value || 'locked';
-    else if (key === 'prunable') current.prunable = value || 'its folder is gone';
+    else if (key === 'prunable') current.prunable = value || ui`its folder is gone`;
   }
   if (current) worktrees.push(current);
   return worktrees.map((worktree, index) => ({ ...worktree, main: index === 0 }));
@@ -38,7 +39,7 @@ export function parseWorktreeList(output) {
  */
 export async function loadWorktrees({ cwd, log }) {
   const result = await runGit({ cwd, log, argv: ['worktree', 'list', '--porcelain', '-z'], operation: 'Read worktrees' });
-  if (result.code !== 0) throw new Error('Git could not list the worktrees.');
+  if (result.code !== 0) throw new Error(ui`Git could not list the worktrees.`);
   const here = path.resolve(cwd);
   return parseWorktreeList(result.stdout).map(worktree => ({ ...worktree, current: path.resolve(worktree.path) === here }));
 }
@@ -70,7 +71,7 @@ export async function suggestWorktreePath({ main, branch, parent = null, agent =
     const candidate = attempt === 1 ? base : `${base}-${attempt}`;
     if (!await exists(candidate)) return candidate;
   }
-  throw new Error('Choose a folder for the new worktree.');
+  throw new Error(ui`Choose a folder for the new worktree.`);
 }
 
 /**
@@ -96,11 +97,11 @@ export function buildWorktreeRemoveArgv(folder, force = false) {
 /** @param {{ cwd: string, log: object, path: string, branch: string, create?: boolean, startPoint?: ?string }} options */
 export async function addWorktree({ cwd, log, ...request }) {
   const argv = buildWorktreeAddArgv(request);
-  if (await exists(request.path)) throw new Error(`${request.path} already exists. Choose another folder.`);
+  if (await exists(request.path)) throw new Error(ui`${request.path} already exists. Choose another folder.`);
   const result = await runGit({ cwd, log, argv, operation: `Add worktree for ${request.branch}` });
   if (result.code !== 0) {
     const reason = result.stderr.split('\n').find(line => line.startsWith('fatal: '))?.slice(7);
-    return { ok: false, message: reason ? `Git refused: ${reason}` : 'git worktree add did not finish. Show output in the console.' };
+    return { ok: false, message: reason ? ui`Git refused: ${reason}` : ui`git worktree add did not finish. Show output in the console.` };
   }
   return { ok: true, message: null, path: request.path };
 }
@@ -113,20 +114,20 @@ export async function addWorktree({ cwd, log, ...request }) {
 export async function findWorktree({ cwd, log, path: wanted }) {
   if (typeof wanted !== 'string' || !path.isAbsolute(wanted)) throw new TypeError('Invalid worktree folder');
   const found = (await loadWorktrees({ cwd, log })).find(entry => path.resolve(entry.path) === path.resolve(wanted));
-  if (!found) throw new TypeError('There is no such worktree.');
+  if (!found) throw new TypeError(ui`There is no such worktree.`);
   return found;
 }
 
 /** @param {{ cwd: string, log: object, path: string, force?: boolean }} options */
 export async function removeWorktree({ cwd, log, path: folder, force = false }) {
   const found = await findWorktree({ cwd, log, path: folder });
-  if (found.main) throw new Error('The main worktree cannot be removed; it holds the repository itself.');
-  if (found.current) throw new Error('This worktree is the one open in this tab. Remove it from another worktree’s tab.');
+  if (found.main) throw new Error(ui`The main worktree cannot be removed; it holds the repository itself.`);
+  if (found.current) throw new Error(ui`This worktree is the one open in this tab. Remove it from another worktree’s tab.`);
   const result = await runGit({ cwd, log, argv: buildWorktreeRemoveArgv(found.path, force), operation: `Remove worktree ${path.basename(found.path)}` });
   if (result.code !== 0) {
     const dirty = /contains modified or untracked files|is dirty/.test(result.stderr);
-    return { ok: false, dirty, message: dirty ? 'This worktree has uncommitted or untracked files. Removing it anyway throws them away.'
-      : result.stderr.split('\n').find(line => line.startsWith('fatal: '))?.slice(7) || 'git worktree remove did not finish. Show output in the console.' };
+    return { ok: false, dirty, message: dirty ? ui`This worktree has uncommitted or untracked files. Removing it anyway throws them away.`
+      : result.stderr.split('\n').find(line => line.startsWith('fatal: '))?.slice(7) || ui`git worktree remove did not finish. Show output in the console.` };
   }
   return { ok: true, message: null, path: found.path };
 }
@@ -134,5 +135,5 @@ export async function removeWorktree({ cwd, log, path: folder, force = false }) 
 /** `git worktree prune`: forgets worktrees whose folders are gone. Touches no files. */
 export async function pruneWorktrees({ cwd, log }) {
   const result = await runGit({ cwd, log, argv: ['worktree', 'prune'], operation: 'Prune missing worktrees' });
-  return result.code === 0 ? { ok: true, message: null } : { ok: false, message: 'git worktree prune did not finish. Show output in the console.' };
+  return result.code === 0 ? { ok: true, message: null } : { ok: false, message: ui`git worktree prune did not finish. Show output in the console.` };
 }

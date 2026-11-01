@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { UserPlus, Users, X } from 'lucide-react';
 import { CO_AUTHOR_LIMIT, coAuthorTrailer, filterCoAuthors } from '../../../../main/git/co-author-trailer.js';
+import { t, tn } from '../../i18n/i18n.js';
 
 /**
  * Credit the people a commit was written with. The list is who already
@@ -30,7 +31,7 @@ export default function CoAuthors({ repositoryId, chosen, onChange, disabled = f
       const result = await window.twig.getCoAuthors(repositoryId);
       setPeople(result.people);
     } catch {
-      setError('Could not read the authors in this history.');
+      setError(t('Could not read the authors in this history.'));
     } finally { setLoading(false); }
   }
 
@@ -63,36 +64,36 @@ export default function CoAuthors({ repositoryId, chosen, onChange, disabled = f
   const empty = people !== null && people.length === 0;
   return <div className="co-authors">
     <div className="co-authors-row">
-      <span className="co-authors-label"><Users aria-hidden="true" />Co-authors</span>
+      <span className="co-authors-label"><Users aria-hidden="true" />{t('Co-authors')}</span>
       {chosen.map(person => <span className="co-author-chip" key={person.email} title={coAuthorTrailer(person)}>
         {person.name}
-        <button type="button" aria-label={`Remove co-author ${person.name}`} onClick={() => onChange(chosen.filter(item => item !== person))}><X aria-hidden="true" /></button>
+        <button type="button" aria-label={t`Remove co-author ${person.name}`} onClick={() => onChange(chosen.filter(item => item !== person))}><X aria-hidden="true" /></button>
       </span>)}
       <span className="co-author-picker">
         <UserPlus aria-hidden="true" />
         <input ref={input} value={query} disabled={disabled || full} autoComplete="off" spellCheck={false}
-          placeholder={full ? `Up to ${CO_AUTHOR_LIMIT} co-authors` : 'Add someone from this history'}
-          role="combobox" aria-label="Add a co-author" aria-expanded={open && matches.length > 0} aria-controls={listId}
+          placeholder={full ? tn(CO_AUTHOR_LIMIT, 'Up to {n} co-author', 'Up to {n} co-authors') : t('Add someone from this history')}
+          role="combobox" aria-label={t('Add a co-author')} aria-expanded={open && matches.length > 0} aria-controls={listId}
           aria-activedescendant={open && matches[active] ? `${listId}-${active}` : undefined}
           onFocus={() => { setOpen(true); void load(); }} onBlur={() => setOpen(false)}
           onChange={event => { setQuery(event.target.value); setActive(0); setOpen(true); }} onKeyDown={keydown} />
-        {open && matches.length > 0 && <ul className="co-author-options" role="listbox" id={listId} aria-label="Authors in this history">
+        {open && matches.length > 0 && <ul className="co-author-options" role="listbox" id={listId} aria-label={t('Authors in this history')}>
           {matches.map((person, index) => <li key={person.email} id={`${listId}-${index}`} role="option" aria-selected={index === active}
             className={index === active ? 'active' : ''}
             // mousedown, not click: the input's blur would close the list first.
             onMouseDown={event => { event.preventDefault(); pick(person); }} onMouseEnter={() => setActive(index)}>
             <strong>{person.name}</strong><span>{person.email}</span>
-            <small>{person.commits} commit{person.commits === 1 ? '' : 's'}</small>
+            <small>{tn(person.commits, '{n} commit', '{n} commits')}</small>
           </li>)}
         </ul>}
       </span>
     </div>
-    {open && loading && <p className="muted co-author-hint" role="status">Reading the authors in this history…</p>}
+    {open && loading && <p className="muted co-author-hint" role="status">{t('Reading the authors in this history…')}</p>}
     {open && people !== null && !matches.length && (query || empty) && <p className="muted co-author-hint">
-      {empty ? 'Nobody else has authored a commit in this history yet.' : 'No author in this history matches.'}</p>}
+      {empty ? t('Nobody else has authored a commit in this history yet.') : t('No author in this history matches.')}</p>}
     {error && <p className="warn co-author-hint" role="alert">{error}</p>}
-    {chosen.length > 0 && <div className="co-author-preview" aria-label="Trailers added to the message">
-      <span className="muted">Added to the end of the message:</span>
+    {chosen.length > 0 && <div className="co-author-preview" aria-label={t('Trailers added to the message')}>
+      <span className="muted">{t('Added to the end of the message:')}</span>
       {chosen.map(person => <code key={person.email}>{coAuthorTrailer(person)}</code>)}
     </div>}
   </div>;

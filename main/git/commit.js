@@ -1,6 +1,7 @@
 import { runGit } from './exec.js';
 import { parseFilePatchV1, splitPatchFiles } from './diff-parser.js';
 import { chunkPath } from './worktree.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 export function validateOid(oid) {
   if (typeof oid !== 'string' || !/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(oid)) throw new TypeError('Invalid commit identifier');
@@ -33,7 +34,7 @@ export function validateRevision(revision) {
 
 async function execute(cwd, log, argv, operation) {
   const result = await runGit({ cwd, log, argv, operation });
-  if (result.code !== 0) throw new Error(`${operation} failed. See the command console.`);
+  if (result.code !== 0) throw new Error(ui`${operation} failed. See the command console.`);
   return result.stdout;
 }
 

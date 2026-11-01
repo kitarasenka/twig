@@ -1,4 +1,5 @@
 import { runGit } from './exec.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * @typedef {Object} Ref
@@ -132,7 +133,7 @@ export function buildRefsArgv(patterns = ['refs/heads', 'refs/remotes', 'refs/ta
  */
 export async function loadRefs({ cwd, log }) {
   const result = await runGit({ argv: buildRefsArgv(), cwd, log, operation: 'Read branches and tags' });
-  if (result.code !== 0) throw new Error('Git could not read branches and tags.');
+  if (result.code !== 0) throw new Error(ui`Git could not read branches and tags.`);
   return parseRefsV1(result.stdout);
 }
 
@@ -199,6 +200,6 @@ export function parseTagDetails(output) {
 /** @param {{ cwd: string, log: import('../command-log.js').CommandLog }} options */
 export async function loadTagDetails({ cwd, log }) {
   const result = await runGit({ argv: buildTagDetailsArgv(), cwd, log, operation: 'Read tag messages' });
-  if (result.code !== 0) throw new Error('Git could not read the tags.');
+  if (result.code !== 0) throw new Error(ui`Git could not read the tags.`);
   return parseTagDetails(result.stdout);
 }

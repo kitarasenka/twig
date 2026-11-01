@@ -5,10 +5,11 @@ import { isUserCommand } from './command-source.js';
 import { plainText } from './console-entries.js';
 import { commandLine, commandWords, readCommandView, readPathView, writeCommandView, writePathView } from './short-command.js';
 import { checkReadOnly, tokenize } from '../../../main/git/read-only-command.js';
+import { failureText, t, tr } from '../i18n/i18n.js';
 
 // The exact command: what the status bar's hover names and what Copy takes.
 function commandText(entry) { return commandLine(entry, false); }
-function elapsed(entry) { return entry.ms === null ? 'running' : `${entry.ms}ms`; }
+function elapsed(entry) { return entry.ms === null ? t('running') : t`${entry.ms}ms`; }
 function startedText(entry) { return entry.startedAt.replace('T', ' ').replace(/\.\d+/, '').replace('Z', ''); }
 
 export function Console({ expanded, onToggle, entries, repositoryId = null, focus = null }) {
@@ -79,9 +80,9 @@ export function Console({ expanded, onToggle, entries, repositoryId = null, focu
     const value = command.trim();
     if (!value || !repositoryId || running) return;
     let argv;
-    try { argv = tokenize(value); } catch (failure) { setError(failure.message); return; }
+    try { argv = tokenize(value); } catch (failure) { setError(tr(failure.message)); return; }
     const verdict = checkReadOnly(argv);
-    if (!verdict.ok) { setError(verdict.reason); return; }
+    if (!verdict.ok) { setError(tr(verdict.reason)); return; }
     setRunning(true); setError('');
     try {
       await window.twig.runConsoleCommand(repositoryId, value);
@@ -89,7 +90,7 @@ export function Console({ expanded, onToggle, entries, repositoryId = null, focu
       setHistoryIndex(-1);
       setCommand('');
     } catch (failure) {
-      setError(String(failure?.message || failure).replace(/^Error:\s*/, ''));
+      setError(failureText(failure, String(failure)));
     } finally {
       setRunning(false);
     }
@@ -119,27 +120,27 @@ export function Console({ expanded, onToggle, entries, repositoryId = null, focu
   // they asked for, by name. The app's own reads (and their long argv) stay in
   // Full History; the exact command is one hover or one click away.
   const mine = entries.findLast(entry => isUserCommand(entry.operation));
-  const outcome = entry => (entry.code === null ? 'running' : entry.code === 0 ? `done · ${elapsed(entry)}`
-    : entry.cancelled ? `stopped by 🌱 Twig · ${elapsed(entry)}` : `failed with exit code ${entry.code} · ${elapsed(entry)}`);
+  const outcome = entry => (entry.code === null ? t('running') : entry.code === 0 ? t`done · ${elapsed(entry)}`
+    : entry.cancelled ? t`stopped by 🌱 Twig · ${elapsed(entry)}` : t`failed with exit code ${entry.code} · ${elapsed(entry)}`);
   const failed = entry => entry.code !== null && entry.code !== 0 && !entry.cancelled;
   async function copy(value) { try { await navigator.clipboard.writeText(value); } catch { /* Clipboard access may be unavailable in a locked-down desktop session. */ } }
-  return <section className={`console ${expanded ? 'expanded' : ''}`} aria-label="Command console">
-    <button className="console-status" onClick={onToggle} aria-expanded={expanded} title="Show or hide the console">
-      <Terminal /><strong>CONSOLE</strong><ChevronDown className={expanded ? '' : 'rotate'} />
+  return <section className={`console ${expanded ? 'expanded' : ''}`} aria-label={t('Command console')}>
+    <button className="console-status" onClick={onToggle} aria-expanded={expanded} title={t('Show or hide the console')}>
+      <Terminal /><strong>{t('CONSOLE')}</strong><ChevronDown className={expanded ? '' : 'rotate'} />
       <span className={`console-last ${mine && failed(mine) ? 'failed' : ''}`} title={mine ? commandText(mine) : undefined}>
-        {mine ? <>{mine.operation || commandText(mine)} <small>{outcome(mine)}</small></> : 'Nothing you ran yet'}</span>
-      <span className="console-tail">{latest?.state === 'running' ? `Running: ${latest.operation || 'git'}` : '🌱 Twig'}</span>
+        {mine ? <>{mine.operation || commandText(mine)} <small>{outcome(mine)}</small></> : t('Nothing you ran yet')}</span>
+      <span className="console-tail">{latest?.state === 'running' ? t`Running: ${latest.operation || 'git'}` : '🌱 Twig'}</span>
     </button>
     {expanded && <div className="console-body">
-      <div className="console-tools"><div className="segmented" aria-label="Command filter"><button aria-pressed={mode === 'all'} onClick={() => setMode('all')} title="Every git command, including the ones 🌱 Twig runs on its own">Full History</button><button aria-pressed={mode === 'mine'} onClick={() => setMode('mine')} title="Only the commands you asked for">My</button></div><label className="console-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands" aria-label="Search command log" /></label><label className="switch console-short" title="Short: commands as you would type them. Off: the exact command, with the flags 🌱 Twig adds to every git call"><input type="checkbox" checked={short} onChange={event => toggleShort(event.target.checked)} /><span className="track" />Short</label><label className="switch console-path" title="Show the folder each command ran in"><input type="checkbox" checked={showPath} onChange={event => togglePath(event.target.checked)} /><span className="track" />Path</label></div>
-      {visible.length === 0 && <div className="console-empty"><Terminal /><div><strong>Your commands, in plain sight.</strong><p>{entries.length === 0 ? 'Git checks, repository status and future actions appear here.'
-        : query ? 'No commands match this search.'
-          : mode === 'mine' ? 'Nothing you ran yet. Full History also shows what 🌱 Twig runs on its own.'
-            : 'No commands match this filter.'}</p></div></div>}
+      <div className="console-tools"><div className="segmented" aria-label={t('Command filter')}><button aria-pressed={mode === 'all'} onClick={() => setMode('all')} title={t('Every git command, including the ones 🌱 Twig runs on its own')}>{t('Full History')}</button><button aria-pressed={mode === 'mine'} onClick={() => setMode('mine')} title={t('Only the commands you asked for')}>{t('My')}</button></div><label className="console-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('Search commands')} aria-label={t('Search command log')} /></label><label className="switch console-short" title={t('Short: commands as you would type them. Off: the exact command, with the flags 🌱 Twig adds to every git call')}><input type="checkbox" checked={short} onChange={event => toggleShort(event.target.checked)} /><span className="track" />{t('Short')}</label><label className="switch console-path" title={t('Show the folder each command ran in')}><input type="checkbox" checked={showPath} onChange={event => togglePath(event.target.checked)} /><span className="track" />{t('Path')}</label></div>
+      {visible.length === 0 && <div className="console-empty"><Terminal /><div><strong>{t('Your commands, in plain sight.')}</strong><p>{entries.length === 0 ? t('Git checks, repository status and future actions appear here.')
+        : query ? t('No commands match this search.')
+          : mode === 'mine' ? t('Nothing you ran yet. Full History also shows what 🌱 Twig runs on its own.')
+            : t('No commands match this filter.')}</p></div></div>}
       {visible.map(entry => <article key={entry.id} ref={node => { if (node) entryNodes.current.set(entry.id, node); else entryNodes.current.delete(entry.id); }}
         className={`console-entry ${failed(entry) ? 'failed' : ''} ${focusedId === entry.id ? 'focused' : ''}`}>
-        <button className="console-entry-summary" onClick={() => { setFocusedId(null); setExpandedId(value => value === entry.id ? null : entry.id); }} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} />{entry.operation?.startsWith('MCP:') && <b className="console-tag" title={`${entry.operation} — asked by an AI agent through the MCP server`}>MCP</b>}<code title={short || !showPath ? `${commandText(entry)}\n(cwd: ${entry.cwd})` : undefined}><span className={`console-prompt-mark ${isUserCommand(entry.operation) ? '' : 'twig'}`} title={isUserCommand(entry.operation) ? 'You ran this' : '🌱 Twig ran this on its own'}>{isUserCommand(entry.operation) ? '$' : '🌱 :'}</span> {commandWords(entry, short)}</code>{showPath && <span>(cwd: {entry.cwd})</span>}<small>{startedText(entry)} · {entry.cancelled ? 'stopped' : entry.code ?? '…'} · {elapsed(entry)}</small></button>
-        {expandedId === entry.id && (({ stdout, stderr, loading }) => <div className="console-output"><div className="console-copy"><Button icon={Clipboard} onClick={() => copy(`${commandText(entry)}\n(cwd: ${entry.cwd})\n${stdout}${stderr}`)}>Copy entry</Button></div>{stdout && <pre>{stdout}</pre>}{stderr && <pre className="stderr">{stderr}</pre>}{!stdout && !stderr && <p className="muted">{loading ? 'Loading output…' : 'Waiting for output…'}</p>}</div>)(outputOf(entry))}
+        <button className="console-entry-summary" onClick={() => { setFocusedId(null); setExpandedId(value => value === entry.id ? null : entry.id); }} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} />{entry.operation?.startsWith('MCP:') && <b className="console-tag" title={t`${entry.operation} — asked by an AI agent through the MCP server`}>MCP</b>}<code title={short || !showPath ? `${commandText(entry)}\n(cwd: ${entry.cwd})` : undefined}><span className={`console-prompt-mark ${isUserCommand(entry.operation) ? '' : 'twig'}`} title={isUserCommand(entry.operation) ? t('You ran this') : t('🌱 Twig ran this on its own')}>{isUserCommand(entry.operation) ? '$' : '🌱 :'}</span> {commandWords(entry, short)}</code>{showPath && <span>(cwd: {entry.cwd})</span>}<small>{startedText(entry)} · {entry.cancelled ? t('stopped') : entry.code ?? '…'} · {elapsed(entry)}</small></button>
+        {expandedId === entry.id && (({ stdout, stderr, loading }) => <div className="console-output"><div className="console-copy"><Button icon={Clipboard} onClick={() => copy(`${commandText(entry)}\n(cwd: ${entry.cwd})\n${stdout}${stderr}`)}>{t('Copy entry')}</Button></div>{stdout && <pre>{stdout}</pre>}{stderr && <pre className="stderr">{stderr}</pre>}{!stdout && !stderr && <p className="muted">{loading ? t('Loading output…') : t('Waiting for output…')}</p>}</div>)(outputOf(entry))}
       </article>)}
       <div className="console-dock">
         {error && <p className="console-input-error" role="alert">{error}</p>}
@@ -147,10 +148,10 @@ export function Console({ expanded, onToggle, entries, repositoryId = null, focu
           <span className="console-prompt" aria-hidden="true">$ git</span>
           <input className="console-command" value={command} spellCheck={false} autoCorrect="off" autoCapitalize="off"
             onChange={(event) => { setCommand(event.target.value); setError(''); }} onKeyDown={recallHistory}
-            disabled={!repositoryId || running} aria-label="Run a read-only git command"
-            placeholder={repositoryId ? 'log --oneline -10   ·   read-only commands only' : 'Open a repository to run git commands'} />
+            disabled={!repositoryId || running} aria-label={t('Run a read-only git command')}
+            placeholder={repositoryId ? t('log --oneline -10   ·   read-only commands only') : t('Open a repository to run git commands')} />
           <Button icon={CornerDownLeft} type="submit"
-            reason={!repositoryId ? 'Open a repository first' : running ? 'A command is running…' : !command.trim() ? 'Type a git command' : undefined}>Run</Button>
+            reason={!repositoryId ? t('Open a repository first') : running ? t('A command is running…') : !command.trim() ? t('Type a git command') : undefined}>{t('Run')}</Button>
         </form>
       </div>
     </div>}

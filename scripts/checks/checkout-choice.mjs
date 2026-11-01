@@ -49,7 +49,7 @@ assert.equal((workspace.match(/onCheckout=\{rowHandlers\.checkout\}/g) || []).le
 assert.match(workspace, /checkout: refs => latest\.current\.checkoutOnDoubleClick\(refs\)/, 'one handler behind them all');
 assert.match(graph, /onDoubleClick=\{event => \{ event\.stopPropagation\(\); onCheckout\?\.\(\[ref\]\); \}\}/, 'badge double-click stops at the badge');
 assert.match(graph, /onDoubleClick=\{\(\) => onCheckout\?\.\(refs \|\| \[\]\)\}/, 'row double-click');
-assert.match(workspace, /checkoutRef\(repository\.id, name, false\), `Checked out \$\{name\}\.`,\s*\{ select:/, 'branch checkout selects its commit');
+assert.match(workspace, /checkoutRef\(repository\.id, name, false\), t`Checked out \$\{name\}\.`,\s*\{ select:/, 'branch checkout selects its commit');
 // The reload never publishes an empty history: that collapses the scroller to the top.
 const reload = workspace.slice(workspace.indexOf('const reload = useCallback'), workspace.indexOf('const refreshOperation'));
 assert.ok(!/dataRef\.current = \{ commits: \[\][^\n]*\n\s*setData\(dataRef\.current\)/.test(reload), 'reload does not show an empty list first');

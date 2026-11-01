@@ -20,7 +20,7 @@ try {
   const initial = await git(['rev-parse', 'HEAD']);
   const bootstrap = path.join(root, 'bootstrap.mjs');
   await writeFile(bootstrap, `import { app } from 'electron';\napp.setPath('home', ${JSON.stringify(home)});\napp.setPath('userData', ${JSON.stringify(path.join(root, 'profile'))});\nimport(${JSON.stringify(pathToFileURL(path.resolve('main/index.js')).href)});\n`);
-  const env = { ...process.env, GIT_CONFIG_GLOBAL: path.join(root, 'global'), GIT_CONFIG_NOSYSTEM: '1' };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en', GIT_CONFIG_GLOBAL: path.join(root, 'global'), GIT_CONFIG_NOSYSTEM: '1' };
   delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
   // The switch, not only setPath in the bootstrap: without it, main moves an
   // unpackaged run to the developer's twig-dev profile, and this test's

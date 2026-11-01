@@ -5,6 +5,7 @@ import { validateRefName } from './refs-ops.js';
 import { loadRemotes, validateRemoteName, validateRepositoryUrl } from './remotes.js';
 import { BACKGROUND_FETCH_ARGV } from '../background-fetch.js';
 import { redactCredentials } from './redact.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Network operations. Each one takes an AbortSignal because the brief
@@ -43,6 +44,19 @@ const LABELS = {
   'pull-merge': 'Pull and merge', push: 'Push', 'push-upstream': 'Push and set upstream', 'push-force': 'Push with lease'
 };
 
+// What the window says when a sync stops, one whole sentence per mode.
+const CANCELLED = {
+  fetch: ui`Fetch was cancelled.`, 'fetch-prune': ui`Fetch and prune was cancelled.`, pull: ui`Pull was cancelled.`,
+  'pull-rebase': ui`Pull with rebase was cancelled.`, 'pull-merge': ui`Pull and merge was cancelled.`, push: ui`Push was cancelled.`,
+  'push-upstream': ui`Push and set upstream was cancelled.`, 'push-force': ui`Push with lease was cancelled.`
+};
+const FAILED = {
+  fetch: ui`Fetch failed. Show output in the console.`, 'fetch-prune': ui`Fetch and prune failed. Show output in the console.`,
+  pull: ui`Pull failed. Show output in the console.`, 'pull-rebase': ui`Pull with rebase failed. Show output in the console.`,
+  'pull-merge': ui`Pull and merge failed. Show output in the console.`, push: ui`Push failed. Show output in the console.`,
+  'push-upstream': ui`Push and set upstream failed. Show output in the console.`, 'push-force': ui`Push with lease failed. Show output in the console.`
+};
+
 /**
  * @param {{ cwd: string, log: object, mode: string, branch?: ?string, signal?: ?AbortSignal }} options
  * @returns {Promise<{ ok: boolean, cancelled: boolean, message: ?string }>}
@@ -50,8 +64,8 @@ const LABELS = {
 export async function runSync({ cwd, log, mode, branch = null, signal = null }) {
   const argv = buildSyncArgv(mode, branch);
   const result = await runGit({ argv, cwd, log, operation: LABELS[mode], signal });
-  if (result.cancelled) return { ok: false, cancelled: true, message: `${LABELS[mode]} was cancelled.` };
-  if (result.code !== 0) return { ok: false, cancelled: false, message: `${LABELS[mode]} failed. Show output in the console.`, reason: gitReason(result) };
+  if (result.cancelled) return { ok: false, cancelled: true, message: CANCELLED[mode] };
+  if (result.code !== 0) return { ok: false, cancelled: false, message: FAILED[mode], reason: gitReason(result) };
   return { ok: true, cancelled: false, message: null };
 }
 
@@ -73,7 +87,7 @@ export async function loadDivergence({ cwd, log, branch }) {
   if (!branch) return { ahead: 0, behind: 0, upstream: null };
   validateRefName(branch);
   const result = await runGit({ argv: buildRefsArgv([`refs/heads/${branch}`]), cwd, log, operation: 'Read branch divergence' });
-  if (result.code !== 0) throw new Error('Git could not read this branch.');
+  if (result.code !== 0) throw new Error(ui`Git could not read this branch.`);
   const current = parseRefsV1(result.stdout).find(ref => ref.type === 'local' && ref.name === branch);
   if (!current) return { ahead: 0, behind: 0, upstream: null };
   return { ahead: current.ahead, behind: current.behind, upstream: current.upstream };
@@ -103,12 +117,16 @@ export function buildPushRefArgv({ remote, ref, remove = false }) {
 export async function pushRef({ cwd, log, remote, ref, remove = false, signal = null }) {
   const argv = buildPushRefArgv({ remote, ref, remove });
   const configured = (await loadRemotes({ cwd, log })).find(item => item.name === remote);
-  if (!configured) throw new Error('This remote is not configured any more. Reload the list.');
+  if (!configured) throw new Error(ui`This remote is not configured any more. Reload the list.`);
   for (const address of [...configured.urls, ...configured.pushUrls]) validateRepositoryUrl(address);
   const operation = `${remove ? 'Delete on' : 'Push to'} ${remote}: ${ref}`;
   const result = await runGit({ cwd, log, argv, signal, operation });
-  if (result.cancelled) return { ok: false, cancelled: true, message: `${operation} was cancelled.` };
-  if (result.code !== 0) return { ok: false, cancelled: false, message: `${operation} failed. Show output in the console.` };
+  if (result.cancelled) {
+    return { ok: false, cancelled: true, message: remove ? ui`Delete on ${remote}: ${ref} was cancelled.` : ui`Push to ${remote}: ${ref} was cancelled.` };
+  }
+  if (result.code !== 0) {
+    return { ok: false, cancelled: false, message: remove ? ui`Delete on ${remote}: ${ref} failed. Show output in the console.` : ui`Push to ${remote}: ${ref} failed. Show output in the console.` };
+  }
   return { ok: true, cancelled: false, message: null };
 }
 
@@ -125,7 +143,7 @@ export async function backgroundFetch({ cwd, log, signal = null }) {
   if (result.code !== 0) {
     // The reason is shown in Settings, so a credential inside a URL is cut out of it.
     const reason = redactCredentials(result.stderr).split('\n').map(line => line.replace(/^(fatal|error): /, '').trim()).find(Boolean);
-    return { ok: false, cancelled: false, message: reason ? `Fetch failed: ${reason}` : 'Fetch failed. Show output in the console.' };
+    return { ok: false, cancelled: false, message: reason ? ui`Fetch failed: ${reason}` : ui`Fetch failed. Show output in the console.` };
   }
   return { ok: true, cancelled: false, message: null };
 }

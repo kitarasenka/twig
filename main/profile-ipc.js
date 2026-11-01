@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { loadProfile, saveProfileValue } from './git/profile.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 export function registerProfileIpc(getWindow, entryUrl, { journal, repositories, stateDir }) {
   const register = (channel, count, action) => ipcMain.handle(channel, (event, ...args) => {
@@ -11,7 +12,7 @@ export function registerProfileIpc(getWindow, entryUrl, { journal, repositories,
     if (scope !== 'local' && scope !== 'global') throw new TypeError('Invalid profile scope');
     if (id !== null && (typeof id !== 'string' || id.length > 4096)) throw new TypeError('Invalid repository');
     const repository = id === null ? null : repositories.snapshot().repositories.find(item => item.id === id && item.available);
-    if ((id !== null && !repository) || (scope === 'local' && !repository)) throw new TypeError('Open an available repository first');
+    if ((id !== null && !repository) || (scope === 'local' && !repository)) throw new TypeError(ui`Open an available repository first`);
     return action({ cwd: repository?.path || stateDir, log: journal, scope }, ...rest);
   });
   register('profile:read', 2, loadProfile);

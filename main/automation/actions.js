@@ -5,6 +5,7 @@ import { parseCommand, isBareExecutable } from '../../renderer/src/features/auto
 import { matchesGlob } from '../../renderer/src/features/automations/condition-eval.js';
 import { checkMessage } from '../../renderer/src/features/automations/message-rules.js';
 import { scanText } from '../../renderer/src/features/automations/secret-rules.js';
+import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
 
 const MESSAGE_RULE_TIMEOUT_MS = 1000;
 
@@ -22,7 +23,7 @@ export async function runAction({ action, context, cwd, log, env, signal, timeou
     case 'custom': {
       const argv = parseCommand(action.command);
       if (!isBareExecutable(argv[0])) {
-        return { status: 'failed', detail: `"${argv[0]}" is not a plain program name. Use "Run script" for a file in the repository.` };
+        return { status: 'failed', detail: ui`"${argv[0]}" is not a plain program name. Use "Run script" for a file in the repository.` };
       }
       return processResult(await runStep({ argv, cwd, log, env, signal, timeoutMs, operation: `Automation: ${action.name || action.command}` }));
     }
@@ -31,7 +32,7 @@ export async function runAction({ action, context, cwd, log, env, signal, timeou
       const resolved = path.resolve(cwd, action.path);
       const relative = path.relative(cwd, resolved);
       if (relative.startsWith('..') || path.isAbsolute(relative) || relative === '') {
-        return { status: 'failed', detail: 'The script path is outside the repository.' };
+        return { status: 'failed', detail: ui`The script path is outside the repository.` };
       }
       const extra = action.args ? parseCommand(`x ${action.args}`).slice(1) : [];
       return processResult(await runStep({ argv: [resolved, ...extra], cwd, log, env, signal, timeoutMs, operation: `Automation: ${action.name || action.path}` }));
@@ -40,7 +41,7 @@ export async function runAction({ action, context, cwd, log, env, signal, timeou
     // The bump itself happens with the commit, after every check passed (see
     // main/automation/bump.js), so a later refusal never leaves a bumped file.
     case 'bumpVersion':
-      return { status: 'passed', detail: 'The version is bumped with the commit; the choice is made in the commit panel or the agent’s proposal.' };
+      return { status: 'passed', detail: ui`The version is bumped with the commit; the choice is made in the commit panel or the agent’s proposal.` };
 
     case 'validateMessage': {
       // A rule's regex runs in the main process; a catastrophic pattern must
@@ -50,7 +51,7 @@ export async function runAction({ action, context, cwd, log, env, signal, timeou
         verdict = vm.runInNewContext('check(rule, message)', { check: checkMessage, rule: action.rule, message: context.commitMessage ?? '' },
           { timeout: MESSAGE_RULE_TIMEOUT_MS });
       } catch {
-        return { status: 'failed', detail: 'The message pattern took too long to check. Simplify the regular expression.' };
+        return { status: 'failed', detail: ui`The message pattern took too long to check. Simplify the regular expression.` };
       }
       return { status: verdict.ok ? 'passed' : 'failed', detail: verdict.ok ? null : verdict.detail };
     }
@@ -59,7 +60,7 @@ export async function runAction({ action, context, cwd, log, env, signal, timeou
       const branch = context.branch;
       const hit = branch != null && (action.block || []).some(pattern => matchesGlob(branch, pattern));
       return hit
-        ? { status: 'failed', detail: `Direct commits to ${branch} are blocked by this pipeline.` }
+        ? { status: 'failed', detail: ui`Direct commits to ${branch} are blocked by this pipeline.` }
         : { status: 'passed', detail: null };
     }
 
@@ -67,8 +68,8 @@ export async function runAction({ action, context, cwd, log, env, signal, timeou
       const files = context.changedFiles || [];
       const missing = (action.require || []).filter(glob => !files.some(file => matchesGlob(file, glob)));
       const present = (action.forbid || []).filter(glob => files.some(file => matchesGlob(file, glob)));
-      if (missing.length) return { status: 'failed', detail: `Expected a change matching ${missing.join(', ')}.` };
-      if (present.length) return { status: 'failed', detail: `Changes matching ${present.join(', ')} are not allowed here.` };
+      if (missing.length) return { status: 'failed', detail: ui`Expected a change matching ${missing.join(', ')}.` };
+      if (present.length) return { status: 'failed', detail: ui`Changes matching ${present.join(', ')} are not allowed here.` };
       return { status: 'passed', detail: null };
     }
 
@@ -76,21 +77,21 @@ export async function runAction({ action, context, cwd, log, env, signal, timeou
       const findings = [];
       for (const { file, text } of context.addedLines || []) findings.push(...scanText(text, file));
       return findings.length
-        ? { status: 'failed', detail: `${findings.length} possible secret${findings.length === 1 ? '' : 's'} in the staged changes.`, findings }
+        ? { status: 'failed', detail: uiN(findings.length, '{n} possible secret in the staged changes.', '{n} possible secrets in the staged changes.'), findings }
         : { status: 'passed', detail: null, findings: [] };
     }
 
     default:
-      return { status: 'failed', detail: `Unknown action type "${action.type}".` };
+      return { status: 'failed', detail: ui`Unknown action type "${action.type}".` };
   }
 }
 
 function processResult(result) {
   const status = result.code === 0 && !result.timedOut && !result.cancelled ? 'passed' : 'failed';
-  const detail = result.cancelled ? 'Cancelled.'
-    : result.timedOut ? 'Timed out.'
+  const detail = result.cancelled ? ui`Cancelled.`
+    : result.timedOut ? ui`Timed out.`
       : result.code === 0 ? null
-        : /ENOENT/.test(result.stderr) ? 'Command not found on PATH.'
-          : `Exited with code ${result.code}.`;
+        : /ENOENT/.test(result.stderr) ? ui`Command not found on PATH.`
+          : ui`Exited with code ${result.code}.`;
   return { status, detail, stdout: result.stdout, stderr: result.stderr, ms: result.ms, cancelled: result.cancelled };
 }

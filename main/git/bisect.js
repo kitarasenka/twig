@@ -3,6 +3,7 @@ import path from 'node:path';
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
 import { exists, readTrimmed, resolveGitDir } from './operation-state.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * `git bisect` — the search for the commit that introduced a defect.
@@ -194,6 +195,11 @@ export async function runBisect({ cwd, log, step, oid = null, terms = DEFAULT_TE
       : buildBisectMarkArgv(step, terms, oid);
   const operation = LABELS[step] || `Bisect ${argv[1]}`;
   const result = await runGit({ argv, cwd, log, operation });
-  if (result.code !== 0) return { ok: false, message: `${operation} did not finish. Show output in the console.` };
+  if (result.code !== 0) {
+    const message = step === 'start' ? ui`Bisect start did not finish. Show output in the console.`
+      : step === 'reset' ? ui`Bisect reset did not finish. Show output in the console.`
+        : ui`Bisect ${argv[1]} did not finish. Show output in the console.`;
+    return { ok: false, message };
+  }
   return { ok: true, message: null };
 }

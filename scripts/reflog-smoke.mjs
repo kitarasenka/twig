@@ -51,7 +51,7 @@ try {
   await git(['reset', '--hard', c2]);
   await git(['clone', bare, other], root); await configure(other);
 
-  const env = { ...process.env };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'profile')}`], env });

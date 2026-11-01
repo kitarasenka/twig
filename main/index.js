@@ -18,6 +18,9 @@ import { createRepositoryService } from './git/repository.js';
 import { SANDBOX_DIRNAME, SANDBOX_MARKER_FILE, SANDBOX_REMOTE_DIRNAME } from './git/sandbox.js';
 import { UndoService } from './undo.js';
 import { hardenProcessEnv } from './process-env.js';
+import { effectiveLocale, LanguageStore, native, nt, readCatalog } from './language.js';
+import { resolveLocale, ui } from '../renderer/src/i18n/i18n.js';
+import { MESSAGE_KEYS } from '../renderer/src/i18n/messages.js';
 
 // Before anything is spawned: no program or library lookup in the working
 // directory, which is always someone's repository.
@@ -45,8 +48,49 @@ let window;
 
 async function detectGit(log) {
   const result = await runGit({ argv: ['--version'], cwd: app.getPath('home'), log, operation: 'Background: check Git installation' });
-  if (result.code !== 0) return { available: false, version: null, instruction: 'Install Git, then restart 🌱 Twig.' };
+  if (result.code !== 0) return { available: false, version: null, instruction: ui`Install Git, then restart 🌱 Twig.` };
   return { available: true, version: result.stdout.trim(), instruction: null };
+}
+
+/**
+ * The menu bar in the interface language. Roles keep their behaviour and
+ * shortcuts; only the words are ours.
+ */
+function buildMenu() {
+  const mac = process.platform === 'darwin';
+  const name = '🌱 Twig';
+  const separator = { type: 'separator' };
+  return Menu.buildFromTemplate([
+    ...(mac ? [{ label: name, submenu: [
+      { role: 'about', label: nt`About ${name}` }, separator,
+      { role: 'services', label: nt('Services') }, separator,
+      { role: 'hide', label: nt`Hide ${name}` }, { role: 'hideOthers', label: nt('Hide Others') },
+      { role: 'unhide', label: nt('Show All') }, separator,
+      { role: 'quit', label: nt`Quit ${name}` }
+    ] }] : []),
+    { label: nt('File'), submenu: [mac ? { role: 'close', label: nt('Close Window') } : { role: 'quit', label: nt('Quit') }] },
+    { label: nt('Edit'), submenu: [
+      { role: 'undo', label: nt('Undo') }, { role: 'redo', label: nt('Redo') }, separator,
+      { role: 'cut', label: nt('Cut') }, { role: 'copy', label: nt('Copy') }, { role: 'paste', label: nt('Paste') },
+      ...(mac ? [{ role: 'pasteAndMatchStyle', label: nt('Paste and Match Style') }] : []),
+      { role: 'delete', label: nt('Delete') }, { role: 'selectAll', label: nt('Select All') }
+    ] },
+    // Developer tools only when running from source, never in an installed copy.
+    { label: nt('View'), submenu: [{ role: 'reload', label: nt('Reload') },
+      ...(app.isPackaged ? [] : [{ role: 'toggleDevTools', label: nt('Toggle Developer Tools') }]),
+      { role: 'resetZoom', label: nt('Actual Size') }, { role: 'zoomIn', label: nt('Zoom In') }, { role: 'zoomOut', label: nt('Zoom Out') },
+      separator, { role: 'togglefullscreen', label: nt('Toggle Full Screen') }] },
+    { label: nt('Window'), submenu: [{ role: 'minimize', label: nt('Minimize') }, { role: 'zoom', label: nt('Zoom') },
+      ...(mac ? [separator, { role: 'front', label: nt('Bring All to Front') }] : [{ role: 'close', label: nt('Close') }])] }
+  ]);
+}
+
+/** Main's own words follow the chosen language; the renderer loads its catalog itself. */
+async function applyLanguage(choice) {
+  const locale = effectiveLocale(choice, app.getPreferredSystemLanguages());
+  native.setLocale(locale, await readCatalog(locale), MESSAGE_KEYS);
+  Menu.setApplicationMenu(buildMenu());
+  return { choice, locale };
 }
 
 function openExternal(url) {
@@ -89,14 +133,8 @@ app.whenReady().then(async () => {
       && url.host === '127.0.0.1:5188';
     callback({ cancel: !localAsset && !localDev });
   });
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
-    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
-    { role: 'fileMenu' }, { role: 'editMenu' },
-    // Developer tools only when running from source, never in an installed copy.
-    { label: 'View', submenu: [{ role: 'reload' }, ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' }]),
-      { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
-    { role: 'windowMenu' }
-  ]));
+  const language = new LanguageStore(app.getPath('userData'));
+  await applyLanguage(await language.load());
   const userData = app.getPath('userData');
   const journal = new CommandLog(userData);
   const undo = new UndoService({ directory: userData, log: journal });
@@ -126,12 +164,14 @@ app.whenReady().then(async () => {
   // where it is used; it never rejects.
   const automationPath = resolveLoginPath();
   await Promise.all([automations.load(), automationRuns.load(), editor.load(), fetchSettings.load(), updateSettings.load(), mcpSettings.load()]);
-  registerIpc(() => window, entryUrl, { journal, repositories, git, undo, marks, automations, automationRuns, automationPath, editor, fetchSettings, updateSettings, mcpSettings });
+  registerIpc(() => window, entryUrl, { journal, repositories, git, undo, marks, automations, automationRuns, automationPath, editor, fetchSettings, updateSettings, mcpSettings,
+    language: { get: () => ({ choice: language.get(), locale: native.getLocale(), system: resolveLocale(app.getPreferredSystemLanguages()) }),
+      set: async value => ({ ...await applyLanguage(await language.save(value)), system: resolveLocale(app.getPreferredSystemLanguages()) }) } });
   await createWindow();
 }).catch((error) => {
   console.error('🌱 Twig failed to start:', error.message);
   // A launch from the Dock or the Start menu has no terminal: say it in a window.
-  dialog.showErrorBox('🌱 Twig could not start', `${error.message}\n\nSettings folder: ${app.getPath('userData')}`);
+  dialog.showErrorBox(nt('🌱 Twig could not start'), `${error.message}\n\n${nt`Settings folder: ${app.getPath('userData')}`}`);
   app.exit(1);
 });
 app.on('second-instance', () => {

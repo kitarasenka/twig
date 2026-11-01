@@ -1,5 +1,8 @@
 // Words and commands of the commit-proposal dialog. Only pure sibling
-// modules are imported: Vite and the Node check both load it.
+// modules and i18n are imported: Vite and the Node check both load it.
+// The commit message and the tag name go back to main as they are — only the
+// dialog's own words are translated.
+import { t, tn, tr } from '../../i18n/i18n.js';
 import { releaseMessage, releaseTagName, releaseVersion, tagArgv, tagNameProblem, tagPushArgv } from '../automations/release-tag.js';
 import { nextVersion } from '../automations/version-bump.js';
 
@@ -43,27 +46,30 @@ export function releaseState(view, { choice, tagOn, tagName = null, message = nu
 
 /** `Patch — package.json 1.2.3 → 1.2.4`, or for a version kept only in tags, `Patch — 1.2.3 → 1.2.4`. */
 export function stepLabel(view, choice) {
-  const name = { patch: 'Patch', minor: 'Minor', major: 'Major' }[choice];
-  if (view.bump) return `${name} — ${view.bump.targets.map(target => `${target.path} ${target.current} → ${target.next[choice]}`).join(', ')}`;
   const from = view.versioning?.tag?.version;
-  return `${name} — ${from} → ${nextVersion(from, choice)}`;
+  const versions = view.bump
+    ? view.bump.targets.map(target => `${target.path} ${target.current} → ${target.next[choice]}`).join(', ')
+    : `${from} → ${nextVersion(from, choice)}`;
+  if (choice === 'major') return t`Major — ${versions}`;
+  if (choice === 'minor') return t`Minor — ${versions}`;
+  return t`Patch — ${versions}`;
 }
 
 /** Where Commit & Push goes, or why it cannot. */
 export function pushLine(view) {
-  if (view.pushTarget?.mode) return `Push goes to ${view.pushTarget.label}.`;
-  return `Commit & Push is not available: ${view.pushTarget?.reason || 'there is nowhere to push.'}`;
+  if (view.pushTarget?.mode) return t`Push goes to ${view.pushTarget.label}.`;
+  return t`Commit & Push is not available: ${view.pushTarget?.reason ? tr(view.pushTarget.reason) : t('there is nowhere to push.')}`;
 }
 
 /** `3 files, +12 −4` */
 export function totalsLine(view) {
-  const count = view.files.length;
-  return `${count} ${count === 1 ? 'file' : 'files'}, +${view.totals.insertions} −${view.totals.deletions}`;
+  return tn(view.files.length, '{n} file, +{insertions} −{deletions}', '{n} files, +{insertions} −{deletions}',
+    { insertions: view.totals.insertions, deletions: view.totals.deletions });
 }
 
 /** The two buttons: Commit / Commit & Push, or Create tag / Tag & Push when only a tag is made. */
 export function actionLabels(commit) {
-  return commit ? { commit: 'Commit', push: 'Commit & Push' } : { commit: 'Create tag', push: 'Tag & Push' };
+  return commit ? { commit: t('Commit'), push: t('Commit & Push') } : { commit: t('Create tag'), push: t('Tag & Push') };
 }
 
 /** The button the agent asked for is the primary one. */
@@ -73,11 +79,12 @@ export function primaryAction(view) {
 
 /** The first line of an outcome, for the note after the dialog closes. */
 export function outcomeNote(outcome) {
-  return String(outcome || '').split('\n')[0];
+  return tr(String(outcome || '').split('\n')[0]);
 }
 
 /** Proposals from other worktrees waiting behind this one, in words. */
 export function waitingLine(count) {
   if (!(count > 0)) return '';
-  return `${count === 1 ? '1 more proposal is' : `${count} more proposals are`} waiting from other worktrees. The next one opens when you answer this one.`;
+  return tn(count, '{n} more proposal is waiting from other worktrees. The next one opens when you answer this one.',
+    '{n} more proposals are waiting from other worktrees. The next one opens when you answer this one.');
 }

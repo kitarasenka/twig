@@ -54,7 +54,7 @@ function startBridge(launch) {
 }
 
 async function launch() {
-  const env = { ...process.env };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${profile}`], env, timeout: 30000 });

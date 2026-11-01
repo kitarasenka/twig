@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { FETCH_INTERVALS, createFetchScheduler } from './background-fetch.js';
 import { backgroundFetch } from './git/sync.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 /**
  * Background fetch channels: read and change the consent (`fetch:get`,
@@ -43,7 +44,7 @@ export function registerFetchIpc(getWindow, entryUrl, { repositories, journal, u
   handler('fetch:status', 1, id => {
     if (typeof id !== 'string') throw new Error('Invalid fetch request');
     const repo = repositories.snapshot().repositories.find(item => item.id === id && item.available);
-    if (!repo) throw new Error('Repository is unavailable');
+    if (!repo) throw new Error(ui`Repository is unavailable`);
     return scheduler.status(repo.path);
   });
   return scheduler;

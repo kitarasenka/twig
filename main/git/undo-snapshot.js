@@ -5,6 +5,7 @@ import path from 'node:path';
 import { runGit } from './exec.js';
 import { parseStatusV2 } from './status-parser.js';
 import { loadOperationState } from './operation-state.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 // Past this size a changed file is fingerprinted by its metadata instead of
 // read: size, inode, and modification and change times to the nanosecond. A
@@ -15,7 +16,7 @@ const READ_LIMIT = 1024 * 1024;
 export async function captureState({ cwd, log }) {
   const read = async argv => {
     const result = await runGit({ cwd, log, argv, operation: 'Background: Undo safety check' });
-    if (result.code !== 0) throw new Error('Could not verify the repository for Undo.');
+    if (result.code !== 0) throw new Error(ui`Could not verify the repository for Undo.`);
     return result.stdout;
   };
   const [raw, refs, index, stash, operation] = await Promise.all([
@@ -40,12 +41,12 @@ export async function captureState({ cwd, log }) {
   for (const entry of status.entries) {
     const file = path.resolve(root, entry.path);
     const relative = path.relative(root, file);
-    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Cannot verify this working-tree path.');
+    if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(ui`Cannot verify this working-tree path.`);
     hash.update(entry.path);
     let info;
     try { info = await lstat(file); } catch (error) { if (error.code === 'ENOENT') { hash.update('missing'); continue; } throw error; }
     const parent = path.relative(root, await realpath(path.dirname(file)));
-    if (parent.startsWith('..') || path.isAbsolute(parent)) throw new Error('Cannot verify files through an external directory link.');
+    if (parent.startsWith('..') || path.isAbsolute(parent)) throw new Error(ui`Cannot verify files through an external directory link.`);
     if (info.isSymbolicLink()) hash.update(await readlink(file));
     else if (info.isFile() && info.size <= READ_LIMIT) {
       for await (const chunk of createReadStream(file, { flags: constants.O_RDONLY | (constants.O_NOFOLLOW || 0) })) hash.update(chunk);

@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { runGit } from './exec.js';
 import { validateFile } from './commit.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Submodules: other repositories pinned at one commit inside this one.
@@ -65,7 +66,7 @@ async function exists(target) {
  */
 export async function loadSubmodules({ cwd, log }) {
   const staged = await runGit({ cwd, log, argv: ['ls-files', '--stage', '-z'], operation: 'Read submodules' });
-  if (staged.code !== 0) throw new Error('Git could not read the index.');
+  if (staged.code !== 0) throw new Error(ui`Git could not read the index.`);
   const links = parseGitlinks(staged.stdout);
   if (!links.length) return [];
   const config = await runGit({ cwd, log, argv: ['config', '--file', '.gitmodules', '-z', '--get-regexp', '^submodule[.]'], operation: 'Read submodule settings' });
@@ -101,8 +102,8 @@ export function buildSubmoduleUpdateArgv(paths = null, { recursive = false } = {
 export async function updateSubmodules({ cwd, log, paths = null, recursive = false, signal = null }) {
   const argv = buildSubmoduleUpdateArgv(paths, { recursive });
   const result = await runGit({ cwd, log, argv, signal, operation: paths?.length === 1 ? `Update submodule ${paths[0]}` : 'Update submodules' });
-  if (signal?.aborted) return { ok: false, cancelled: true, message: 'Submodule update cancelled.' };
-  if (result.code !== 0) return { ok: false, cancelled: false, message: 'git submodule update did not finish. Show output in the console.' };
+  if (signal?.aborted) return { ok: false, cancelled: true, message: ui`Submodule update cancelled.` };
+  if (result.code !== 0) return { ok: false, cancelled: false, message: ui`git submodule update did not finish. Show output in the console.` };
   return { ok: true, cancelled: false, message: null };
 }
 
@@ -113,7 +114,7 @@ export async function updateSubmodules({ cwd, log, paths = null, recursive = fal
 export async function submoduleDirectory({ cwd, log, path: wanted }) {
   validateFile(wanted);
   const found = (await loadSubmodules({ cwd, log })).find(entry => entry.path === wanted);
-  if (!found) throw new TypeError('There is no such submodule.');
-  if (found.state === 'uninitialized') throw new Error(`${wanted} is not initialized yet. Update it first.`);
+  if (!found) throw new TypeError(ui`There is no such submodule.`);
+  if (found.state === 'uninitialized') throw new Error(ui`${wanted} is not initialized yet. Update it first.`);
   return path.join(cwd, found.path);
 }

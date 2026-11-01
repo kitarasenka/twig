@@ -1,4 +1,5 @@
-// No imports: Vite and the Node check both load this file.
+// Imports only the import-free i18n module: Vite and the Node check both load this file.
+import { t } from '../../i18n/i18n.js';
 
 /** The select value that keeps every file. */
 export const ALL_TYPES = '';
@@ -30,7 +31,7 @@ export function extensionOptions(paths, current = ALL_TYPES) {
   }
   if (current !== ALL_TYPES && !counts.has(current)) counts.set(current, 0);
   return [...counts]
-    .map(([value, count]) => ({ value, count, label: `${value === NO_EXTENSION ? 'No extension' : value} (${count})` }))
+    .map(([value, count]) => ({ value, count, label: value === NO_EXTENSION ? t`No extension (${count})` : `${value} (${count})` }))
     .sort((a, b) => (a.value === NO_EXTENSION) - (b.value === NO_EXTENSION) || b.count - a.count || a.value.localeCompare(b.value));
 }
 

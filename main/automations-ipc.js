@@ -6,6 +6,7 @@ import { isKnownEvent } from '../renderer/src/features/automations/event-labels.
 import { commandsIn, validatePipeline } from '../renderer/src/features/automations/schema.js';
 import { triggerPipeline } from './automation/engine.js';
 import { discoverHooks, readRepoConfig } from './automation/discovery.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 /**
  * The automation subsystem. It runs user-configured local processes, so every
@@ -72,7 +73,7 @@ export function registerAutomationsIpc(getWindow, entryUrl, { repositories, jour
     // Bind the approval to what the person reviewed, not to whatever the file
     // (or a script it runs) holds by the time they click.
     if (trust.digest !== repoConfig.digest) {
-      throw new Error('This repository’s automations changed since you opened the review. Review them again.');
+      throw new Error(ui`This repository’s automations changed since you opened the review. Review them again.`);
     }
     const commands = new Set(commandsIn(repoConfig.config));
     const approvedCommands = (Array.isArray(trust.approvedCommands) ? trust.approvedCommands : []).map(String).filter(command => commands.has(command));
@@ -105,7 +106,7 @@ export function registerAutomationsIpc(getWindow, entryUrl, { repositories, jour
       const execution = {
         id: randomUUID(), event: eventName, operation: eventName,
         startedAt: new Date().toISOString(), ms: 0, result: 'bypassed', bypassed: true,
-        steps: [{ name: 'Bypassed', type: 'bypass', status: 'skipped', detail: 'Checks were skipped for this operation.', command: null }]
+        steps: [{ name: ui`Bypassed`, type: 'bypass', status: 'skipped', detail: ui`Checks were skipped for this operation.`, command: null }]
       };
       await runs.append(repo.id, execution);
       return { ok: true, blocked: false, executionId: execution.id, steps: execution.steps, ran: false, bypassed: true };

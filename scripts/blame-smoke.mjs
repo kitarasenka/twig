@@ -46,7 +46,7 @@ try {
   const headBefore = await git(['rev-parse', 'HEAD']);
   const statusBefore = await git(['status', '--porcelain']);
 
-  const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' }; delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'profile')}`], env });
   const page = await app.firstWindow();
   page.setDefaultTimeout(15000);

@@ -2,6 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { runGit } from './exec.js';
 import { parseStatusV2 } from './status-parser.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * What operation the repository is in the middle of, for the banner above the
@@ -45,7 +46,7 @@ export async function exists(target) {
 /** @param {{ cwd: string, log: object }} options */
 export async function resolveGitDir({ cwd, log }) {
   const result = await runGit({ argv: ['rev-parse', '--absolute-git-dir'], cwd, log, operation: 'Background: locate the git directory' });
-  if (result.code !== 0) throw new Error('Git could not locate this repository.');
+  if (result.code !== 0) throw new Error(ui`Git could not locate this repository.`);
   return result.stdout.trimEnd();
 }
 
@@ -94,7 +95,7 @@ export async function loadOperationState({ cwd, log, gitDir = null, env = null }
   if (!head) return { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
 
   const result = await runGit({ argv: ['status', '--porcelain=v2', '-z'], cwd, log, env, operation: 'Background: read conflicted files' });
-  if (result.code !== 0) throw new Error('Git could not read the working tree.');
+  if (result.code !== 0) throw new Error(ui`Git could not read the working tree.`);
   const conflicts = parseStatusV2(result.stdout).entries.filter(entry => entry.kind === 'unmerged').map(entry => entry.path);
   return { ...head, conflicts, resolved: conflicts.length === 0 };
 }

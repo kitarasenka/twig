@@ -15,18 +15,19 @@
  * A rejection throws, and the caller turns that into a refused IPC request or a
  * red field in the editor — never a silently-run fallback.
  *
- * No imports: loaded by Vite and by Node in `scripts/checks/automation.mjs`.
+ * Only the i18n import: loaded by Vite and by Node in `scripts/checks/automation.mjs`.
  */
+import { t } from '../../i18n/i18n.js';
 
 const FORBIDDEN = /[;&|<>$`\n\r]/;
 
 export function parseCommand(input) {
   if (typeof input !== 'string') throw new TypeError('A command must be a string.');
   const text = input.trim();
-  if (!text) throw new TypeError('A command cannot be empty.');
-  if (text.length > 4096) throw new TypeError('This command is too long.');
+  if (!text) throw new TypeError(t('A command cannot be empty.'));
+  if (text.length > 4096) throw new TypeError(t('This command is too long.'));
   if (FORBIDDEN.test(text)) {
-    throw new TypeError('A command cannot contain shell operators (& | ; < > $ ` or newlines). Add another action instead.');
+    throw new TypeError(t('A command cannot contain shell operators (& | ; < > $ ` or newlines). Add another action instead.'));
   }
 
   const argv = [];
@@ -45,7 +46,7 @@ export function parseCommand(input) {
       // A backslash only escapes the next literal character; it never introduces
       // shell behaviour because there is no shell.
       const next = text[i + 1];
-      if (next === undefined) throw new TypeError('A command cannot end with a lone backslash.');
+      if (next === undefined) throw new TypeError(t('A command cannot end with a lone backslash.'));
       current += next; i++; hasToken = true;
       continue;
     }
@@ -55,9 +56,9 @@ export function parseCommand(input) {
     }
     current += char; hasToken = true;
   }
-  if (quote) throw new TypeError('This command has an unbalanced quote.');
+  if (quote) throw new TypeError(t('This command has an unbalanced quote.'));
   if (hasToken) argv.push(current);
-  if (argv.length === 0) throw new TypeError('A command cannot be empty.');
+  if (argv.length === 0) throw new TypeError(t('A command cannot be empty.'));
   return argv;
 }
 

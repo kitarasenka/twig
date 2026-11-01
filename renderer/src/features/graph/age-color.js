@@ -4,15 +4,18 @@
  * The scale is absolute — age measured against the clock — and not relative to
  * the commits currently loaded. A relative scale would repaint every row the
  * moment an older page arrives, and "old" would mean something different in
- * every repository. No imports on purpose: Vite loads this module and so does
- * the Node check, the same arrangement as `ui/panel-width.js`.
+ * every repository. Only the i18n module is imported: Vite loads this module and
+ * so does the Node check, the same arrangement as `ui/panel-width.js`. The labels are
+ * marked for translation and shown with t(label).
  */
+import { mark } from '../../i18n/i18n.js';
+
 export const AGE_STOPS = [
-  { key: 'fresh', label: 'Today', maxDays: 1 },
-  { key: 'young', label: 'This week', maxDays: 7 },
-  { key: 'mature', label: 'This month', maxDays: 30 },
-  { key: 'old', label: 'This year', maxDays: 365 },
-  { key: 'root', label: 'Older', maxDays: Infinity }
+  { key: 'fresh', label: mark('Today'), maxDays: 1 },
+  { key: 'young', label: mark('This week'), maxDays: 7 },
+  { key: 'mature', label: mark('This month'), maxDays: 30 },
+  { key: 'old', label: mark('This year'), maxDays: 365 },
+  { key: 'root', label: mark('Older'), maxDays: Infinity }
 ];
 
 const DAY = 86400000;

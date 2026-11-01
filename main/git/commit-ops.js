@@ -2,6 +2,7 @@ import { runGit } from './exec.js';
 import { redactCredentials } from './redact.js';
 import { validateOid } from './commit.js';
 import { coAuthorArgv, missingCoAuthors } from './co-author-trailer.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /** Commit creation and the stash, i.e. local writes that move HEAD or shelve work. */
 
@@ -17,12 +18,12 @@ const SUBJECT_LIMIT = 72;
  */
 export function validateCommitMessage(message) {
   if (typeof message !== 'string' || message.trim().length === 0) {
-    return { valid: false, error: 'A commit needs a message.', warnings: [] };
+    return { valid: false, error: ui`A commit needs a message.`, warnings: [] };
   }
   const lines = message.split('\n');
   const warnings = [];
-  if (lines[0].length > SUBJECT_LIMIT) warnings.push(`The subject is ${lines[0].length} characters; ${SUBJECT_LIMIT} keeps it readable in logs.`);
-  if (lines.length > 1 && lines[1].trim().length > 0) warnings.push('Leave a blank line between the subject and the body.');
+  if (lines[0].length > SUBJECT_LIMIT) warnings.push(ui`The subject is ${lines[0].length} characters; ${SUBJECT_LIMIT} keeps it readable in logs.`);
+  if (lines.length > 1 && lines[1].trim().length > 0) warnings.push(ui`Leave a blank line between the subject and the body.`);
   return { valid: true, error: null, warnings };
 }
 
@@ -61,10 +62,10 @@ export function gitReason(result) {
   return lines.slice(-12).join('\n').slice(-1000);
 }
 
-async function mutate({ cwd, log, argv, operation, stdin = null }) {
+async function mutate({ cwd, log, argv, operation, failed, stdin = null }) {
   const result = await runGit({ argv, cwd, log, operation, stdin });
   if (result.code !== 0) {
-    const error = new Error(`${operation} failed. See the command console.`);
+    const error = new Error(failed);
     // What Git (or a hook it ran) said, for callers that pass a reason on — an agent's commit.
     error.detail = gitReason(result);
     throw error;
@@ -91,12 +92,13 @@ export async function createCommit({ cwd, log, message, amend = false, expectedH
   if (amend) {
     validateOid(expectedHead);
     const head = await runGit({ argv: ['rev-parse', '--verify', 'HEAD'], cwd, log, operation: 'Read the commit being amended' });
-    if (head.code !== 0) throw new Error('There is no commit to amend yet.');
+    if (head.code !== 0) throw new Error(ui`There is no commit to amend yet.`);
     if (head.stdout.trim().toLowerCase() !== expectedHead.toLowerCase()) {
-      throw new Error('The branch moved since the last commit was read. Refresh and try again.');
+      throw new Error(ui`The branch moved since the last commit was read. Refresh and try again.`);
     }
   }
-  await mutate({ cwd, log, argv, stdin: message, operation: amend ? 'Amend the last commit' : 'Commit' });
+  await mutate({ cwd, log, argv, stdin: message, operation: amend ? 'Amend the last commit' : 'Commit',
+    failed: amend ? ui`Amend the last commit failed. See the command console.` : ui`Commit failed. See the command console.` });
   return check.warnings;
 }
 
@@ -113,20 +115,20 @@ export async function rewordHead({ cwd, log, message, expectedOid }) {
   if (!check.valid) throw new Error(check.error);
   validateOid(expectedOid);
   const head = await runGit({ argv: ['rev-parse', '--verify', 'HEAD'], cwd, log, operation: 'Read the commit being reworded' });
-  if (head.code !== 0) throw new Error('There is no commit to reword yet.');
+  if (head.code !== 0) throw new Error(ui`There is no commit to reword yet.`);
   if (head.stdout.trim().toLowerCase() !== expectedOid.toLowerCase()) {
-    throw new Error('The branch moved since this message was read. Refresh the history and try again.');
+    throw new Error(ui`The branch moved since this message was read. Refresh the history and try again.`);
   }
-  await mutate({ cwd, log, argv: buildRewordArgv(), stdin: message, operation: 'Reword the tip commit' });
+  await mutate({ cwd, log, argv: buildRewordArgv(), stdin: message, operation: 'Reword the tip commit', failed: ui`Reword the tip commit failed. See the command console.` });
   return check.warnings;
 }
 
 /** @param {{ cwd: string, log: object, includeUntracked?: boolean, message?: string }} options */
 export function stashPush({ cwd, log, includeUntracked = false, message = '' }) {
-  return mutate({ cwd, log, argv: buildStashArgv({ includeUntracked, message }), operation: 'Stash changes' });
+  return mutate({ cwd, log, argv: buildStashArgv({ includeUntracked, message }), operation: 'Stash changes', failed: ui`Stash changes failed. See the command console.` });
 }
 
 /** @param {{ cwd: string, log: object }} options */
 export function stashPop({ cwd, log }) {
-  return mutate({ cwd, log, argv: buildStashPopArgv(), operation: 'Pop stash' });
+  return mutate({ cwd, log, argv: buildStashPopArgv(), operation: 'Pop stash', failed: ui`Pop stash failed. See the command console.` });
 }

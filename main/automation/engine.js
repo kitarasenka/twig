@@ -5,6 +5,7 @@ import { canBlock, isKnownEvent } from '../../renderer/src/features/automations/
 import { commandsIn } from '../../renderer/src/features/automations/schema.js';
 import { runAction } from './actions.js';
 import { readRepoConfig } from './discovery.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 const zsplit = text => text.split('\0').filter(Boolean);
 
@@ -107,7 +108,7 @@ export async function triggerPipeline({ event, repoId, cwd, log, automations, ru
     if (!evaluateConditions(pipeline.conditions, context)) continue;
     for (const action of pipeline.actions) {
       if (!evaluateConditions(action.conditions, context)) {
-        const skipped = { pipeline: pipeline.name, name: action.name || action.type, type: action.type, status: 'skipped', detail: 'Conditions not met.', command: describe(action) };
+        const skipped = { pipeline: pipeline.name, name: action.name || action.type, type: action.type, status: 'skipped', detail: ui`Conditions not met.`, command: describe(action) };
         steps.push(skipped); onStep?.(skipped);
         continue;
       }

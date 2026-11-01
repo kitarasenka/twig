@@ -1,11 +1,13 @@
 /**
  * Git LFS pointer files, recognised in a diff so they read as "a large file
- * stored in LFS" instead of three lines of hashes. No imports: Vite and the
- * Node check both load it.
+ * stored in LFS" instead of three lines of hashes. Imports only the import-free
+ * i18n module: Vite and the Node check both load it.
  *
  * A pointer is `version <spec>`, then `oid sha256:<hex>` and `size <bytes>`
  * (keys sorted, one per line). Anything else is an ordinary text file.
  */
+
+import { t } from '../../i18n/i18n.js';
 
 const SPECS = ['https://git-lfs.github.com/spec/v1', 'https://hawser.github.com/spec/v1'];
 
@@ -73,8 +75,8 @@ export function formatSize(bytes) {
 /** What the change did to the stored file, in words. */
 export function lfsChangeLabel(diff) {
   if (!diff) return '';
-  if (!diff.before) return `Added ${formatSize(diff.after.size)} to Git LFS`;
-  if (!diff.after) return `Removed ${formatSize(diff.before.size)} from Git LFS`;
-  if (diff.before.oid === diff.after.oid) return `Unchanged in Git LFS (${formatSize(diff.after.size)})`;
-  return `Replaced in Git LFS: ${formatSize(diff.before.size)} → ${formatSize(diff.after.size)}`;
+  if (!diff.before) return t`Added ${formatSize(diff.after.size)} to Git LFS`;
+  if (!diff.after) return t`Removed ${formatSize(diff.before.size)} from Git LFS`;
+  if (diff.before.oid === diff.after.oid) return t`Unchanged in Git LFS (${formatSize(diff.after.size)})`;
+  return t`Replaced in Git LFS: ${formatSize(diff.before.size)} → ${formatSize(diff.after.size)}`;
 }

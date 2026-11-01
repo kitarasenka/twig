@@ -8,6 +8,7 @@ import { DiffPieces, DiffToolbar } from '../diff/DiffLines.jsx';
 import useDiffPrefs from '../diff/useDiffPrefs.js';
 import ImageDiff from '../diff/ImageDiff.jsx';
 import { imageType } from '../../../../main/git/image-types.js';
+import { t, tn } from '../../i18n/i18n.js';
 
 const changeable = line => line.kind !== 'context';
 const MARKER = { add: '+', delete: '-' };
@@ -59,7 +60,6 @@ export default function StageDiff({ repositoryId = null, file, diff, staged, sel
   const highlight = useHighlighter(prefs.syntax && Boolean(language));
   const syntax = useMemo(() => (highlight ? hunkSyntax(diff.hunks, highlight, language) : null), [diff.hunks, language, highlight]);
   const selectedCount = Object.values(selection).reduce((total, lines) => total + lines.length, 0);
-  const verb = staged ? 'Unstage' : 'Stage';
 
   function toggleLine(hunkIndex, lineIndex, checked) {
     const current = new Set(selection[hunkIndex] || []);
@@ -72,20 +72,21 @@ export default function StageDiff({ repositoryId = null, file, diff, staged, sel
     onSelection({ ...selection, [hunkIndex]: checked ? lines : [] });
   }
 
-  return <section className="stage-diff" aria-label={`${staged ? 'Staged' : 'Working tree'} diff for ${file}`}>
+  return <section className="stage-diff" aria-label={staged ? t`Staged diff for ${file}` : t`Working tree diff for ${file}`}>
     <header className="panel-heading">
       <code title={file}>{file}</code>
       <span className="diff-actions">
-        {onDiscard && <Button className="discard" reason={selectedCount === 0 ? 'Select lines to discard' : busy ? 'Git is working' : undefined}
-          onClick={() => onDiscard(selection)}>{`Discard ${selectedCount} selected`}</Button>}
-        <Button className="primary" reason={selectedCount === 0 ? `Select lines to ${verb.toLowerCase()}` : busy ? 'Git is working' : undefined}
-          onClick={() => onApply(selection)}>{`${verb} ${selectedCount} selected`}</Button>
-        <Button onClick={onClose} aria-label="Close diff">Close</Button>
+        {onDiscard && <Button className="discard" reason={selectedCount === 0 ? t('Select lines to discard') : busy ? t('Git is working') : undefined}
+          onClick={() => onDiscard(selection)}>{tn(selectedCount, 'Discard {n} selected', 'Discard {n} selected')}</Button>}
+        <Button className="primary" reason={selectedCount === 0 ? (staged ? t('Select lines to unstage') : t('Select lines to stage')) : busy ? t('Git is working') : undefined}
+          onClick={() => onApply(selection)}>{staged ? tn(selectedCount, 'Unstage {n} selected', 'Unstage {n} selected')
+            : tn(selectedCount, 'Stage {n} selected', 'Stage {n} selected')}</Button>
+        <Button onClick={onClose} aria-label={t('Close diff')}>{t('Close')}</Button>
       </span>
     </header>
     {diff.binary && repositoryId && imageType(file) && <ImageDiff repositoryId={repositoryId} file={file} source={{ kind: staged ? 'staged' : 'unstaged' }} />}
-    {diff.binary && !(repositoryId && imageType(file)) && <p className="empty-inline">Binary file changed. Stage it whole; there is no text diff to pick from.</p>}
-    {!diff.binary && diff.hunks.length === 0 && <p className="empty-inline">No textual changes in this file.</p>}
+    {diff.binary && !(repositoryId && imageType(file)) && <p className="empty-inline">{t('Binary file changed. Stage it whole; there is no text diff to pick from.')}</p>}
+    {!diff.binary && diff.hunks.length === 0 && <p className="empty-inline">{t('No textual changes in this file.')}</p>}
     {!diff.binary && diff.hunks.length > 0 && <DiffToolbar language={language} words={false} />}
     <div className={`diff-scroll${syntax ? ' diff-syntax' : ''}`} hidden={diff.binary}>
       {diff.hunks.map((hunk, hunkIndex) => {
@@ -109,7 +110,7 @@ export default function StageDiff({ repositoryId = null, file, diff, staged, sel
             return <div className={`stage-line ${kind}`} key={lineIndex}>
               {changeable(line)
                 ? <input type="checkbox" checked={picked.has(lineIndex)}
-                  aria-label={`${verb} line ${gutter.next ?? gutter.old}`}
+                  aria-label={staged ? t`Unstage line ${gutter.next ?? gutter.old}` : t`Stage line ${gutter.next ?? gutter.old}`}
                   onChange={event => toggleLine(hunkIndex, lineIndex, event.target.checked)} />
                 : <span className="stage-line-spacer" />}
               <span className="line-number">{gutter.old ?? ''}</span>
@@ -121,8 +122,8 @@ export default function StageDiff({ repositoryId = null, file, diff, staged, sel
           {drawn === hunk.lines.length && hunk.lines.some(line => line.noNewline) && <div className="stage-line no-newline"><span className="stage-line-spacer" /><span className="line-number" /><span className="line-number" /><span className="line-text">\ No newline at end of file</span></div>}
         </div>;
       })}
-      {limited && <p className="empty-inline">Showing {LINE_BUDGET} of {totalLines} lines.{' '}
-        <button type="button" className="text-button" onClick={() => setShowAll(true)}>Show all {totalLines} lines</button></p>}
+      {limited && <p className="empty-inline">{t`Showing ${LINE_BUDGET} of ${totalLines} lines.`}{' '}
+        <button type="button" className="text-button" onClick={() => setShowAll(true)}>{tn(totalLines, 'Show all {n} line', 'Show all {n} lines')}</button></p>}
     </div>
   </section>;
 }

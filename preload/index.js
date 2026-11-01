@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('twig', Object.freeze({
   getAppInfo: () => ipcRenderer.invoke('app:info'),
+  getLanguage: () => ipcRenderer.invoke('language:get'),
+  setLanguage: choice => ipcRenderer.invoke('language:set', choice),
   checkForUpdate: () => ipcRenderer.invoke('update:check'),
   getUpdateState: () => ipcRenderer.invoke('update:state'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),

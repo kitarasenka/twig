@@ -8,13 +8,15 @@
  * number at all (`latest`, `stable`) cannot be placed on that scale and go
  * after every versioned tag, by name.
  *
- * No imports: Vite and the Node check both load this file.
+ * Only the import-free i18n module is imported: Vite and the Node check both
+ * load this file. The labels stay English here; the screen translates them.
  */
+import { mark } from '../../i18n/i18n.js';
 
 export const TAG_SORTS = [
-  { id: 'version', label: 'Version, newest first' },
-  { id: 'date', label: 'Date, newest first' },
-  { id: 'name', label: 'Name, A to Z' }
+  { id: 'version', label: mark('Version, newest first') },
+  { id: 'date', label: mark('Date, newest first') },
+  { id: 'name', label: mark('Name, A to Z') }
 ];
 const STORAGE_KEY = 'twig:tag-sort';
 const PRE_RELEASE = /^[-._~+]?(?:alpha|beta|rc|pre|preview|dev|snapshot|nightly|canary|a|b)(?![a-z])/i;

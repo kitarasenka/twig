@@ -20,6 +20,9 @@ import ExecutionPanel from '../features/automations/ExecutionPanel.jsx';
 import { outcomeNote } from '../features/proposal/proposal-view.js';
 import { AGE_STOPS, ageTextClass } from '../features/graph/age-color.js';
 import lazyScreen from '../ui/lazy-screen.jsx';
+import { LANGUAGES, failureText, mark, t, tn, tr } from '../i18n/i18n.js';
+import { tx } from '../i18n/rich.js';
+import { changeLanguage, languageChoice, systemLanguage, takeReopenSettings } from '../i18n/load.js';
 
 // Opened rarely: loaded the first time they are shown, not with the window.
 const GitProfile = lazyScreen(() => import('../features/settings/GitProfile.jsx'));
@@ -30,7 +33,10 @@ const SshSettings = lazyScreen(() => import('../features/settings/SshSettings.js
 const McpSettings = lazyScreen(() => import('../features/settings/McpSettings.jsx'));
 const CommitProposalDialog = lazyScreen(() => import('../features/proposal/CommitProposalDialog.jsx'));
 
-const unavailable = 'Connect a repository to use this action';
+const UNAVAILABLE = mark('Connect a repository to use this action');
+// What `dialog` holds: an English name compared in code and shown, translated, as the title.
+const DIALOG_TITLES = [mark('Settings'), mark('Git profile'), mark('Repositories'), mark('Clone repository'), mark('Remotes'),
+  mark('SSH'), mark('AI agents (MCP)'), mark('Keyboard shortcuts'), mark('Reset demo workspace'), mark('Close tab')];
 function initialTheme() {
   try { const value = localStorage.getItem('twig:theme'); return ['dark', 'light'].includes(value) ? value : 'system'; }
   catch { return 'system'; }
@@ -58,7 +64,9 @@ export default function App() {
   // A click on the branch under CURRENT BRANCH, for the open repository to show its HEAD.
   const [headRequest, setHeadRequest] = useState({ id: null, seq: 0 });
   const [refreshSlot, setRefreshSlot] = useState(null);
-  const [dialog, setDialog] = useState(null);
+  const [dialog, setDialog] = useState(() => (takeReopenSettings() ? 'Settings' : null));
+  const [language, setLanguage] = useState(languageChoice);
+  const [languageError, setLanguageError] = useState('');
   const [dialogBusy, setDialogBusy] = useState(false);
   // The tab the 'Close tab' dialog asks about: { id, name, sandbox }.
   const [closeTarget, setCloseTarget] = useState(null);
@@ -122,7 +130,7 @@ export default function App() {
   const [worktreeVersion, setWorktreeVersion] = useState(0);
   const [remoteRevisions, setRemoteRevisions] = useState({});
   const [closedTabs, setClosedTabs] = useState(() => { try { return readClosedTabs(localStorage); } catch { return new Set(); } });
-  const [undoState, setUndoState] = useState({ undo: false, redo: false, undoReason: 'No application actions to undo.', redoReason: 'No next action.' });
+  const [undoState, setUndoState] = useState({ undo: false, redo: false, undoReason: mark('No application actions to undo.'), redoReason: mark('No next action.') });
   const [undoMoving, setUndoMoving] = useState(false);
   const repositoryFilters = useRef(new Map());
   // Tabs that have been open on screen. A tab's history loads when it is first
@@ -151,7 +159,8 @@ export default function App() {
   const selectionRequest = useRef(0);
   const divergenceRequest = useRef(0);
   const stashRequest = useRef(0);
-    const ready = (info !== null && workspace !== null) || Boolean(startupError);
+  const unavailable = t(UNAVAILABLE);
+  const ready = (info !== null && workspace !== null) || Boolean(startupError);
   const repository = workspace?.repositories.find(item => active === `repository:${item.id}`)
     || workspace?.repositories.find(item => item.id === workspace.activeId) || null;
   const sandboxId = workspace?.repositories.find(item => item.sandbox)?.id || null;
@@ -159,7 +168,7 @@ export default function App() {
 
   useEffect(() => {
     let alive = true;
-    if (!window.twig) { setStartupError('Browser preview. Launch the desktop app with npm run dev.'); return; }
+    if (!window.twig) { setStartupError(t('Browser preview. Launch the desktop app with npm run dev.')); return; }
     Promise.all([window.twig.getAppInfo(), window.twig.getWorkspace(), window.twig.getConsoleEntries()])
       .then(([appInfo, initialWorkspace, initialEntries]) => {
         if (!alive) return;
@@ -177,7 +186,7 @@ export default function App() {
         if (startId) setActive(`repository:${startId}`);
         else { setEmptyOpen(true); setActive('new'); }
       })
-      .catch(() => { if (alive) setStartupError('Desktop connection unavailable. Restart 🌱 Twig.'); });
+      .catch(() => { if (alive) setStartupError(t('Desktop connection unavailable. Restart 🌱 Twig.')); });
     window.twig.getEditor().then(value => { if (alive) setEditor(value); }).catch(() => {});
     window.twig.getBackgroundFetch().then(value => { if (alive) setFetchSettings(value); }).catch(() => {});
     window.twig.getUpdateState().then(value => { if (alive) setUpdate(value); }).catch(() => {});
@@ -194,7 +203,7 @@ export default function App() {
   const chooseEditor = useCallback(async (preset) => {
     setEditorError('');
     try { setEditor(await window.twig.setEditor(preset)); }
-    catch { setEditorError('Could not save the editor choice.'); }
+    catch { setEditorError(t('Could not save the editor choice.')); }
   }, []);
   useEffect(() => {
     const system = matchMedia('(prefers-color-scheme: dark)');
@@ -257,7 +266,7 @@ export default function App() {
   const chooseFetchInterval = useCallback(async (interval) => {
     setFetchError('');
     try { setFetchSettings(await window.twig.setBackgroundFetch(interval)); }
-    catch { setFetchError('Could not save the background fetch choice.'); }
+    catch { setFetchError(t('Could not save the background fetch choice.')); }
   }, []);
   useEffect(() => {
     const request = ++divergenceRequest.current;
@@ -302,12 +311,12 @@ export default function App() {
     setSyncing(mode); setSyncNote('');
     try {
       const result = await window.twig.runSync(repository.id, mode, branchName);
-      setSyncNote(result.ok ? `${mode} finished.` : { text: result.message, failed: !result.cancelled });
+      setSyncNote(result.ok ? t`${mode} finished.` : { text: tr(result.message), failed: !result.cancelled });
       const next = await window.twig.selectRepository(repository.id);
       setWorkspace(next);
       setWorktreeVersion(value => value + 1);
     } catch (error) {
-      setSyncNote({ text: error.message || 'The operation failed.', failed: true });
+      setSyncNote({ text: failureText(error, t('The operation failed.')), failed: true });
     } finally { setSyncing(null); }
   }
   async function runStash(action) {
@@ -316,12 +325,12 @@ export default function App() {
     try {
       if (action === 'stash') await window.twig.stashPush(repository.id, true, '');
       else await window.twig.stashPop(repository.id);
-      setSyncNote(action === 'stash' ? 'Changes stashed.' : 'Stash popped.');
+      setSyncNote(action === 'stash' ? t('Changes stashed.') : t('Stash popped.'));
       const next = await window.twig.selectRepository(repository.id);
       setWorkspace(next);
       setWorktreeVersion(value => value + 1);
     } catch (error) {
-      setSyncNote({ text: error.message || 'The operation failed.', failed: true });
+      setSyncNote({ text: failureText(error, t('The operation failed.')), failed: true });
     } finally { setSyncing(null); }
   }
 
@@ -334,12 +343,12 @@ export default function App() {
           : step === 'cancel' ? await window.twig.cancelUpdate()
             : await window.twig.installUpdate();
       setUpdate(next);
-    } catch { setUpdateError('The update could not run. Restart 🌱 Twig and try again.'); }
+    } catch { setUpdateError(t('The update could not run. Restart 🌱 Twig and try again.')); }
   }
   async function chooseAutoUpdate(value) {
     setUpdateError('');
     try { setUpdate(await window.twig.setAutoUpdateCheck(value)); }
-    catch { setUpdateError('Could not save the update setting.'); }
+    catch { setUpdateError(t('Could not save the update setting.')); }
   }
 
   async function resetDemo() {
@@ -355,9 +364,9 @@ export default function App() {
         setRemoteRevisions(current => ({ ...current, [demo.id]: (current[demo.id] || 0) + 1 }));
       }
       setDialog(null);
-      setSyncNote('Demo workspace reset to its sample history.');
+      setSyncNote(t('Demo workspace reset to its sample history.'));
     } catch (error) {
-      setSyncNote({ text: error.message || 'Could not reset the demo workspace.', failed: true });
+      setSyncNote({ text: failureText(error, t('Could not reset the demo workspace.')), failed: true });
     } finally { setResetting(false); }
   }
 
@@ -379,16 +388,16 @@ export default function App() {
       } else if (!visible) {
         const open = next.repositories.filter(item => !closedTabs.has(item.id));
         if (open[0]) setActive(`repository:${open[0].id}`); else openEmpty();
-        setSyncNote('Demo workspace closed. Settings brings it back.');
+        setSyncNote(t('Demo workspace closed. Settings brings it back.'));
       }
     } catch (error) {
-      setSyncNote({ text: error.message || 'Could not change the demo workspace.', failed: true });
+      setSyncNote({ text: failureText(error, t('Could not change the demo workspace.')), failed: true });
     }
   }
 
 
   const syncReason = !repositoryActive || !repository?.available ? unavailable
-    : syncing ? `${syncing} is running` : undefined;
+    : syncing ? t`${syncing} is running` : undefined;
 
   /** A commit or a staging change moves the divergence badges, so the toolbar has to hear about it. */
   const repositoryId = repository?.id;
@@ -445,7 +454,7 @@ export default function App() {
         setProposalRun({ running: false, step: null, failure: answer.outcome });
       }
     } catch (error) {
-      setProposalRun({ running: false, step: null, failure: error.message || 'The proposal could not be answered.' });
+      setProposalRun({ running: false, step: null, failure: failureText(error, t('The proposal could not be answered.')) });
     }
     if (decision.action !== 'cancel') void refreshRepository();
   }
@@ -455,7 +464,7 @@ export default function App() {
     const refresh = () => {
       const current = ++generation;
       window.twig.getUndoState(repositoryId).then(state => { if (alive && current === generation) setUndoState(state); })
-        .catch(() => { if (alive && current === generation) setUndoState({ undo: false, redo: false, undoReason: 'Could not verify the repository.', redoReason: 'Could not verify the repository.' }); });
+        .catch(() => { if (alive && current === generation) setUndoState({ undo: false, redo: false, undoReason: mark('Could not verify the repository.'), redoReason: mark('Could not verify the repository.') }); });
     };
     refresh();
     const unsubscribe = window.twig.onUndoUpdate(update => { if (update.cwd === repositoryId) refresh(); });
@@ -480,11 +489,12 @@ export default function App() {
       // The graph starts reading right away, alongside the status below.
       setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
       await refreshRepository();
-      setSyncNote(`${direction === 'undo' ? 'Undo' : 'Redo'} ${result.cancelled ? 'cancelled' : 'completed'}.`);
+      setSyncNote(direction === 'undo' ? (result.cancelled ? t('Undo cancelled.') : t('Undo completed.'))
+        : (result.cancelled ? t('Redo cancelled.') : t('Redo completed.')));
     }
     catch (failure) {
       setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));
-      setSyncNote({ text: failure.message || 'The action could not be reversed.', failed: true });
+      setSyncNote({ text: failureText(failure, t('The action could not be reversed.')), failed: true });
     }
     finally { setUndoMoving(false); }
   }, [repositoryActive, repositoryId, refreshRepository, undoMoving]);
@@ -505,7 +515,7 @@ export default function App() {
       const next = await window.twig.openRepository();
       setWorkspace(next);
       if (next.activeId) setActive(`repository:${next.activeId}`);
-    } catch (error) { setStartupError(error.message || 'Could not open this repository.'); }
+    } catch (error) { setStartupError(failureText(error, t('Could not open this repository.'))); }
   }
   async function selectRepository(id) {
     const request = ++selectionRequest.current;
@@ -521,7 +531,7 @@ export default function App() {
         setWorkspace(next); setActive(`repository:${id}`);
         setClosedTabs(current => { if (!current.has(id)) return current; const copy = new Set(current); copy.delete(id); return copy; });
       }
-    } catch (error) { setStartupError(error.message || 'Could not select this repository.'); }
+    } catch (error) { setStartupError(failureText(error, t('Could not select this repository.'))); }
   }
   function closeRepositoryTab(id) {
     setClosedTabs(current => new Set(current).add(id));
@@ -599,7 +609,7 @@ export default function App() {
   }, [dialog, active, repositoryActive, sandboxId, workspace, focusSearch]);
 
   // Restarting ends whatever Git runs: wait for the running action first.
-  const updateBusy = syncing ? `Wait for ${syncing} to finish` : undoMoving ? 'Wait for Undo to finish' : dialogBusy || resetting ? 'Wait for the action to finish' : undefined;
+  const updateBusy = syncing ? t`Wait for ${syncing} to finish` : undoMoving ? t('Wait for Undo to finish') : dialogBusy || resetting ? t('Wait for the action to finish') : undefined;
   const updateAction = toolbarUpdate(update);
   const UpdateIcon = updateAction?.icon === 'restart' ? RotateCw : updateAction?.icon === 'progress' ? LoaderCircle : Download;
   const updateButton = updateAction && <Button className={`update-button ${updateAction.action === 'settings' || !updateAction.action ? '' : 'primary'} ${updateAction.icon === 'progress' ? 'working' : ''}`}
@@ -610,55 +620,55 @@ export default function App() {
 
   return <NoteRegion.Provider value={noteRegion}><div className="app-shell">
     <header className="tab-bar"><div className="brand"><img className="brand-logo" src="./twig-logo.png" alt="" width="36" height="36" /><strong>🌱 Twig</strong></div>
-      <nav className="tabs" aria-label="Repository tabs" ref={tabsRef} onWheel={scrollTabs}>
-        {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{item.sandbox ? <small>DEMO</small> : !item.available && <small>OFFLINE</small>}</button><Button icon={X} aria-label={`Close ${item.name} tab`} title={item.sandbox ? 'Close the demo workspace' : `Close ${item.name}`} onClick={() => askCloseTab(item)} /></div>)}
-        {emptyOpen && <div className={`tab ${active === 'new' ? 'active' : ''}`}><button aria-current={active === 'new' ? 'page' : undefined} onClick={() => setActive('new')}><FolderOpen />New repository</button><Button icon={X} aria-label="Close new tab" onClick={() => { setEmptyOpen(false); if (sandboxId) setActive(`repository:${sandboxId}`); }} /></div>}
-        <Button icon={Plus} aria-label="New repository tab" title="New repository tab" onClick={openEmpty} />
+      <nav className="tabs" aria-label={t('Repository tabs')} ref={tabsRef} onWheel={scrollTabs}>
+        {workspace?.repositories.filter(item => !closedTabs.has(item.id)).map(item => <div key={item.id} className={`tab ${active === `repository:${item.id}` ? 'active' : ''}`}><button aria-current={active === `repository:${item.id}` ? 'page' : undefined} onClick={() => selectRepository(item.id)}><GitBranch /><span>{item.name}</span>{item.sandbox ? <small>{t('DEMO')}</small> : !item.available && <small>{t('OFFLINE')}</small>}</button><Button icon={X} aria-label={t`Close ${item.name} tab`} title={item.sandbox ? t('Close the demo workspace') : t`Close ${item.name}`} onClick={() => askCloseTab(item)} /></div>)}
+        {emptyOpen && <div className={`tab ${active === 'new' ? 'active' : ''}`}><button aria-current={active === 'new' ? 'page' : undefined} onClick={() => setActive('new')}><FolderOpen />{t('New repository')}</button><Button icon={X} aria-label={t('Close new tab')} onClick={() => { setEmptyOpen(false); if (sandboxId) setActive(`repository:${sandboxId}`); }} /></div>}
+        <Button icon={Plus} aria-label={t('New repository tab')} title={t('New repository tab')} onClick={openEmpty} />
       </nav>
-      <div className="account-actions">{updateButton}<Button icon={Settings} aria-label="Settings" title="Settings" onClick={() => setDialog('Settings')} /><Button icon={UserRound} aria-label="Git profile" title="Git profile" onClick={() => setDialog('Git profile')} /></div>
+      <div className="account-actions">{updateButton}<Button icon={Settings} aria-label={t('Settings')} title={t('Settings')} onClick={() => setDialog('Settings')} /><Button icon={UserRound} aria-label={t('Git profile')} title={t('Git profile')} onClick={() => setDialog('Git profile')} /></div>
     </header>
-    <section className="toolbar" aria-label="Git actions">
-      <div className="repo-select"><div className="repo-select-head"><label htmlFor="repository-select">REPOSITORY</label>
+    <section className="toolbar" aria-label={t('Git actions')}>
+      <div className="repo-select"><div className="repo-select-head"><label htmlFor="repository-select">{t('REPOSITORY')}</label>
         {/* Refresh re-reads the open repository: its HistoryWorkspace renders it here through a portal. */}
         <span className="repo-refresh-slot" ref={setRefreshSlot}>
           {!workspace?.repositories.some(item => item.available && active === `repository:${item.id}`) &&
-            <Button className="repo-refresh" icon={RefreshCw} aria-label="Refresh" reason={unavailable} />}
-        </span></div><select id="repository-select" value={active} onChange={(e) => { const { value } = e.target; if (value === 'new') openEmpty(); else void selectRepository(value.slice(11)); }}>{workspace?.repositories.map(item => <option key={item.id} value={`repository:${item.id}`}>{item.name}</option>)}<option value="new">Open repository…</option></select></div>
-      <div className="branch-select"><span>CURRENT BRANCH</span><Button icon={GitBranch} reason={repositoryActive && repository?.available ? (repository?.status?.branch?.oid ? undefined : 'There is no commit yet') : unavailable}
-        title="Show it in the history" onClick={() => setHeadRequest(current => ({ id: active.slice(11), seq: current.seq + 1 }))}>{repositoryActive ? repository?.status?.branch?.name || (repository?.status?.branch?.detached ? 'Detached HEAD' : 'Unavailable') : 'main'}</Button></div>
-      <div className="tool-group"><Button className="tool" icon={Undo2} title={undoState.undoReason} reason={undoMoving ? 'Reversing the action…' : !repositoryActive ? unavailable : !undoState.undo ? undoState.undoReason : undefined} onClick={() => moveUndo('undo')}>Undo</Button><Button className="tool" icon={Redo2} title={undoState.redoReason} reason={undoMoving ? 'Reversing the action…' : !repositoryActive ? unavailable : !undoState.redo ? undoState.redoReason : undefined} onClick={() => moveUndo('redo')}>Redo</Button></div>
+            <Button className="repo-refresh" icon={RefreshCw} aria-label={t('Refresh')} reason={unavailable} />}
+        </span></div><select id="repository-select" value={active} onChange={(e) => { const { value } = e.target; if (value === 'new') openEmpty(); else void selectRepository(value.slice(11)); }}>{workspace?.repositories.map(item => <option key={item.id} value={`repository:${item.id}`}>{item.name}</option>)}<option value="new">{t('Open repository…')}</option></select></div>
+      <div className="branch-select"><span>{t('CURRENT BRANCH')}</span><Button icon={GitBranch} reason={repositoryActive && repository?.available ? (repository?.status?.branch?.oid ? undefined : t('There is no commit yet')) : unavailable}
+        title={t('Show it in the history')} onClick={() => setHeadRequest(current => ({ id: active.slice(11), seq: current.seq + 1 }))}>{repositoryActive ? repository?.status?.branch?.name || (repository?.status?.branch?.detached ? t('Detached HEAD') : t('Unavailable')) : 'main'}</Button></div>
+      <div className="tool-group"><Button className="tool" icon={Undo2} title={tr(undoState.undoReason)} reason={undoMoving ? t('Reversing the action…') : !repositoryActive ? unavailable : !undoState.undo ? tr(undoState.undoReason) : undefined} onClick={() => moveUndo('undo')}>{t('Undo')}</Button><Button className="tool" icon={Redo2} title={tr(undoState.redoReason)} reason={undoMoving ? t('Reversing the action…') : !repositoryActive ? unavailable : !undoState.redo ? tr(undoState.redoReason) : undefined} onClick={() => moveUndo('redo')}>{t('Redo')}</Button></div>
       <div className="tool-group">
         <Button className="tool" icon={ArrowDown} onClick={() => runSync('pull')} title={repositoryActive ? pullTitle(fetchStatus) : undefined}
-          reason={syncReason || (divergence.upstream ? undefined : 'Pull: this branch has no upstream')}>
-          Pull{divergence.behind > 0 && <span className="badge">{divergence.behind}</span>}</Button>
+          reason={syncReason || (divergence.upstream ? undefined : t('Pull: this branch has no upstream'))}>
+          {t('Pull')}{divergence.behind > 0 && <span className="badge">{divergence.behind}</span>}</Button>
         <Button className="tool" icon={ArrowUp} onClick={() => runSync(divergence.upstream ? 'push' : 'push-upstream')}
-          reason={syncReason || (!divergence.upstream && !branchName ? 'Push: no branch to publish' : undefined)}>
-          {divergence.upstream ? 'Push' : 'Publish'}{divergence.ahead > 0 && <span className="badge">{divergence.ahead}</span>}</Button>
-        {syncing && <Button className="tool" onClick={() => window.twig.cancelSync(repository.id)}>Cancel</Button>}
+          reason={syncReason || (!divergence.upstream && !branchName ? t('Push: no branch to publish') : undefined)}>
+          {divergence.upstream ? t('Push') : t('Publish')}{divergence.ahead > 0 && <span className="badge">{divergence.ahead}</span>}</Button>
+        {syncing && <Button className="tool" onClick={() => window.twig.cancelSync(repository.id)}>{t('Cancel')}</Button>}
       </div>
-      <div className="tool-group"><Button className="tool" icon={GitBranch} reason={unavailable}>Branch</Button>
-        <Button className="tool" icon={StashPush} onClick={() => runStash('stash')} reason={syncReason}>Stash</Button>
+      <div className="tool-group"><Button className="tool" icon={GitBranch} reason={unavailable}>{t('Branch')}</Button>
+        <Button className="tool" icon={StashPush} onClick={() => runStash('stash')} reason={syncReason}>{t('Stash')}</Button>
         <Button className="tool" icon={StashPop} onClick={() => runStash('pop')}
-          reason={syncReason || (stashCount === 0 ? 'Pop: there are no stashes to restore' : undefined)}>Pop</Button></div>
+          reason={syncReason || (stashCount === 0 ? t('Pop: there are no stashes to restore') : undefined)}>{t('Pop')}</Button></div>
       {/* Patch belongs to the open repository: its HistoryWorkspace renders it
           here through a portal, like BugHunter. */}
       <div className="tool-group" ref={setRepoToolsSlot}>
         {!workspace?.repositories.some(item => item.available && active === `repository:${item.id}`) && <>
-          <Button className="tool" icon={FileInput} reason={unavailable}>Patch</Button></>}
+          <Button className="tool" icon={FileInput} reason={unavailable}>{t('Patch')}</Button></>}
       </div>
       {/* The console lives at the bottom of the window and opens from its own
           status bar (or its shortcut); a second switch in the toolbar only took room. */}
       <div className="tool-group">
         <span className="bughunter-tool-slot" ref={setBugHunterSlot}>
           {!workspace?.repositories.some(item => item.available && active === `repository:${item.id}`) &&
-            <Button className="tool bughunter-tool" icon={Bug} reason={unavailable}>BugHunter</Button>}
+            <Button className="tool bughunter-tool" icon={Bug} reason={unavailable}>{t('BugHunter')}</Button>}
         </span>
         <Button className={`tool mcp-tool ${mcpSettings?.enabled ? 'mcp-on' : ''}`} icon={Bot} title={mcpToolTitle(mcpSettings)} aria-label={mcpToolTitle(mcpSettings)}
           onClick={() => setDialog('AI agents (MCP)')}>MCP{mcpSettings?.enabled && <span className="tool-dot" aria-hidden="true" />}</Button>
       </div>
     </section>
     {startupError && <div className="startup-error" role="status">{startupError}</div>}
-    {!ready && <div className="loading-shell" aria-label="Loading workspace" aria-busy="true">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>}
+    {!ready && <div className="loading-shell" aria-label={t('Loading workspace')} aria-busy="true">{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>}
     {ready && <div className="workspace-container">
       {workspace?.repositories.map(item => <div className="workspace-tab" key={item.id} hidden={active !== `repository:${item.id}`}>
         {/* A real repository tab mounts the first time it is shown and then
@@ -666,81 +676,87 @@ export default function App() {
             mounted at all. The always-present demo tab mounts only while active,
             so its graph never collides with another tab's. */}
         {(item.sandbox ? active === `repository:${item.id}` : !closedTabs.has(item.id) && (visited.has(item.id) || active === `repository:${item.id}`)) && (item.available
-          ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} platform={info?.platform} editor={editor?.label} toolbarSlot={bugHunterSlot} toolsSlot={repoToolsSlot} refreshSlot={refreshSlot} revealHead={headRequest.id === item.id ? headRequest.seq : 0} toolbarBusyReason={syncing ? `${syncing} is running` : undoMoving ? 'Reversing the action…' : undefined}
+          ? <HistoryWorkspace repository={item} active={active === `repository:${item.id}`} referencesRevision={remoteRevisions[item.id] || 0} commitColors={commitColors} platform={info?.platform} editor={editor?.label} toolbarSlot={bugHunterSlot} toolsSlot={repoToolsSlot} refreshSlot={refreshSlot} revealHead={headRequest.id === item.id ? headRequest.seq : 0} toolbarBusyReason={syncing ? t`${syncing} is running` : undoMoving ? t('Reversing the action…') : undefined}
             filterRef={filterRefFor(item.id)}
             onConsole={showConsole} onRepositoryChanged={refreshRepository} onOpenWorkspace={openWorkspaceTab} onWorkspace={updateWorkspace} />
           : <RepositoryReady repository={item} onOpen={openRepository} />)}
       </div>)}
-      {active === 'new' && <main className="welcome"><div className="welcome-mark"><img src="./twig-logo.png" alt="" width="96" height="96" /></div><span className="eyebrow">YOUR NEXT WORKSPACE</span><h1>A clear view of your code.</h1><p>Open a folder, clone a repository, or choose one you have connected.</p><div className="welcome-actions"><Button icon={FolderOpen} className="primary" onClick={openRepository}>Open repository</Button><Button icon={ArrowDown} onClick={() => setDialog('Clone repository')}>Clone repository</Button><Button icon={GitBranch} onClick={() => setDialog('Repositories')}>Connected repositories</Button></div><div className="welcome-demo"><span className="demo-pill">DEMO</span><p>The <strong>workspace-demo</strong> tab is a real sandbox repository — every command runs against it.</p>{sandboxId
-        ? <Button icon={GitBranch} className="primary" onClick={() => setActive(`repository:${sandboxId}`)}>Open workspace-demo</Button>
-        : <Button icon={GitBranch} className="primary" onClick={() => setDemoVisible(true)}>Show workspace-demo</Button>}</div></main>}
+      {active === 'new' && <main className="welcome"><div className="welcome-mark"><img src="./twig-logo.png" alt="" width="96" height="96" /></div><span className="eyebrow">{t('YOUR NEXT WORKSPACE')}</span><h1>{t('A clear view of your code.')}</h1><p>{t('Open a folder, clone a repository, or choose one you have connected.')}</p><div className="welcome-actions"><Button icon={FolderOpen} className="primary" onClick={openRepository}>{t('Open repository')}</Button><Button icon={ArrowDown} onClick={() => setDialog('Clone repository')}>{t('Clone repository')}</Button><Button icon={GitBranch} onClick={() => setDialog('Repositories')}>{t('Connected repositories')}</Button></div><div className="welcome-demo"><span className="demo-pill">{t('DEMO')}</span><p>{tx('The {name} tab is a real sandbox repository — every command runs against it.', { name: <strong>workspace-demo</strong> })}</p>{sandboxId
+        ? <Button icon={GitBranch} className="primary" onClick={() => setActive(`repository:${sandboxId}`)}>{t('Open workspace-demo')}</Button>
+        : <Button icon={GitBranch} className="primary" onClick={() => setDemoVisible(true)}>{t('Show workspace-demo')}</Button>}</div></main>}
     </div>}
     <OperationNote note={syncNote} onConsole={showConsole} onDismiss={() => setSyncNote('')} />
     {/* Zero height: the notes stack upwards from the top of the console, over the workspace. */}
     <div className="note-dock"><div className="note-stack" ref={setNoteRegion} /></div>
     <Console expanded={consoleOpen} onToggle={() => setConsoleOpen(!consoleOpen)} entries={entries} focus={consoleFocus}
       repositoryId={workspace?.repositories.find(item => item.available && active === `repository:${item.id}`)?.id || null} />
-    {dialog && <Dialog title={dialog} wide={['Git profile', 'Repositories', 'Clone repository', 'Remotes', 'SSH', 'AI agents (MCP)', 'Keyboard shortcuts'].includes(dialog)} closeReason={dialogBusy || resetting ? 'Wait for the action to finish or cancel it first' : undefined} onClose={() => setDialog(null)}>
-      {dialog === 'Settings' && <><p className="muted">Make this workspace feel like yours.</p>
-        <label className="setting-row" htmlFor="theme"><span><strong>Appearance</strong><small>System follows your device setting.</small></span><select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></label>
-        <label className="setting-row" htmlFor="commit-colors"><span><strong>Commit colors</strong><small>Age shades the graph and the dates from brown roots to green new work.</small></span><select id="commit-colors" value={commitColors} onChange={(e) => setCommitColors(e.target.value)}><option value="age">Commit age</option><option value="lanes">Branch lanes</option></select></label>
-        {commitColors === 'age' && <ul className="age-legend" aria-label="Commit age colors">{AGE_STOPS.map((stop, index) => <li key={stop.key} className={ageTextClass(index)}>{stop.label}</li>)}</ul>}
-        <label className="setting-row" htmlFor="syntax"><span><strong>Syntax highlighting</strong><small>Colours code by file type in diffs, staging and blame. Lines / Words is switched above each diff.</small></span>
-          <select id="syntax" value={diffPrefs.syntax ? 'on' : 'off'} onChange={(e) => setDiffPrefs({ syntax: e.target.value === 'on' })}><option value="on">On</option><option value="off">Off</option></select></label>
-        {editor && <div className="setting-row"><label htmlFor="editor"><strong>Open files with</strong><small className="editor-path">{
+    {dialog && <Dialog title={DIALOG_TITLES.includes(dialog) ? t(dialog) : dialog} wide={['Git profile', 'Repositories', 'Clone repository', 'Remotes', 'SSH', 'AI agents (MCP)', 'Keyboard shortcuts'].includes(dialog)} closeReason={dialogBusy || resetting ? t('Wait for the action to finish or cancel it first') : undefined} onClose={() => setDialog(null)}>
+      {dialog === 'Settings' && <><p className="muted">{t('Make this workspace feel like yours.')}</p>
+        <label className="setting-row" htmlFor="language"><span><strong>{t('Language')}</strong><small>{t('Git’s own words — branch, commit, merge, stash — commands and paths stay as they are.')}</small></span>
+          <select id="language" value={language} onChange={(e) => { const choice = e.target.value; setLanguage(choice); setLanguageError(''); changeLanguage(choice).catch(() => setLanguageError(t('Could not change the language.'))); }}>
+            <option value="system">{t`System (${LANGUAGES.find(item => item.code === systemLanguage())?.name || 'English'})`}</option>
+            {LANGUAGES.map(item => <option key={item.code} value={item.code} lang={item.code}>{item.name}</option>)}
+          </select></label>
+        {languageError && <p className="update-note" role="alert">{languageError}</p>}
+        <label className="setting-row" htmlFor="theme"><span><strong>{t('Appearance')}</strong><small>{t('System follows your device setting.')}</small></span><select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)}><option value="system">{t('System')}</option><option value="dark">{t('Dark')}</option><option value="light">{t('Light')}</option></select></label>
+        <label className="setting-row" htmlFor="commit-colors"><span><strong>{t('Commit colors')}</strong><small>{t('Age shades the graph and the dates from brown roots to green new work.')}</small></span><select id="commit-colors" value={commitColors} onChange={(e) => setCommitColors(e.target.value)}><option value="age">{t('Commit age')}</option><option value="lanes">{t('Branch lanes')}</option></select></label>
+        {commitColors === 'age' && <ul className="age-legend" aria-label={t('Commit age colors')}>{AGE_STOPS.map((stop, index) => <li key={stop.key} className={ageTextClass(index)}>{t(stop.label)}</li>)}</ul>}
+        <label className="setting-row" htmlFor="syntax"><span><strong>{t('Syntax highlighting')}</strong><small>{t('Colours code by file type in diffs, staging and blame. Lines / Words is switched above each diff.')}</small></span>
+          <select id="syntax" value={diffPrefs.syntax ? 'on' : 'off'} onChange={(e) => setDiffPrefs({ syntax: e.target.value === 'on' })}><option value="on">{t('On')}</option><option value="off">{t('Off')}</option></select></label>
+        {editor && <div className="setting-row"><label htmlFor="editor"><strong>{t('Open files with')}</strong><small className="editor-path">{
           editor.preset === 'custom' ? editor.customPath
-            : editor.preset === 'system' ? (info?.platform === 'darwin' ? 'Your default text editor. Used by “Open in editor” in file menus.'
-              : 'The app your system opens that file type with. Program files are refused.')
-              : 'Used by “Open in editor” in file menus.'}</small></label>
+            : editor.preset === 'system' ? (info?.platform === 'darwin' ? t('Your default text editor. Used by “Open in editor” in file menus.')
+              : t('The app your system opens that file type with. Program files are refused.'))
+              : t('Used by “Open in editor” in file menus.')}</small></label>
           <span className="setting-controls"><select id="editor" value={editor.preset} onChange={(e) => void chooseEditor(e.target.value)}>
-            {editor.presets.map(preset => <option key={preset.id} value={preset.id}>{preset.id === 'custom' && editor.preset === 'custom' ? editor.label : preset.label}</option>)}
-          </select>{editor.preset === 'custom' && <Button onClick={() => void chooseEditor('custom')}>Choose…</Button>}</span></div>}
+            {editor.presets.map(preset => <option key={preset.id} value={preset.id}>{preset.id === 'custom' && editor.preset === 'custom' ? editor.label : tr(preset.label)}</option>)}
+          </select>{editor.preset === 'custom' && <Button onClick={() => void chooseEditor('custom')}>{t('Choose…')}</Button>}</span></div>}
         {editorError && <p className="update-note" role="alert">{editorError}</p>}
-        {fetchSettings && <label className="setting-row" htmlFor="background-fetch"><span><strong>Background fetch</strong>
+        {fetchSettings && <label className="setting-row" htmlFor="background-fetch"><span><strong>{t('Background fetch')}</strong>
           <small>{fetchExplanation(fetchSettings.interval)}</small>
           {fetchSettings.interval > 0 && repositoryActive && fetchStatus && <small className="fetch-status" role="status">{repository?.name}: {fetchStatusLine(fetchStatus)}</small>}</span>
           <select id="background-fetch" value={fetchSettings.interval} onChange={(e) => void chooseFetchInterval(Number(e.target.value))}>
             {fetchSettings.intervals.map(minutes => <option key={minutes} value={minutes}>{intervalLabel(minutes)}</option>)}
           </select></label>}
         {fetchError && <p className="update-note" role="alert">{fetchError}</p>}
-        <div className="setting-row"><span><strong>Updates</strong><small>🌱 Twig {info?.version || '…'}. A new version downloads from GitHub, is checked against the release checksum and replaces this one when you restart.</small></span>
-          <Button icon={RefreshCw} reason={update?.status === 'checking' ? 'Checking…' : updateRunning || update?.status === 'installing' ? 'An update is already in progress' : undefined} onClick={() => void runUpdate('check')}>Check for updates</Button></div>
-        {update && <label className="setting-row" htmlFor="update-auto"><span><strong>Check automatically</strong><small>{autoCheckExplanation(update.auto)}</small></span>
-          <select id="update-auto" value={update.auto ? 'on' : 'off'} onChange={(e) => void chooseAutoUpdate(e.target.value === 'on')}><option value="off">Only when I ask</option><option value="on">At launch and daily</option></select></label>}
+        <div className="setting-row"><span><strong>{t('Updates')}</strong><small>{t`🌱 Twig ${info?.version || '…'}. A new version downloads from GitHub, is checked against the release checksum and replaces this one when you restart.`}</small></span>
+          <Button icon={RefreshCw} reason={update?.status === 'checking' ? t('Checking…') : updateRunning || update?.status === 'installing' ? t('An update is already in progress') : undefined} onClick={() => void runUpdate('check')}>{t('Check for updates')}</Button></div>
+        {update && <label className="setting-row" htmlFor="update-auto"><span><strong>{t('Check automatically')}</strong><small>{autoCheckExplanation(update.auto)}</small></span>
+          <select id="update-auto" value={update.auto ? 'on' : 'off'} onChange={(e) => void chooseAutoUpdate(e.target.value === 'on')}><option value="off">{t('Only when I ask')}</option><option value="on">{t('At launch and daily')}</option></select></label>}
         {update && updateStatusLine(update) && <div className="update-panel" role="status">
-          <p className="update-note">{updateStatusLine(update)}{update.url && <> <a className="text-link" href={update.url} rel="noreferrer">Release on GitHub</a></>}</p>
-          {update.status === 'downloading' && <progress className="update-progress" max="100" value={percent(update.progress)} aria-label={`Downloading ${update.latest}`} />}
+          <p className="update-note">{updateStatusLine(update)}{update.url && <> <a className="text-link" href={update.url} rel="noreferrer">{t('Release on GitHub')}</a></>}</p>
+          {update.status === 'downloading' && <progress className="update-progress" max="100" value={percent(update.progress)} aria-label={t`Downloading ${update.latest}`} />}
           <div className="update-actions">
-            {update.status === 'available' && update.installable && !update.installReason && <Button className="primary" icon={Download} onClick={() => void runUpdate('download')}>{update.error ? 'Try again' : `Download and install ${update.latest}`}</Button>}
-            {update.status === 'downloading' && <Button onClick={() => void runUpdate('cancel')}>Cancel download</Button>}
+            {update.status === 'available' && update.installable && !update.installReason && <Button className="primary" icon={Download} onClick={() => void runUpdate('download')}>{update.error ? t('Try again') : t`Download and install ${update.latest}`}</Button>}
+            {update.status === 'downloading' && <Button onClick={() => void runUpdate('cancel')}>{t('Cancel download')}</Button>}
             {update.status === 'ready' && <Button className="primary" icon={RotateCw} reason={updateBusy} onClick={() => void runUpdate('install')}>{installVerb(update)}</Button>}
           </div>
-          {update.notes && ['available', 'downloading', 'preparing', 'ready'].includes(update.status) && <details className="update-notes"><summary>What’s new in {update.latest}</summary><pre>{update.notes}</pre></details>}
+          {update.notes && ['available', 'downloading', 'preparing', 'ready'].includes(update.status) && <details className="update-notes"><summary>{t`What’s new in ${update.latest}`}</summary><pre>{update.notes}</pre></details>}
         </div>}
         {updateError && <p className="update-note" role="alert">{updateError}</p>}
-        <div className="settings-note">🌱 Twig {info?.version || '…'}<br />Local fonts. No telemetry. Updates install only when you press the button.</div></>}
-      {dialog === 'Settings' && <div className="manager-actions"><Button icon={FolderOpen} onClick={() => setDialog('Repositories')}>Manage repositories</Button><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : 'Open a repository first'} onClick={() => setDialog('Remotes')}>Manage remotes</Button></div>}
-      {dialog === 'Settings' && <Button onClick={() => setDialog('SSH')}>SSH keys and config</Button>}
-      {dialog === 'Settings' && <div className="setting-row"><span><strong>Keyboard shortcuts</strong><small>Every key 🌱 Twig answers to, and what it does. Change any of them.</small></span><Button icon={Keyboard} onClick={() => setDialog('Keyboard shortcuts')}>Keyboard shortcuts</Button></div>}
-      {dialog === 'Settings' && <div className="setting-row"><span><strong>AI agents (MCP)</strong><small>{mcpSummary(mcpSettings)}</small></span><Button icon={Bot} onClick={() => setDialog('AI agents (MCP)')}>Set up AI agents</Button></div>}
+        <div className="settings-note">🌱 Twig {info?.version || '…'}<br />{t('Local fonts. No telemetry. Updates install only when you press the button.')}</div></>}
+      {dialog === 'Settings' && <div className="manager-actions"><Button icon={FolderOpen} onClick={() => setDialog('Repositories')}>{t('Manage repositories')}</Button><Button icon={GitBranch} reason={repositoryActive && repository?.available ? undefined : t('Open a repository first')} onClick={() => setDialog('Remotes')}>{t('Manage remotes')}</Button></div>}
+      {dialog === 'Settings' && <Button onClick={() => setDialog('SSH')}>{t('SSH keys and config')}</Button>}
+      {dialog === 'Settings' && <div className="setting-row"><span><strong>{t('Keyboard shortcuts')}</strong><small>{t('Every key 🌱 Twig answers to, and what it does. Change any of them.')}</small></span><Button icon={Keyboard} onClick={() => setDialog('Keyboard shortcuts')}>{t('Keyboard shortcuts')}</Button></div>}
+      {dialog === 'Settings' && <div className="setting-row"><span><strong>{t('AI agents (MCP)')}</strong><small>{mcpSummary(mcpSettings)}</small></span><Button icon={Bot} onClick={() => setDialog('AI agents (MCP)')}>{t('Set up AI agents')}</Button></div>}
       {dialog === 'Settings' && (sandboxId
-        ? <div className="setting-row"><span><strong>Demo workspace</strong><small>Restore the <strong>workspace-demo</strong> sandbox to its sample history.</small></span><Button icon={RefreshCw} onClick={() => setDialog('Reset demo workspace')}>Reset demo workspace</Button></div>
-        : <div className="setting-row"><span><strong>Demo workspace</strong><small>The <strong>workspace-demo</strong> tab is closed. Its sandbox is still on disk — showing it again opens the same repository.</small></span><Button icon={GitBranch} onClick={() => setDemoVisible(true)}>Show demo workspace</Button></div>)}
+        ? <div className="setting-row"><span><strong>{t('Demo workspace')}</strong><small>{tx('Restore the {name} sandbox to its sample history.', { name: <strong>workspace-demo</strong> })}</small></span><Button icon={RefreshCw} onClick={() => setDialog('Reset demo workspace')}>{t('Reset demo workspace')}</Button></div>
+        : <div className="setting-row"><span><strong>{t('Demo workspace')}</strong><small>{tx('The {name} tab is closed. Its sandbox is still on disk — showing it again opens the same repository.', { name: <strong>workspace-demo</strong> })}</small></span><Button icon={GitBranch} onClick={() => setDemoVisible(true)}>{t('Show demo workspace')}</Button></div>)}
       {dialog === 'Reset demo workspace' && <div className="confirm-dialog">
-        <p className="confirm-consequence"><AlertTriangle aria-hidden="true" /><span>Deletes the <strong>workspace-demo</strong> sandbox and its local demo remote, then recreates them with the sample history.</span></p>
+        <p className="confirm-consequence"><AlertTriangle aria-hidden="true" /><span>{tx('Deletes the {name} sandbox and its local demo remote, then recreates them with the sample history.', { name: <strong>workspace-demo</strong> })}</span></p>
         <ul>
-          <li>Any commits, branches, stashes or edits you made in the demo are discarded.</li>
-          <li>The demo’s Undo history ends and its commit marks are cleared.</li>
-          <li>Your own connected repositories and automation pipelines are not touched.</li>
+          <li>{t('Any commits, branches, stashes or edits you made in the demo are discarded.')}</li>
+          <li>{t('The demo’s Undo history ends and its commit marks are cleared.')}</li>
+          <li>{t('Your own connected repositories and automation pipelines are not touched.')}</li>
         </ul>
-        <div className="dialog-actions"><Button onClick={() => setDialog('Settings')} reason={resetting ? 'Resetting…' : undefined}>Cancel</Button><Button className="danger" icon={RefreshCw} onClick={resetDemo} reason={resetting ? 'Resetting the demo workspace…' : undefined}>Reset demo workspace</Button></div>
+        <div className="dialog-actions"><Button onClick={() => setDialog('Settings')} reason={resetting ? t('Resetting…') : undefined}>{t('Cancel')}</Button><Button className="danger" icon={RefreshCw} onClick={resetDemo} reason={resetting ? t('Resetting the demo workspace…') : undefined}>{t('Reset demo workspace')}</Button></div>
       </div>}
       {dialog === 'Close tab' && closeTarget && <div className="confirm-dialog">
-        <p>Close the <strong>{closeTarget.name}</strong> tab?</p>
+        <p>{tx('Close the {name} tab?', { name: <strong>{closeTarget.name}</strong> })}</p>
         <p className="muted">{closeTarget.sandbox
-          ? 'The demo sandbox stays on disk with its history. Settings brings the tab back.'
-          : 'Nothing is deleted: the repository stays connected and its files stay on disk. Choose it under REPOSITORY to open the tab again.'}</p>
-        <div className="dialog-actions"><Button onClick={() => { setDialog(null); setCloseTarget(null); }}>Cancel</Button><Button className="primary" icon={X} data-autofocus onClick={confirmCloseTab}>Yes, close</Button></div>
+          ? t('The demo sandbox stays on disk with its history. Settings brings the tab back.')
+          : t('Nothing is deleted: the repository stays connected and its files stay on disk. Choose it under REPOSITORY to open the tab again.')}</p>
+        <div className="dialog-actions"><Button onClick={() => { setDialog(null); setCloseTarget(null); }}>{t('Cancel')}</Button><Button className="primary" icon={X} data-autofocus onClick={confirmCloseTab}>{t('Yes, close')}</Button></div>
       </div>}
       {dialog === 'Keyboard shortcuts' && <ShortcutsSettings platform={info?.platform} />}
       {dialog === 'AI agents (MCP)' && <McpSettings onBusyChange={setDialogBusy} onChange={setMcpSettings} />}
@@ -755,7 +771,7 @@ export default function App() {
     </Dialog>}
     {proposal && <CommitProposalDialog key={proposal.id} view={proposal} running={proposalRun.running} step={proposalRun.step} failure={proposalRun.failure} invalid={proposalRun.invalid}
       onDecide={decision => void decideProposal(decision)} onClose={closeProposal} />}
-    {pushGate && <ExecutionPanel event="pre-push" label="Before Push" phase="pre" steps={pushGate.steps} result={pushGate.result}
+    {pushGate && <ExecutionPanel event="pre-push" label={t('Before Push')} phase="pre" steps={pushGate.steps} result={pushGate.result}
       blocked={pushGate.blocked} onClose={() => closePushGate(false)} onRetry={() => closePushGate(false)}
       onRunAgain={() => runPushGate()} onBypass={() => closePushGate(false, true)} />}
   </div></NoteRegion.Provider>;
@@ -764,9 +780,9 @@ export default function App() {
 function RepositoryReady({ repository, onOpen }) {
   if (!repository) return null;
   const status = repository.status;
-  return <main className="repository-ready"><GitBranch /><span className="eyebrow">CONNECTED REPOSITORY</span><h1>{repository.name}</h1><p className="repository-path">{repository.path}</p>
-    {!repository.available && <><strong>Repository is unavailable.</strong><p>It may have moved or been removed. Choose its current location to reconnect it.</p><Button icon={FolderOpen} className="primary" onClick={onOpen}>Open repository</Button></>}
-    {repository.available && status?.error && <><strong>{status.error}</strong><p>Open the console to see the exact Git command and output.</p></>}
-    {repository.available && status?.branch && <><strong>{status.branch.detached ? 'Detached HEAD' : status.branch.name || 'Unborn branch'}</strong><p>{status.entries.length} changed file{status.entries.length === 1 ? '' : 's'}</p></>}
+  return <main className="repository-ready"><GitBranch /><span className="eyebrow">{t('CONNECTED REPOSITORY')}</span><h1>{repository.name}</h1><p className="repository-path">{repository.path}</p>
+    {!repository.available && <><strong>{t('Repository is unavailable.')}</strong><p>{t('It may have moved or been removed. Choose its current location to reconnect it.')}</p><Button icon={FolderOpen} className="primary" onClick={onOpen}>{t('Open repository')}</Button></>}
+    {repository.available && status?.error && <><strong>{tr(status.error)}</strong><p>{t('Open the console to see the exact Git command and output.')}</p></>}
+    {repository.available && status?.branch && <><strong>{status.branch.detached ? t('Detached HEAD') : status.branch.name || t('Unborn branch')}</strong><p>{tn(status.entries.length, '{n} changed file', '{n} changed files')}</p></>}
   </main>;
 }

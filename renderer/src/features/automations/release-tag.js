@@ -1,9 +1,10 @@
 // The version and tag of a release: which version a commit gets for a bump
 // choice, and the tag name that follows the repository's previous tag. Only a
-// sibling import — Vite (the commit-proposal dialog), main and the Node check
+// sibling and the i18n import — Vite (the commit-proposal dialog), main and the Node check
 // all load it. Main checks the final name with validateRefName; this is the
 // dialog's quick answer, not the authority.
 import { nextVersion } from './version-bump.js';
+import { t } from '../../i18n/i18n.js';
 
 const TAG_VERSION = /^(.*?)(\d+\.\d+\.\d+)(.*)$/;
 
@@ -57,13 +58,13 @@ const FORBIDDEN = /[\0-\x20\x7f~^:?*[\\]/;
 
 /** Why `name` cannot be a tag, or null. `existing` is a tag the dialog already knows of. */
 export function tagNameProblem(name, existing = null) {
-  if (typeof name !== 'string' || !name.trim()) return 'Write a tag name';
+  if (typeof name !== 'string' || !name.trim()) return t('Write a tag name');
   if (name.length > 255 || FORBIDDEN.test(name) || name.includes('..') || name.includes('@{') || name === '@'
     || name.startsWith('/') || name.endsWith('/') || name.includes('//') || name.endsWith('.') || name.startsWith('-')
     || name.split('/').some(part => !part || part.startsWith('.') || part.endsWith('.lock'))) {
-    return 'Not a valid tag name: no spaces, ~ ^ : ? * [ \\ or ..';
+    return t('Not a valid tag name: no spaces, ~ ^ : ? * [ \\ or ..');
   }
-  if (existing && name === existing) return `${name} already exists`;
+  if (existing && name === existing) return t`${name} already exists`;
   return null;
 }
 

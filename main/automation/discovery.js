@@ -4,6 +4,7 @@ import path from 'node:path';
 import { runGit } from '../git/exec.js';
 import { HOOK_EVENTS } from '../../renderer/src/features/automations/event-labels.js';
 import { normalizeConfig } from '../../renderer/src/features/automations/schema.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 const DISPATCH_MARK = 'TWIG AUTOMATION DISPATCHER';
 
@@ -51,11 +52,11 @@ export async function readRepoConfig(cwd) {
       const config = normalizeConfig(JSON.parse(text), 'repo');
       return { present: true, text, digest: await configDigest(cwd, text, config), config, error: null };
     } catch {
-      return { present: true, text, digest: digestBytes(text), config: null, error: 'This repository’s .twig/hooks.json is not valid JSON.' };
+      return { present: true, text, digest: digestBytes(text), config: null, error: ui`This repository’s .twig/hooks.json is not valid JSON.` };
     }
   } catch (error) {
     if (error.code === 'ENOENT') return { present: false, text: null, digest: null, config: null, error: null };
-    return { present: false, text: null, digest: null, config: null, error: 'Could not read .twig/hooks.json.' };
+    return { present: false, text: null, digest: null, config: null, error: ui`Could not read .twig/hooks.json.` };
   }
 }
 

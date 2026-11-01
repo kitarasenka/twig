@@ -1,5 +1,6 @@
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Whether a commit is signed, and whether the signature checks out.
@@ -48,7 +49,7 @@ export function parseVerification(output) {
 export async function loadSignature({ cwd, log, oid }) {
   validateOid(oid);
   const raw = await runGit({ cwd, log, argv: ['cat-file', 'commit', oid], operation: 'Read commit signature' });
-  if (raw.code !== 0) throw new Error('Git could not read this commit.');
+  if (raw.code !== 0) throw new Error(ui`Git could not read this commit.`);
   const format = signatureFormat(raw.stdout);
   if (!format) return { signed: false, format: null, status: 'N', signer: null, key: null, fingerprint: null, trust: null };
   // Verifying runs the signature program (gpg, ssh-keygen or gpgsm) through Git.

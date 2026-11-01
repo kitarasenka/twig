@@ -1,3 +1,4 @@
+import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
 /**
  * Repository maintenance: the exact commands behind the two buttons, and the
  * reading of `git count-objects -v` they are judged by. One module for both
@@ -72,9 +73,9 @@ export function parseCountObjects(text) {
 /** Whether Git itself would consider a clean-up due, and why — in words. */
 export function maintenanceAdvice(stats) {
   if (!stats) return null;
-  if (stats.loose >= AUTO_LOOSE) return `${stats.loose.toLocaleString('en')} loose objects: Git tidies up by itself past ${AUTO_LOOSE.toLocaleString('en')}. Optimize packs them now.`;
-  if (stats.packs >= AUTO_PACKS) return `${stats.packs} packs: Git merges them by itself past ${AUTO_PACKS}. Optimize or Clean up merges them now.`;
-  if (stats.garbage > 0) return `${stats.garbage} garbage ${stats.garbage === 1 ? 'file' : 'files'} in the object store. Clean up (git gc) removes ${stats.garbage === 1 ? 'it' : 'them'}.`;
+  if (stats.loose >= AUTO_LOOSE) return ui`${stats.loose.toLocaleString('en')} loose objects: Git tidies up by itself past ${AUTO_LOOSE.toLocaleString('en')}. Optimize packs them now.`;
+  if (stats.packs >= AUTO_PACKS) return ui`${stats.packs} packs: Git merges them by itself past ${AUTO_PACKS}. Optimize or Clean up merges them now.`;
+  if (stats.garbage > 0) return uiN(stats.garbage, '{n} garbage file in the object store. Clean up (git gc) removes it.', '{n} garbage files in the object store. Clean up (git gc) removes them.');
   return null;
 }
 

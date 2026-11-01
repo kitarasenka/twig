@@ -9,6 +9,7 @@ import { clearPlan, planFiles, startRebase } from './git/rebase.js';
 import { loadConflict, markResolved, saveResolution, takeSide } from './git/conflicts.js';
 import { moveBranch } from './git/reflog.js';
 import { applyPatch } from './git/patches.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 /**
  * History-mutating channels: the commit context menu, the interrupted-operation
@@ -29,7 +30,7 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
         || !isTrustedPage(event.senderFrame.url, entryUrl) || args.length !== count
         || typeof args[0] !== 'string') throw new Error('Invalid operation request');
       const repo = repositories.snapshot().repositories.find(item => item.id === args[0]);
-      if (!repo || !repo.available) throw new Error('Repository is unavailable');
+      if (!repo || !repo.available) throw new Error(ui`Repository is unavailable`);
       if (!gitDirs.has(repo.path)) gitDirs.set(repo.path, await resolveGitDir({ cwd: repo.path, log: journal }));
       const run = () => read({ cwd: repo.path, log: journal, gitDir: gitDirs.get(repo.path) }, ...args.slice(1));
       return ['ops:state', 'bisect:state', 'conflict:read'].includes(channel)
@@ -108,9 +109,9 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
     handler(channel, 2, (options, oids) => withState(options, async () => {
       if (!Array.isArray(oids)) throw new TypeError('Invalid commit list');
       const state = await loadOperationState(options);
-      if (state.kind !== 'none') return { ok: false, message: `Finish or abort the ${state.kind} first.` };
+      if (state.kind !== 'none') return { ok: false, message: ui`Finish or abort the ${state.kind} first.` };
       const merges = await findMergeCommits({ ...options, oids });
-      if (merges.length) return { ok: false, message: `${merges[0].slice(0, 7)} is a merge commit. Cherry-pick or revert merge commits one at a time.` };
+      if (merges.length) return { ok: false, message: ui`${merges[0].slice(0, 7)} is a merge commit. Cherry-pick or revert merge commits one at a time.` };
       return apply({ ...options, oids });
     }));
   }
@@ -138,7 +139,7 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
     if (text.trim().length === 0) throw new Error('Invalid text argument');
     return withState(options, async () => {
       const state = await loadOperationState(options);
-      if (state.kind !== 'none') return { ok: false, message: `Finish or abort the ${state.kind} first.` };
+      if (state.kind !== 'none') return { ok: false, message: ui`Finish or abort the ${state.kind} first.` };
       const warnings = await rewordHead({ ...options, message: text, expectedOid: oid });
       return { ok: true, message: warnings.join(' ') || null };
     });
@@ -198,7 +199,7 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
   handler('reflog:move-branch', 4, (options, branch, oid, expected) =>
     withState(options, async () => {
       const state = await loadOperationState(options);
-      if (state.kind !== 'none') return { ok: false, message: `Finish or abort the ${state.kind} first.` };
+      if (state.kind !== 'none') return { ok: false, message: ui`Finish or abort the ${state.kind} first.` };
       return moveBranch({ ...options, branch: asString(branch, 255), oid, expected });
     }));
 
@@ -210,7 +211,7 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
    */
   handler('patch:am', 2, (options, token) => withState(options, async () => {
     const state = await loadOperationState(options);
-    if (state.kind !== 'none') return { ok: false, message: `Finish or abort the ${state.kind} first.` };
+    if (state.kind !== 'none') return { ok: false, message: ui`Finish or abort the ${state.kind} first.` };
     const entry = patchFiles.take(options.cwd, token);
     if (entry.kind !== 'mbox') throw new TypeError('This file holds no commits; apply it to the files instead.');
     return applyPatch({ ...options, kind: 'mbox', file: entry.file });

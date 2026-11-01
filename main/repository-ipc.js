@@ -1,8 +1,10 @@
 import { dialog, ipcMain } from 'electron';
+import { nt } from './language.js';
 import { randomUUID } from 'node:crypto';
 import { isTrustedPage } from './security.js';
 import { cloneRepository, validateCloneName } from './git/clone.js';
 import { changeRemote, loadRemotes, validateRepositoryUrl } from './git/remotes.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 export function registerRepositoryIpc(getWindow, entryUrl, { journal, repositories, undo }) {
   let destination = null;
@@ -29,28 +31,28 @@ export function registerRepositoryIpc(getWindow, entryUrl, { journal, repositori
   });
   register('repositories:remove', 1, id => {
     repository(id, false);
-    if (remoteJobs.has(id)) throw new Error('Wait for the remote action before removing this repository.');
+    if (remoteJobs.has(id)) throw new Error(ui`Wait for the remote action before removing this repository.`);
     return repositories.remove(id);
   });
   register('remotes:read', 1, id => loadRemotes({ cwd: repository(id).path, log: journal }));
   register('remotes:change', 5, async (id, action, name, url, expected) => {
     const item = repository(id);
-    if (remoteJobs.has(id)) throw new Error('A remote action is already running.');
+    if (remoteJobs.has(id)) throw new Error(ui`A remote action is already running.`);
     const controller = new AbortController(); remoteJobs.set(id, controller);
     try { return await undo.perform(item.path, `remotes:${action}`, [], () => changeRemote({ cwd: item.path, log: journal, action, name, url, expected, signal: controller.signal })); }
     finally { remoteJobs.delete(id); }
   });
   register('remotes:cancel', 1, id => { repository(id); remoteJobs.get(id)?.abort(); return true; });
   register('clone:destination', 0, async () => {
-    const choice = await dialog.showOpenDialog(getWindow(), { title: 'Choose parent folder for clone', properties: ['openDirectory', 'createDirectory'] });
+    const choice = await dialog.showOpenDialog(getWindow(), { title: nt('Choose parent folder for clone'), properties: ['openDirectory', 'createDirectory'] });
     if (choice.canceled || !choice.filePaths[0]) return null;
     destination = { token: randomUUID(), path: choice.filePaths[0], expires: Date.now() + 15 * 60 * 1000 };
     return { token: destination.token, path: destination.path };
   });
   register('clone:start', 3, async (token, name, url) => {
-    if (typeof token !== 'string' || token !== destination?.token || destination.expires < Date.now()) throw new TypeError('Choose the destination folder again.');
+    if (typeof token !== 'string' || token !== destination?.token || destination.expires < Date.now()) throw new TypeError(ui`Choose the destination folder again.`);
     validateCloneName(name); validateRepositoryUrl(url);
-    if (clone) throw new Error('A clone is already running.');
+    if (clone) throw new Error(ui`A clone is already running.`);
     const controller = new AbortController(); clone = controller;
     try {
       const result = await cloneRepository({ parent: destination.path, name, url, log: journal, signal: controller.signal });

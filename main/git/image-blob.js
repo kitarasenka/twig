@@ -3,6 +3,7 @@ import path from 'node:path';
 import { runGit } from './exec.js';
 import { validateFile, validateOid } from './commit.js';
 import { MAX_IMAGE_BYTES, imageType } from './image-types.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Both versions of one image file, as bytes, for the image viewer.
@@ -78,7 +79,7 @@ export async function readGitSides({ cwd, log, names, maxBytes = MAX_IMAGE_BYTES
   const wanted = Object.entries(names).filter(([, name]) => name !== null);
   const sides = {};
   if (wanted.length === 0) return sides;
-  const failed = `Git could not read this ${what}. See the command console.`;
+  const failed = what === 'file' ? ui`Git could not read this file. See the command console.` : ui`Git could not read this image. See the command console.`;
   const check = await runGit({ cwd, log, argv: ['cat-file', '--batch-check=%(objectname) %(objecttype) %(objectsize)'],
     stdin: `${wanted.map(([, name]) => name).join('\n')}\n`, operation: `Read ${what} versions` });
   if (check.code !== 0) throw new Error(failed);
@@ -87,7 +88,7 @@ export async function readGitSides({ cwd, log, names, maxBytes = MAX_IMAGE_BYTES
   wanted.forEach(([side], index) => {
     const found = parseBatchCheckLine(lines[index] ?? '');
     if (!found) sides[side] = { state: 'missing' };
-    else if (found.type !== 'blob') sides[side] = { state: 'other', reason: 'Git holds something other than a file here.' };
+    else if (found.type !== 'blob') sides[side] = { state: 'other', reason: ui`Git holds something other than a file here.` };
     else if (found.size > maxBytes) sides[side] = { state: 'large', size: found.size };
     else { sides[side] = { state: 'ok', size: found.size, oid: found.oid }; reads.push(found); }
   });
@@ -117,7 +118,7 @@ export async function readDiskSide(cwd, file, maxBytes = MAX_IMAGE_BYTES) {
     if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return { state: 'missing' };
     throw error;
   }
-  if (stats.isSymbolicLink()) return { state: 'other', reason: 'On disk this is a symbolic link, not an image.' };
+  if (stats.isSymbolicLink()) return { state: 'other', reason: ui`On disk this is a symbolic link, not an image.` };
   if (!stats.isFile()) return { state: 'missing' };
   // A folder on the way may itself be a link out of the working tree.
   const real = await realpath(absolute);

@@ -96,6 +96,9 @@ cut in the middle. More: [docs/mcp.md](docs/mcp.md).
 - **Everyday:** picks up commits made in a terminal by itself (no polling), a demo
   sandbox that is a real repository, dark and light themes, full keyboard control
   with every shortcut reassignable in Settings and working in any keyboard layout.
+- **Languages:** English, Русский, Українська, Беларуская, Deutsch, Español, Français,
+  简体中文, 日本語 — the system language by default, switchable in Settings. Git's own
+  words (branch, commit, merge, stash…), commands and paths stay as Git writes them.
 
 ## Screenshots
 

@@ -4,6 +4,7 @@ import nodePath from 'node:path';
 import { runGit } from './exec.js';
 import { parseStatusV2 } from './status-parser.js';
 import { parseFilePatchV1, splitPatchFiles } from './diff-parser.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * @typedef {Object} FileChange
@@ -92,7 +93,7 @@ function changeFrom(entry, status) {
  */
 export async function loadWorktree({ cwd, log, env = null, allUntracked = false }) {
   const result = await runGit({ argv: buildStatusArgv({ allUntracked }), cwd, log, env, operation: 'Read working tree' });
-  if (result.code !== 0) throw new Error('Git could not read the working tree.');
+  if (result.code !== 0) throw new Error(ui`Git could not read the working tree.`);
   const status = parseStatusV2(result.stdout);
 
   const staged = [];
@@ -127,7 +128,7 @@ export async function loadWorktree({ cwd, log, env = null, allUntracked = false 
 export async function loadWorktreeDiff({ cwd, log, path, staged = false, context = null, env = null }) {
   const argv = buildDiffArgv({ path, staged, context });
   const result = await runGit({ argv, cwd, log, env, operation: staged ? 'Read staged diff' : 'Read working tree diff' });
-  if (result.code !== 0) throw new Error('Git could not read this diff.');
+  if (result.code !== 0) throw new Error(ui`Git could not read this diff.`);
   const digest = createHash('sha256').update(result.stdout, 'utf8').digest('hex');
   // `text` is the same patch the hunks were parsed from, carried along for the
   // read-only view in the uncommitted details panel, which renders a patch the
@@ -167,7 +168,7 @@ export async function loadWorktreeDiffs({ cwd, log, paths, staged = false, conte
   if (paths.length === 0) return patches;
   const result = await runGit({ argv: buildDiffsArgv({ paths, staged, context }), cwd, log, env,
     operation: staged ? 'Read staged diffs' : 'Read working tree diffs' });
-  if (result.code !== 0) throw new Error('Git could not read these diffs.');
+  if (result.code !== 0) throw new Error(ui`Git could not read these diffs.`);
   const wanted = new Set(paths);
   const chunks = new Map();
   let unsure = false;
@@ -210,6 +211,6 @@ export async function loadUntrackedDiff({ cwd, log, path, context = null, limit 
   if (info.size > Math.min(limit, UNTRACKED_DIFF_LIMIT)) return { tooLarge: true, size: info.size };
   const result = await runGit({ argv: buildUntrackedDiffArgv({ path, context }), cwd, log, operation: 'Read untracked file as a diff' });
   // `--no-index` answers 1 when the two sides differ, which they always do here.
-  if (result.code !== 0 && result.code !== 1) throw new Error('Git could not read this file.');
+  if (result.code !== 0 && result.code !== 1) throw new Error(ui`Git could not read this file.`);
   return { ...parseFilePatchV1(result.stdout), text: result.stdout };
 }

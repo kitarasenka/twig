@@ -1,6 +1,7 @@
 import { app, ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { createSshService } from './ssh/service.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 export function registerSshIpc(getWindow, entryUrl, { journal }) {
   const ssh = createSshService({ home: app.getPath('home'), log: journal });
@@ -10,7 +11,7 @@ export function registerSshIpc(getWindow, entryUrl, { journal }) {
     if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame
       || !isTrustedPage(event.senderFrame.url, entryUrl) || args.length !== count) throw new TypeError('Invalid SSH request');
     if (!writes) return action(...args);
-    if (busy) throw new Error('Another SSH action is running.');
+    if (busy) throw new Error(ui`Another SSH action is running.`);
     busy = true;
     try { return await action(...args); } finally { busy = false; }
   });

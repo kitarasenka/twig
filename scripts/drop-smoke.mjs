@@ -31,7 +31,7 @@ try {
   const bare = path.join(root, 'remote.git');
   await git(['init', '--bare', bare]); await git(['remote', 'add', 'origin', bare]);
   await git(['push', 'origin', 'main']);
-  const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' }; delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'profile')}`], env });
   page = await app.firstWindow(); page.setDefaultTimeout(15000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));

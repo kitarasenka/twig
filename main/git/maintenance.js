@@ -1,5 +1,6 @@
 import { runGit } from './exec.js';
 import { COUNT_OBJECTS_ARGV, maintenanceCommands, parseCountObjects } from './maintenance-plan.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Repository maintenance by button: the size of the object store before and
@@ -14,7 +15,7 @@ const LABELS = { optimize: 'Optimize repository', gc: 'Clean up repository' };
 /** @param {{ cwd: string, log: object }} options */
 export async function loadRepositoryStats({ cwd, log }) {
   const result = await runGit({ argv: [...COUNT_OBJECTS_ARGV], cwd, log, operation: 'Read repository size' });
-  if (result.code !== 0) throw new Error('Git could not measure this repository.');
+  if (result.code !== 0) throw new Error(ui`Git could not measure this repository.`);
   return parseCountObjects(result.stdout);
 }
 
@@ -25,7 +26,7 @@ export async function loadRepositoryStats({ cwd, log }) {
 export async function runMaintenance({ cwd, log, task, signal = null }) {
   const commands = maintenanceCommands(task);
   const before = await loadRepositoryStats({ cwd, log });
-  if (signal?.aborted) return { ok: false, cancelled: true, notStarted: true, message: 'Cancelled before Git started.', before, after: null, ms: 0 };
+  if (signal?.aborted) return { ok: false, cancelled: true, notStarted: true, message: ui`Cancelled before Git started.`, before, after: null, ms: 0 };
   const started = Date.now();
   let failed = null;
   for (const argv of commands) {
@@ -35,7 +36,7 @@ export async function runMaintenance({ cwd, log, task, signal = null }) {
   }
   const ms = Date.now() - started;
   const after = await loadRepositoryStats({ cwd, log }).catch(() => null);
-  if (failed === 'cancelled') return { ok: false, cancelled: true, message: `${LABELS[task]} was cancelled. Git leaves the repository in a consistent state.`, before, after, ms };
-  if (failed) return { ok: false, message: `${LABELS[task]} did not finish. Show output in the console.`, before, after, ms };
+  if (failed === 'cancelled') return { ok: false, cancelled: true, message: task === 'gc' ? ui`Clean up repository was cancelled. Git leaves the repository in a consistent state.` : ui`Optimize repository was cancelled. Git leaves the repository in a consistent state.`, before, after, ms };
+  if (failed) return { ok: false, message: task === 'gc' ? ui`Clean up repository did not finish. Show output in the console.` : ui`Optimize repository did not finish. Show output in the console.`, before, after, ms };
   return { ok: true, message: null, before, after, ms };
 }

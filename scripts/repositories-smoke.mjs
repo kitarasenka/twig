@@ -21,7 +21,7 @@ try {
   await git(['add', '--', 'readme.txt']);
   await git(['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', 'commit', '-m', 'A cloned history']);
   const bare = path.join(root, 'remote.git'); await git(['clone', '--bare', '--', cwd, bare]);
-  const env = { ...process.env, GIT_CONFIG_GLOBAL: path.join(root, 'global'), GIT_CONFIG_NOSYSTEM: '1' };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en', GIT_CONFIG_GLOBAL: path.join(root, 'global'), GIT_CONFIG_NOSYSTEM: '1' };
   delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
   const args = ['.', `--user-data-dir=${path.join(root, 'app')}`];
   app = await electron.launch({ args, env });

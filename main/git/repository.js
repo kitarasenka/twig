@@ -2,6 +2,7 @@ import path from 'node:path';
 import { runGit } from './exec.js';
 import { parseStatusV2 } from './status-parser.js';
 import { SANDBOX_NAME, ensureSandbox, resetSandbox } from './sandbox.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 function succeeded(result) { return result.code === 0; }
 
@@ -12,7 +13,7 @@ async function resolveRoot(directory, log) {
 
 async function readStatus(directory, log) {
   const result = await runGit({ argv: ['status', '--porcelain=v2', '--branch', '-z'], cwd: directory, log, operation: 'Background: read working tree status' });
-  if (!succeeded(result)) return { error: 'Git could not read this repository.' };
+  if (!succeeded(result)) return { error: ui`Git could not read this repository.` };
   return parseStatusV2(result.stdout);
 }
 
@@ -48,7 +49,7 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
     try {
       return { ...repository, path: root, available: true, status: await readStatus(root, log) };
     } catch {
-      return { ...repository, path: root, available: true, status: { error: 'Git status is unavailable.' } };
+      return { ...repository, path: root, available: true, status: { error: ui`Git status is unavailable.` } };
     }
   }
 
@@ -70,7 +71,7 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
 
   async function add(directory) {
     const root = await resolveRoot(directory, log);
-    if (!root) throw new Error('Choose a folder that contains a Git repository.');
+    if (!root) throw new Error(ui`Choose a folder that contains a Git repository.`);
     const existing = state.repositories.find(repository => repository.path === root);
     const repository = existing || { id: root, path: root, name: path.basename(root) || root };
     const repositories = [...state.repositories.filter(item => item.id !== repository.id), repository];
@@ -82,7 +83,7 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
         : item) };
     } catch {
       state = { ...state, repositories: state.repositories.map(item => item.id === repository.id
-        ? { ...repository, available: true, status: { error: 'Git status is unavailable.' } }
+        ? { ...repository, available: true, status: { error: ui`Git status is unavailable.` } }
         : item) };
     }
     return decorate(state);
@@ -99,7 +100,7 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
   async function select(id) {
     if (sandbox && id === sandbox.dir) { await refreshSandbox(); return decorate(state); }
     const repository = state.repositories.find(item => item.id === id);
-    if (!repository) throw new Error('Unknown repository.');
+    if (!repository) throw new Error(ui`Unknown repository.`);
     if (state.activeId !== repository.id) state = await store.save(state.repositories, repository.id);
     const fresh = await statusFor(repository);
     state = { ...state, repositories: state.repositories.map(item => (item.id === repository.id ? fresh : item)) };
@@ -108,7 +109,7 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
 
   /** Close or reopen the demo tab. Nothing on disk is touched either way. */
   async function setSandboxVisible(visible) {
-    if (!sandbox) throw new Error('No demo workspace to show or hide.');
+    if (!sandbox) throw new Error(ui`No demo workspace to show or hide.`);
     state = await store.save(state.repositories, state.activeId, !visible);
     if (visible) {
       await ensureSandbox({ ...sandbox, log });
@@ -118,8 +119,8 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
   }
 
   async function remove(id) {
-    if (sandbox && id === sandbox.dir) throw new Error('The demo workspace cannot be removed.');
-    if (!state.repositories.some(item => item.id === id)) throw new Error('Unknown repository.');
+    if (sandbox && id === sandbox.dir) throw new Error(ui`The demo workspace cannot be removed.`);
+    if (!state.repositories.some(item => item.id === id)) throw new Error(ui`Unknown repository.`);
     const repositories = state.repositories.filter(item => item.id !== id);
     const activeId = state.activeId === id ? repositories.find(item => item.available)?.id || repositories[0]?.id || null : state.activeId;
     state = await store.save(repositories, activeId);
@@ -127,8 +128,8 @@ export function createRepositoryService({ log, store, sandbox = null, undo = nul
   }
 
   async function reset() {
-    if (!sandbox) throw new Error('No demo workspace to reset.');
-    if (state.sandboxHidden) throw new Error('The demo workspace is closed.');
+    if (!sandbox) throw new Error(ui`No demo workspace to reset.`);
+    if (state.sandboxHidden) throw new Error(ui`The demo workspace is closed.`);
     await resetSandbox({ dir: sandbox.dir, remoteDir: sandbox.remoteDir, log });
     await undo?.forget(sandbox.dir);
     await marks?.forget(sandbox.dir);

@@ -7,6 +7,8 @@
 //
 // No electron import: the Node check loads this module directly.
 
+import { ui } from '../renderer/src/i18n/i18n.js';
+
 export const RELEASES_API = 'https://api.github.com/repos/kitarasenka/twig/releases/latest';
 export const RELEASES_PAGE = 'https://github.com/kitarasenka/twig/releases';
 const RELEASE_URL_PREFIX = 'https://github.com/kitarasenka/twig/releases/';
@@ -114,15 +116,15 @@ export async function checkForUpdate({ currentVersion, target = null, fetchImpl 
       headers: { accept: 'application/vnd.github+json', 'user-agent': `Twig/${currentVersion}` }
     });
   } catch {
-    return failure('Could not reach GitHub. Check your connection and try again.');
+    return failure(ui`Could not reach GitHub. Check your connection and try again.`);
   } finally {
     clearTimeout(deadline);
   }
-  if (response.status === 404) return failure('No published release yet.');
-  if (!response.ok) return failure(`GitHub answered ${response.status}.`);
+  if (response.status === 404) return failure(ui`No published release yet.`);
+  if (!response.ok) return failure(ui`GitHub answered ${response.status}.`);
   try {
     return interpretRelease(currentVersion, await response.json(), target);
   } catch {
-    return failure('GitHub sent an answer this version could not read.');
+    return failure(ui`GitHub sent an answer this version could not read.`);
   }
 }

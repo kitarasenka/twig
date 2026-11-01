@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { runGit } from './git/exec.js';
 import { checkReadOnly, tokenize } from './git/read-only-command.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 /**
  * `console:run-command` lets the user type a git command into the console. Only
@@ -20,7 +21,7 @@ export function registerConsoleIpc(getWindow, entryUrl, { repositories, journal 
       throw new Error('Invalid console command request');
     }
     const repo = repositories.snapshot().repositories.find(item => item.id === args[0]);
-    if (!repo || !repo.available) throw new Error('Repository is unavailable');
+    if (!repo || !repo.available) throw new Error(ui`Repository is unavailable`);
 
     const argv = tokenize(args[1]);
     const verdict = checkReadOnly(argv);

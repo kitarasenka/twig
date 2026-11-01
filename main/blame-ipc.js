@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { runGit } from './git/exec.js';
 import { loadBlame, loadReverseBlame, loadBlameBefore, BlameError } from './git/blame.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 const OID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 
@@ -35,7 +36,7 @@ export function registerBlameIpc(getWindow, entryUrl, { repositories, journal })
         || !isTrustedPage(event.senderFrame.url, entryUrl) || args.length !== count
         || typeof args[0] !== 'string') throw new Error('Invalid blame request');
       const repo = repositories.snapshot().repositories.find(item => item.id === args[0]);
-      if (!repo || !repo.available) throw new Error('Repository is unavailable');
+      if (!repo || !repo.available) throw new Error(ui`Repository is unavailable`);
       return read({ cwd: repo.path, log: journal }, ...args.slice(1));
     });
   }
@@ -84,7 +85,7 @@ export function registerBlameIpc(getWindow, entryUrl, { repositories, journal })
   const resolve = async (cwd, ref, signal) => {
     const out = await runGit({ argv: ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], cwd, log: journal, operation: 'Resolve blame revision', signal });
     const oid = out.stdout.trim();
-    if (out.code !== 0 || !OID.test(oid)) throw new Error(`Cannot resolve “${ref}” to a commit.`);
+    if (out.code !== 0 || !OID.test(oid)) throw new Error(ui`Cannot resolve “${ref}” to a commit.`);
     return oid;
   };
 
@@ -101,7 +102,7 @@ export function registerBlameIpc(getWindow, entryUrl, { repositories, journal })
       const endOid = await resolve(options.cwd, endRef, controller.signal);
 
       const start = await runGit({ argv: ['cat-file', '-e', `${startOid}:${path}`], cwd: options.cwd, log: journal, operation: 'Check file at start', signal: controller.signal });
-      if (start.code !== 0) throw new Error('The file does not exist in the Start commit.');
+      if (start.code !== 0) throw new Error(ui`The file does not exist in the Start commit.`);
 
       if (startOid === endOid) {
         const blame = await loadBlame({ ...options, oid: startOid, path, signal: controller.signal });
@@ -109,8 +110,8 @@ export function registerBlameIpc(getWindow, entryUrl, { repositories, journal })
       }
 
       const ancestor = await runGit({ argv: ['merge-base', '--is-ancestor', startOid, endOid], cwd: options.cwd, log: journal, operation: 'Check reverse-blame range', signal: controller.signal });
-      if (ancestor.code === 1) throw new Error('Start is not an ancestor of End. Pick an End that comes after Start.');
-      if (ancestor.code !== 0) throw new Error('Git could not compare the two commits. Show output in the console.');
+      if (ancestor.code === 1) throw new Error(ui`Start is not an ancestor of End. Pick an End that comes after Start.`);
+      if (ancestor.code !== 0) throw new Error(ui`Git could not compare the two commits. Show output in the console.`);
 
       const blame = await loadReverseBlame({ ...options, startOid, endOid, path, signal: controller.signal });
       return { ...blame, endRef };

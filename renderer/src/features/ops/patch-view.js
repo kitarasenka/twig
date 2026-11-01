@@ -1,6 +1,8 @@
+import { t, tn } from '../../i18n/i18n.js';
+
 /**
- * Words and the shown command for applying a patch file. No imports: Vite and
- * the Node check both load it, and the check holds the command against the
+ * Words and the shown command for applying a patch file. Only the import-free
+ * i18n module is imported: Vite and the Node check both load it, and the check holds the command against the
  * argv main builds.
  */
 
@@ -17,9 +19,14 @@ export function patchConsequence(patch, branch, index = false) {
   const target = branch || 'HEAD';
   if (patch.kind === 'mbox') {
     const count = patch.commits.length;
-    return `${count === 1 ? 'One new commit is' : `${count} new commits are`} made on ${target}, with the authors, dates and messages the patch carries. Undo takes them all back.`;
+    return count === 1
+      ? t`One new commit is made on ${target}, with the authors, dates and messages the patch carries. Undo takes them all back.`
+      : tn(count, '{n} new commit is made on {target}, with the authors, dates and messages the patch carries. Undo takes them all back.',
+        '{n} new commits are made on {target}, with the authors, dates and messages the patch carries. Undo takes them all back.', { target });
   }
-  return `The changes are written into your working files${index ? ' and staged' : ''}; no commit is made. Undo cannot take them back, but Discard can.`;
+  return index
+    ? t('The changes are written into your working files and staged; no commit is made. Undo cannot take them back, but Discard can.')
+    : t('The changes are written into your working files; no commit is made. Undo cannot take them back, but Discard can.');
 }
 
 /** The oids to export, oldest first, from the graph's newest-first selection. */

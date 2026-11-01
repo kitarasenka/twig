@@ -12,6 +12,7 @@ import { isMenuKey, matchesShortcut } from '../../app/shortcuts.js';
 import { summaryChips } from '../worktree/worktree-summary.js';
 import { localDayKey, relativeTime } from '../../ui/relative-time.js';
 import Menu from '../../ui/Menu.jsx';
+import { t, tn } from '../../i18n/i18n.js';
 
 const EMPTY_SELECTION = new Set();
 const NO_BISECT_MARKS = new Map();
@@ -78,9 +79,9 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
     onContextMenu={event => { event.preventDefault(); onMenu(commit.oid, event.clientX, event.clientY); }}>
     <span className="ref-cell">
       {visibility.branch && refLines.map((line, lineIndex) => <span className="ref-line" key={lineIndex}>
-        {lineIndex === 0 && mark && <span className="mark-chip" title={mark.note || 'Marked'}><Bookmark aria-label={mark.note ? `Marked: ${mark.note}` : 'Marked'} /></span>}
+        {lineIndex === 0 && mark && <span className="mark-chip" title={mark.note || t('Marked')}><Bookmark aria-label={mark.note ? t`Marked: ${mark.note}` : t('Marked')} /></span>}
         {lineIndex === 0 && head && <Sprout aria-label="HEAD" />}
-        {line.map(refIndex => refs[refIndex]).map(ref => <span key={ref.fullName} title={`${ref.fullName}${ref.type === 'tag' ? '' : ' · Double-click to check out'} · Drag onto a target`} tabIndex={0}
+        {line.map(refIndex => refs[refIndex]).map(ref => <span key={ref.fullName} title={ref.type === 'tag' ? `${ref.fullName} · ${t('Drag onto a target')}` : `${ref.fullName} · ${t('Double-click to check out')} · ${t('Drag onto a target')}`} tabIndex={0}
           onClick={() => onPickRef?.(ref)}
           onDoubleClick={event => { event.stopPropagation(); onCheckout?.([ref]); }}
           {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
@@ -96,12 +97,12 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
         <text className="commit-initials" x={laneX} y={height / 2}>{authorInitials(commit.author.name)}</text>
       </svg>
       {stashes && <button className="stash-node" style={{ '--stash-x': `${stashX}px` }}
-        title={`${stashes.length === 1 ? 'Stash' : `${stashes.length} stashes`} on this commit:\n${stashes.map(item => item.message).join('\n')}`}
-        aria-label={`Open ${stashes.length === 1 ? 'the stash' : 'stashes'} based on this commit`}
+        title={`${tn(stashes.length, 'Stash on this commit:', '{n} stashes on this commit:')}\n${stashes.map(item => item.message).join('\n')}`}
+        aria-label={tn(stashes.length, 'Open the stash based on this commit', 'Open stashes based on this commit')}
         onClick={event => { event.stopPropagation(); onStashes(); }}>
         <StashBox />{stashes.length > 1 && <span>{stashes.length}</span>}</button>}
     </span></span>
-    <span className="commit-subject" title={`${bisect ? `${bisect.title}\n` : ''}${commit.subject}\n${commit.body}`}>{bisect && <BisectChip mark={bisect} />}<span>{commit.subject || '(no subject)'}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
+    <span className="commit-subject" title={`${bisect ? `${bisect.title}\n` : ''}${commit.subject}\n${commit.body}`}>{bisect && <BisectChip mark={bisect} />}<span>{commit.subject || t('(no subject)')}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
     <span className="author-col" title={visibility.author ? commit.author.email : undefined}>{visibility.author && commit.author.name}</span>
     <span className={`date-cell ${age === null ? '' : ageTextClass(age)}`} title={visibility.date ? commit.committedAt : undefined}>{visibility.date && relativeDate(commit.committedAt)}</span>
   </div>;
@@ -256,7 +257,7 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   }
   const columnHandle = key => <span role="separator" tabIndex={0} aria-orientation="vertical"
     className={`col-resize ${resizing === key ? 'active' : ''}`}
-    aria-label={`Resize ${HISTORY_COLUMNS[key].label} column`} title="Drag to resize · double-click to reset"
+    aria-label={t`Resize ${t(HISTORY_COLUMNS[key].label)} column`} title={t('Drag to resize · double-click to reset')}
     aria-valuenow={columnWidth(key)} aria-valuemin={columnFloor(key)} aria-valuemax={HISTORY_COLUMNS[key].max}
     onPointerDown={event => beginColResize(key, event)} onPointerMove={moveColResize} onPointerUp={endColResize}
     onPointerCancel={endColResize} onLostPointerCapture={endColResize}
@@ -370,24 +371,24 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
     '--col-author': `${visibleWidth('author')}px`, '--col-date': `${visibleWidth('date')}px`,
   }}>
     <div className="real-history-columns" ref={columnsRef} onContextMenu={openColumnMenu}>
-      <span>{visibility.branch && <>Branch / tag{columnHandle('branch')}</>}</span><span>Graph{columnHandle('graph')}</span>
-      <span>Commit message{columnHandle('message')}</span>
-      <span className="author-col">{visibility.author && <>Author{columnHandle('author')}</>}</span>
-      <span>{visibility.date && <>Date{columnHandle('date')}</>}</span>
+      <span>{visibility.branch && <>{t('Branch / tag')}{columnHandle('branch')}</>}</span><span>{t('Graph')}{columnHandle('graph')}</span>
+      <span>{t('Commit message')}{columnHandle('message')}</span>
+      <span className="author-col">{visibility.author && <>{t('Author')}{columnHandle('author')}</>}</span>
+      <span>{visibility.date && <>{t('Date')}{columnHandle('date')}</>}</span>
     </div>
-    {columnMenu && <Menu x={columnMenu.x} y={columnMenu.y} label="Show columns" onClose={() => setColumnMenu(null)}
+    {columnMenu && <Menu x={columnMenu.x} y={columnMenu.y} label={t('Show columns')} onClose={() => setColumnMenu(null)}
       items={TOGGLABLE_COLUMNS.map(key => ({
-        key, text: HISTORY_COLUMNS[key].label, checked: visibility[key], stayOpen: true, run: () => toggleColumn(key),
+        key, text: t(HISTORY_COLUMNS[key].label), checked: visibility[key], stayOpen: true, run: () => toggleColumn(key),
       }))} />}
     {summary && summary.paths > 0 && <button className={`worktree-row ${selected === UNCOMMITTED ? 'selected' : ''}`}
-      aria-pressed={selected === UNCOMMITTED} title="Show the uncommitted files in the details panel"
+      aria-pressed={selected === UNCOMMITTED} title={t('Show the uncommitted files in the details panel')}
       onClick={onUncommitted}>
       <span className="worktree-row-icon"><FilePenLine aria-hidden="true" /></span>
-      <span className="worktree-row-text">Uncommitted changes, {summary.paths} file{summary.paths === 1 ? '' : 's'}</span>
+      <span className="worktree-row-text">{tn(summary.paths, 'Uncommitted changes, {n} file', 'Uncommitted changes, {n} files')}</span>
       <span className="worktree-row-chips">{summaryChips(summary).map(chip =>
         <span className={`worktree-chip chip-${chip.key}`} key={chip.key}>{chip.text}</span>)}</span>
     </button>}
-    <div className="real-history-scroll" ref={scroller} role="listbox" aria-label="Commit history" aria-multiselectable="true" tabIndex={0}
+    <div className="real-history-scroll" ref={scroller} role="listbox" aria-label={t('Commit history')} aria-multiselectable="true" tabIndex={0}
       onDragOverCapture={event => { if (dragging) dragY.current = event.clientY; }}
       onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) dragY.current = null; }}
       aria-busy={loading} aria-activedescendant={focused && active ? `commit-${focused}` : undefined}
@@ -407,8 +408,8 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
           dayStart={start + offset > 0 && localDayKey(commit.committedAt) !== localDayKey(commits[start + offset - 1].committedAt)} />)}
       </div>
     </div>
-    <div className="history-pagination">{loading ? <span role="status">Loading history…</span> : hasMore
-      ? <button onClick={loadMore}>Load older commits</button>
-      : <span>{commits.length ? 'Beginning of history' : 'No commits yet. Create your first commit to start this history.'}</span>}</div>
+    <div className="history-pagination">{loading ? <span role="status">{t('Loading history…')}</span> : hasMore
+      ? <button onClick={loadMore}>{t('Load older commits')}</button>
+      : <span>{commits.length ? t('Beginning of history') : t('No commits yet. Create your first commit to start this history.')}</span>}</div>
   </div>;
 }

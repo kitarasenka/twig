@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import Button from './Button.jsx';
+import { t } from '../i18n/i18n.js';
 
 /** `wide` is opt-in: a dialog is 480px unless its content genuinely needs a table. */
 export default function Dialog({ title, onClose, wide = false, closeReason, children }) {
@@ -15,7 +16,7 @@ export default function Dialog({ title, onClose, wide = false, closeReason, chil
   }, []);
   return <dialog ref={ref} className={wide ? 'wide' : undefined} aria-labelledby="dialog-title" onCancel={event => { if (closeReason) event.preventDefault(); else onClose(); }}>
     <header className="panel-heading"><h2 id="dialog-title">{title}</h2>
-      <Button icon={X} aria-label="Close dialog" title="Close" reason={closeReason} onClick={onClose} /></header>
+      <Button icon={X} aria-label={t('Close dialog')} title={t('Close')} reason={closeReason} onClick={onClose} /></header>
     <div className="dialog-content">{children}</div>
   </dialog>;
 }

@@ -1,3 +1,5 @@
+import { t } from '../../i18n/i18n.js';
+
 /**
  * Squashing a run of adjacent commits into a single commit.
  *
@@ -15,22 +17,23 @@
  * after another, none of them a merge. Whether they are on the current branch
  * is the caller's to check — that needs the branch, not just the commits.
  *
- * No imports on purpose: both Vite and the Node self-check load this file.
+ * Only the import-free i18n module is imported: both Vite and the Node
+ * self-check load this file.
  *
  * @param {{ oid: string, parents: string[] }[]} selected newest-first, as the graph lists them
  */
 export function squashable(selected) {
   if (!Array.isArray(selected) || selected.length < 2) {
-    return { ok: false, reason: 'Select two or more commits to squash them.' };
+    return { ok: false, reason: t('Select two or more commits to squash them.') };
   }
   for (const commit of selected) {
-    if (!commit || !Array.isArray(commit.parents)) return { ok: false, reason: 'The selected commits could not be read. Refresh the history.' };
-    if (commit.parents.length > 1) return { ok: false, reason: 'A merge commit cannot be squashed.' };
-    if (commit.parents.length === 0) return { ok: false, reason: 'The very first commit of the history has nothing to squash into.' };
+    if (!commit || !Array.isArray(commit.parents)) return { ok: false, reason: t('The selected commits could not be read. Refresh the history.') };
+    if (commit.parents.length > 1) return { ok: false, reason: t('A merge commit cannot be squashed.') };
+    if (commit.parents.length === 0) return { ok: false, reason: t('The very first commit of the history has nothing to squash into.') };
   }
   for (let i = 0; i < selected.length - 1; i++) {
     if (selected[i].parents[0] !== selected[i + 1].oid) {
-      return { ok: false, reason: 'Only commits that sit directly one after another can be squashed.' };
+      return { ok: false, reason: t('Only commits that sit directly one after another can be squashed.') };
     }
   }
   return { ok: true, reason: null };
@@ -42,17 +45,17 @@ export function squashable(selected) {
  * @param {string} message the combined message for the squashed commit
  */
 export function buildSquashPlan(commits, oids, message) {
-  if (!Array.isArray(commits) || commits.length === 0) throw new Error('There are no commits to replay.');
-  if (typeof message !== 'string' || message.trim().length === 0) throw new Error('The squashed commit needs a message.');
+  if (!Array.isArray(commits) || commits.length === 0) throw new Error(t('There are no commits to replay.'));
+  if (typeof message !== 'string' || message.trim().length === 0) throw new Error(t('The squashed commit needs a message.'));
   const chosen = new Set(oids);
-  if (chosen.size < 2) throw new Error('Squashing needs at least two commits.');
+  if (chosen.size < 2) throw new Error(t('Squashing needs at least two commits.'));
   const positions = commits.map((commit, index) => (chosen.has(commit.oid) ? index : -1)).filter(index => index >= 0);
   if (positions.length !== chosen.size) {
-    throw new Error('A selected commit is not among the ones being replayed. Refresh the history and try again.');
+    throw new Error(t('A selected commit is not among the ones being replayed. Refresh the history and try again.'));
   }
   const first = positions[0];
   const last = positions[positions.length - 1];
-  if (last - first + 1 !== positions.length) throw new Error('Only commits that sit directly one after another can be squashed.');
+  if (last - first + 1 !== positions.length) throw new Error(t('Only commits that sit directly one after another can be squashed.'));
   return commits.map((commit, index) => {
     if (index === first) return { action: 'reword', oid: commit.oid, message };
     if (index > first && index <= last) return { action: 'fixup', oid: commit.oid };

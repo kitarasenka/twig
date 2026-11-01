@@ -44,7 +44,7 @@ try {
   await writeFile(path.join(cwd, 'feature.txt'), 'pairing\n');
   await git(['add', 'feature.txt']);
 
-  const env = { ...process.env };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'profile')}`], env });

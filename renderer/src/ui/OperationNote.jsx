@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, SquareTerminal, X } from 'lucide-react';
+import { t } from '../i18n/i18n.js';
 
 /**
  * Where notes go: the stack above the console that App renders. A hidden
@@ -35,7 +36,7 @@ export default function OperationNote({ note, onConsole, onDismiss }) {
     onFocus={() => setHeld(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setHeld(false); }}>
     {failed && <AlertTriangle className="note-icon" aria-hidden="true" />}
     <span className="note-text">{typeof note === 'string' ? note : note.text}</span>
-    {failed && <button className="note-output" onClick={onConsole}><SquareTerminal aria-hidden="true" />Show output</button>}
-    <button className="note-dismiss" onClick={onDismiss} aria-label="Dismiss" title="Dismiss"><X aria-hidden="true" /></button>
+    {failed && <button className="note-output" onClick={onConsole}><SquareTerminal aria-hidden="true" />{t('Show output')}</button>}
+    <button className="note-dismiss" onClick={onDismiss} aria-label={t('Dismiss')} title={t('Dismiss')}><X aria-hidden="true" /></button>
   </div>, region);
 }

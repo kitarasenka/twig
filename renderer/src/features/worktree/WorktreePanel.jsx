@@ -6,8 +6,11 @@ import FileTree, { FileListControls } from '../diff/FileTree.jsx';
 import { ALL_TYPES, baseName, matchesFile, readFileView, writeFileView } from '../diff/file-filter.js';
 import { SECTIONS, conflictCount, summaryLabel } from './worktree-summary.js';
 import { isMenuKey } from '../../app/shortcuts.js';
+import { mark, t, tn } from '../../i18n/i18n.js';
+import { tx } from '../../i18n/rich.js';
 
 const ICONS = { staged: Check, unstaged: FilePenLine, untracked: FilePlus2 };
+const SECTION_LABELS = { staged: mark('Staged files'), unstaged: mark('Changed files'), untracked: mark('Untracked files') };
 
 /**
  * What each list's buttons do. Staged work moves back out with a minus,
@@ -15,9 +18,12 @@ const ICONS = { staged: Check, unstaged: FilePenLine, untracked: FilePlus2 };
  * screen gives them — so the two screens cannot teach opposite gestures.
  */
 const MOVES = {
-  staged: { icon: Minus, label: 'Unstage', bulk: 'Unstage all', bulkLabel: 'Unstage every staged file' },
-  unstaged: { icon: Plus, label: 'Stage', bulk: 'Stage all', bulkLabel: 'Stage every changed file' },
-  untracked: { icon: Plus, label: 'Stage', bulk: 'Stage all', bulkLabel: 'Stage every untracked file' }
+  staged: { icon: Minus, file: path => t`Unstage ${path}`, bulk: mark('Unstage all'), bulkLabel: mark('Unstage every staged file'),
+    shown: count => tn(count, 'Unstage {n} shown', 'Unstage {n} shown'), shownLabel: count => tn(count, 'Unstage the {n} shown', 'Unstage the {n} shown') },
+  unstaged: { icon: Plus, file: path => t`Stage ${path}`, bulk: mark('Stage all'), bulkLabel: mark('Stage every changed file'),
+    shown: count => tn(count, 'Stage {n} shown', 'Stage {n} shown'), shownLabel: count => tn(count, 'Stage the {n} shown', 'Stage the {n} shown') },
+  untracked: { icon: Plus, file: path => t`Stage ${path}`, bulk: mark('Stage all'), bulkLabel: mark('Stage every untracked file'),
+    shown: count => tn(count, 'Stage {n} shown', 'Stage {n} shown'), shownLabel: count => tn(count, 'Stage the {n} shown', 'Stage the {n} shown') }
 };
 
 /**
@@ -27,8 +33,8 @@ const MOVES = {
  * Every one of these asks first (§6.5) and is backed up for Undo.
  */
 const DISCARDS = {
-  unstaged: { icon: Undo2, label: 'Discard changes to', bulkLabel: 'Discard all unstaged changes' },
-  untracked: { icon: Trash2, label: 'Delete', bulkLabel: 'Delete every untracked file' }
+  unstaged: { icon: Undo2, file: path => t`Discard changes to ${path}`, bulkLabel: mark('Discard all unstaged changes') },
+  untracked: { icon: Trash2, file: path => t`Delete ${path}`, bulkLabel: mark('Delete every untracked file') }
 };
 
 /**
@@ -76,25 +82,27 @@ export default function WorktreePanel({ summary, branch, open, actions, error, o
   const shown = section => (query ? section.files.map(file => file.path) : null);
   const moveAll = section => (section.key === 'staged' ? actions.unstageAll(shown(section))
     : actions.stageAll(section.key === 'untracked' ? 'untracked' : 'tracked', shown(section)));
-  const bulkReason = section => (query && !section.files.length ? 'No file here matches the filter'
+  const bulkReason = section => (query && !section.files.length ? t('No file here matches the filter')
     : section.key === 'staged' && !query ? actions.reasons.unstageAll : actions.reasons.stageAll);
-  return <aside className="commit-detail worktree-panel" aria-label="Uncommitted changes">
+  return <aside className="commit-detail worktree-panel" aria-label={t('Uncommitted changes')}>
     <header className="panel-heading">
-      <span>UNCOMMITTED CHANGES</span>
-      <Button icon={X} aria-label="Close uncommitted changes" onClick={onClose} />
+      <span>{t('UNCOMMITTED CHANGES')}</span>
+      <Button icon={X} aria-label={t('Close uncommitted changes')} onClick={onClose} />
     </header>
     <div className="detail-content">
-      <p className="worktree-panel-summary">{summaryLabel(summary)}{branch ? <> on <strong>{branch}</strong></> : ''}</p>
+      <p className="worktree-panel-summary">{branch
+        ? tx('{summary} on {branch}', { summary: summaryLabel(summary), branch: <strong>{branch}</strong> })
+        : summaryLabel(summary)}</p>
       {conflicts > 0 && <p className="worktree-panel-conflicts" role="status">
-        {conflicts === 1 ? '1 file has a conflict' : `${conflicts} files have conflicts`} to resolve before this can be committed.</p>}
+        {tn(conflicts, '{n} file has a conflict to resolve before this can be committed.', '{n} files have conflicts to resolve before this can be committed.')}</p>}
       {error && <div className="history-error worktree-panel-error" role="alert">{error}
-        <button onClick={onConsole}>Show output</button>
-        <button onClick={onDismissError} aria-label="Dismiss">×</button></div>}
+        <button onClick={onConsole}>{t('Show output')}</button>
+        <button onClick={onDismissError} aria-label={t('Dismiss')}>×</button></div>}
       <div className="worktree-panel-actions">
-        <Button className="primary" onClick={onStaging}>Open staging</Button>
+        <Button className="primary" onClick={onStaging}>{t('Open staging')}</Button>
       </div>
       <FileListControls view={view} onView={chooseView} filter={filter} onFilter={setFilter}
-        extension={extension} onExtension={setExtension} paths={paths} label="uncommitted files" />
+        extension={extension} onExtension={setExtension} paths={paths} label={t('uncommitted files')} />
       {sections.map(section => {
         const Icon = ICONS[section.key];
         const rule = MOVES[section.key];
@@ -105,24 +113,24 @@ export default function WorktreePanel({ summary, branch, open, actions, error, o
             onClick={() => onFile(file, section.key)} title={file.originalPath ? `${file.originalPath} → ${file.path}` : file.path}
             {...fileMenuProps(file, section.key, onFileMenu)}>
             <FileStatus status={file.status} /><span>{view === 'tree' ? baseName(file.path) : file.path}</span></button>
-          {discard && <Button className="discard" icon={discard.icon} aria-label={`${discard.label} ${file.path}`}
+          {discard && <Button className="discard" icon={discard.icon} aria-label={discard.file(file.path)}
             reason={actions.reasons.discard(file, section.key)} onClick={() => actions.discard(file, section.key)} />}
-          <Button className="move" icon={rule.icon} aria-label={`${rule.label} ${file.path}`} title={`${rule.label} ${file.path}`}
+          <Button className="move" icon={rule.icon} aria-label={rule.file(file.path)} title={rule.file(file.path)}
             reason={section.key === 'staged' ? actions.reasons.unstage : actions.reasons.stage}
             onClick={() => move(section.key, file)} /></div>;
-        return <section className="worktree-panel-section" key={section.key} aria-label={`${section.title} files`}>
-          <div className="files-heading"><Icon /><strong>{section.title}</strong><span className="count">{total}</span>
+        return <section className="worktree-panel-section" key={section.key} aria-label={t(SECTION_LABELS[section.key])}>
+          <div className="files-heading"><Icon /><strong>{t(section.title)}</strong><span className="count">{total}</span>
             {total > 0 && <Button className="bulk" icon={rule.icon} reason={bulkReason(section)}
-              aria-label={query ? `${rule.label} the ${section.files.length} shown` : rule.bulkLabel}
-              onClick={() => moveAll(section)}>{query ? `${rule.label} ${section.files.length} shown` : rule.bulk}</Button>}
+              aria-label={query ? rule.shownLabel(section.files.length) : t(rule.bulkLabel)}
+              onClick={() => moveAll(section)}>{query ? rule.shown(section.files.length) : t(rule.bulk)}</Button>}
             {total > 0 && discard && <Button className="bulk discard" icon={discard.icon}
-              reason={query ? 'Clear the filter first: this acts on the whole list' : actions.reasons.discardAll}
-              aria-label={discard.bulkLabel} title={discard.bulkLabel} onClick={() => actions.discardAll(section.key === 'untracked' ? 'untracked' : 'tracked')} />}</div>
+              reason={query ? t('Clear the filter first: this acts on the whole list') : actions.reasons.discardAll}
+              aria-label={t(discard.bulkLabel)} title={t(discard.bulkLabel)} onClick={() => actions.discardAll(section.key === 'untracked' ? 'untracked' : 'tracked')} />}</div>
           {view === 'tree' ? <FileTree files={section.files} renderFile={row} /> : section.files.map(row)}
-          {!section.files.length && <p className="muted">{query ? 'No match here.' : section.empty}</p>}
+          {!section.files.length && <p className="muted">{query ? t('No match here.') : t(section.empty)}</p>}
         </section>;
       })}
-      {query && !matches && <p className="muted">Nothing uncommitted matches {filter.trim() ? `“${filter.trim()}”` : 'this file type'}.</p>}
+      {query && !matches && <p className="muted">{filter.trim() ? t`Nothing uncommitted matches “${filter.trim()}”.` : t('Nothing uncommitted matches this file type.')}</p>}
     </div>
   </aside>;
 }

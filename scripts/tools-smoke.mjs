@@ -71,7 +71,7 @@ esac
 `);
   await chmod(path.join(bin, 'git-lfs'), 0o755);
 
-  const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en', PATH: `${bin}${path.delimiter}${process.env.PATH}` };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'profile')}`], env });

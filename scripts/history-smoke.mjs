@@ -54,7 +54,7 @@ try {
   assert.equal(page2.nextSkip, null);
   assert.ok(page2.commits.some(commit => commit.parents.length === 2));
   assert.equal((await loadRefs({ cwd, log })).find(ref => ref.name === 'v-test').target, tip);
-  const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
+  const env = { ...process.env, TWIG_LANGUAGE: 'en' }; delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(root, 'profile')}`], env });
   const page = await app.firstWindow();
   page.setDefaultTimeout(15000);

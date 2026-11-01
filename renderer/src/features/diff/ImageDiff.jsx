@@ -5,6 +5,8 @@ import {
   readImagePrefs, regionLabel, scaleRegions, writeImagePrefs
 } from './image-diff.js';
 import { MAX_IMAGE_BYTES } from '../../../../main/git/image-types.js';
+import { t, tn, tr } from '../../i18n/i18n.js';
+import { tx } from '../../i18n/rich.js';
 
 const storage = () => { try { return window.localStorage; } catch { return null; } };
 
@@ -97,10 +99,10 @@ function Stage({ width, height, zoom, label, className = '', children, ...props 
 
 function sideLabel(side) {
   if (side.state === 'ok') return `${dimensions(side)} · ${formatSize(side.size)}`;
-  if (side.state === 'large') return `${formatSize(side.size)} — larger than the ${formatSize(MAX_IMAGE_BYTES)} the viewer reads`;
-  if (side.state === 'broken') return `${formatSize(side.size)} — 🌱 Twig could not decode this version`;
-  if (side.state === 'other') return side.reason;
-  return 'Not present';
+  if (side.state === 'large') return t`${formatSize(side.size)} — larger than the ${formatSize(MAX_IMAGE_BYTES)} the viewer reads`;
+  if (side.state === 'broken') return t`${formatSize(side.size)} — 🌱 Twig could not decode this version`;
+  if (side.state === 'other') return tr(side.reason);
+  return t('Not present');
 }
 
 function Placeholder({ side }) {
@@ -145,7 +147,7 @@ export default function ImageDiff({ repositoryId, file, source }) {
         try { comparison = compare(before, after); } catch { comparison = { failed: true }; }
         if (alive) setState({ before, after, comparison });
       } catch {
-        if (alive) setState({ error: 'Could not read this image. Show output in the console.' });
+        if (alive) setState({ error: t('Could not read this image. Show output in the console.') });
       }
     })();
     return () => { alive = false; for (const bitmap of bitmaps) bitmap.close(); };
@@ -174,7 +176,7 @@ export default function ImageDiff({ repositoryId, file, source }) {
     writeImagePrefs(storage(), merged);
   }
 
-  if (state.loading) return <div className="loading-shell" aria-label="Loading image"><div className="skeleton" /></div>;
+  if (state.loading) return <div className="loading-shell" aria-label={t('Loading image')}><div className="skeleton" /></div>;
   if (state.error) return <p role="alert" className="empty-inline">{state.error}</p>;
   const { before, after, comparison } = state;
   const both = before.state === 'ok' && after.state === 'ok';
@@ -185,10 +187,10 @@ export default function ImageDiff({ repositoryId, file, source }) {
   const mode = both ? prefs.mode : 'single';
   const areas = regions.length > 0 && <Areas regions={regions} width={width} height={height} active={active} onPick={setActive} />;
 
-  const summary = !both ? (before.state === 'missing' ? (source.kind === 'untracked' ? 'New file, not in Git yet' : 'Added in this change')
-    : after.state === 'missing' ? 'Deleted in this change' : 'One version cannot be shown')
-    : !comparison ? 'Comparing…'
-      : comparison.failed ? 'These two versions could not be compared'
+  const summary = !both ? (before.state === 'missing' ? (source.kind === 'untracked' ? t('New file, not in Git yet') : t('Added in this change'))
+    : after.state === 'missing' ? t('Deleted in this change') : t('One version cannot be shown'))
+    : !comparison ? t('Comparing…')
+      : comparison.failed ? t('These two versions could not be compared')
         : compareSummary({ before, after, changed: comparison.changed, total: comparison.total, regions: comparison.regions, more: comparison.more, scale: comparison.scale });
 
   function swipeTo(event) {
@@ -199,7 +201,7 @@ export default function ImageDiff({ repositoryId, file, source }) {
   const label = (name, side) => <p className="image-caption"><strong>{name}</strong> {sideLabel(side)}</p>;
   let body;
   if (mode === 'single') {
-    const shown = [['Before', before], ['After', after]].filter(([, side]) => side.state !== 'missing');
+    const shown = [[t('Before'), before], [t('After'), after]].filter(([, side]) => side.state !== 'missing');
     body = <div className="image-pair">
       {shown.map(([name, side]) => <div className="image-cell" key={name}>
         {label(name, side)}
@@ -211,7 +213,7 @@ export default function ImageDiff({ repositoryId, file, source }) {
     </div>;
   } else if (mode === 'side') {
     body = <div className="image-pair">
-      {[['Before', before], ['After', after]].map(([name, side]) => <div className="image-cell" key={name}>
+      {[[t('Before'), before], [t('After'), after]].map(([name, side]) => <div className="image-cell" key={name}>
         {label(name, side)}
         <div className="image-fit"><Stage width={width} height={height} zoom={zoom} label={`${name}: ${file}, ${dimensions(side)}`}>
           <Layer side={side} width={width} height={height} />{areas}</Stage></div>
@@ -219,8 +221,8 @@ export default function ImageDiff({ repositoryId, file, source }) {
     </div>;
   } else if (mode === 'swipe') {
     body = <div className="image-cell">
-      <p className="image-caption"><strong>Before</strong> left of the line · <strong>After</strong> right of it</p>
-      <div className="image-fit"><Stage width={width} height={height} zoom={zoom} label={`${file}: before and after, split at ${swipe}%`}
+      <p className="image-caption">{tx('{before} left of the line · {after} right of it', { before: <strong>{t('Before')}</strong>, after: <strong>{t('After')}</strong> })}</p>
+      <div className="image-fit"><Stage width={width} height={height} zoom={zoom} label={t`${file}: before and after, split at ${swipe}%`}
         className="swipe"
         onPointerDown={event => { dragging.current = true; event.currentTarget.setPointerCapture(event.pointerId); swipeTo(event); }}
         onPointerMove={event => { if (dragging.current) swipeTo(event); }}
@@ -229,22 +231,22 @@ export default function ImageDiff({ repositoryId, file, source }) {
         <div className="image-clip" style={{ clipPath: `inset(0 0 0 ${swipe}%)` }}><Layer side={after} width={width} height={height} /></div>
         <div className="image-swipe-line" style={{ left: `${swipe}%` }} />
         {areas}</Stage></div>
-      <label className="image-slider">Before<input type="range" min="0" max="100" value={swipe} onChange={event => setSwipe(Number(event.target.value))} aria-label="Swipe position" />After</label>
+      <label className="image-slider">{t('Before')}<input type="range" min="0" max="100" value={swipe} onChange={event => setSwipe(Number(event.target.value))} aria-label={t('Swipe position')} />{t('After')}</label>
     </div>;
   } else if (mode === 'onion') {
     body = <div className="image-cell">
-      <p className="image-caption"><strong>After</strong> over <strong>Before</strong> at {onion}%</p>
-      <div className="image-fit"><Stage width={width} height={height} zoom={zoom} label={`${file}: after over before at ${onion}% opacity`}>
+      <p className="image-caption">{tx('{after} over {before} at {percent}%', { after: <strong>{t('After')}</strong>, before: <strong>{t('Before')}</strong>, percent: onion })}</p>
+      <div className="image-fit"><Stage width={width} height={height} zoom={zoom} label={t`${file}: after over before at ${onion}% opacity`}>
         <Layer side={before} width={width} height={height} />
         <Layer side={after} width={width} height={height} style={{ opacity: onion / 100 }} />
         {areas}</Stage></div>
-      <label className="image-slider">Before<input type="range" min="0" max="100" value={onion} onChange={event => setOnion(Number(event.target.value))} aria-label="After opacity" />After</label>
+      <label className="image-slider">{t('Before')}<input type="range" min="0" max="100" value={onion} onChange={event => setOnion(Number(event.target.value))} aria-label={t('After opacity')} />{t('After')}</label>
     </div>;
   } else {
     body = <div className="image-cell">
-      <p className="image-caption"><strong>Changed pixels</strong> in colour; everything else is the after-image in grey</p>
+      <p className="image-caption">{tx('{changed} in colour; everything else is the after-image in grey', { changed: <strong>{t('Changed pixels')}</strong> })}</p>
       <div className="image-fit">{ready
-        ? <Stage width={width} height={height} zoom={zoom} label={`${file}: changed pixels`} className="difference">
+        ? <Stage width={width} height={height} zoom={zoom} label={t`${file}: changed pixels`} className="difference">
           <div className="image-layer" style={{ width: '100%', height: '100%' }}><Pixels source={comparison.difference} /></div>{areas}</Stage>
         : <p className="image-missing">{summary}</p>}</div>
     </div>;
@@ -254,24 +256,25 @@ export default function ImageDiff({ repositoryId, file, source }) {
     <div className="diff-toolbar image-toolbar">
       <span className="image-summary" aria-live="polite">{summary}</span>
       <span className="image-controls">
-        {both && <div className="segmented" role="group" aria-label="Image view">
-          {IMAGE_MODES.map(item => <button type="button" key={item.id} aria-pressed={prefs.mode === item.id} title={item.title}
-            onClick={() => update({ mode: item.id })}>{item.label}</button>)}
+        {both && <div className="segmented" role="group" aria-label={t('Image view')}>
+          {IMAGE_MODES.map(item => <button type="button" key={item.id} aria-pressed={prefs.mode === item.id} title={t(item.title)}
+            onClick={() => update({ mode: item.id })}>{t(item.label)}</button>)}
         </div>}
-        {both && <label className="image-toggle" title="Draw a numbered rectangle around each area where pixels changed">
-          <input type="checkbox" checked={prefs.areas} onChange={event => update({ areas: event.target.checked })} />Changed areas</label>}
-        <div className="segmented" role="group" aria-label="Zoom">
-          {[['fit', 'Fit', 'Fit the image in the panel'], ['1', '1:1', 'One screen pixel per image pixel'], ['2', '2:1', 'Two screen pixels per image pixel']]
+        {both && <label className="image-toggle" title={t('Draw a numbered rectangle around each area where pixels changed')}>
+          <input type="checkbox" checked={prefs.areas} onChange={event => update({ areas: event.target.checked })} />{t('Changed areas')}</label>}
+        <div className="segmented" role="group" aria-label={t('Zoom')}>
+          {[['fit', t('Fit'), t('Fit the image in the panel')], ['1', '1:1', t('One screen pixel per image pixel')], ['2', '2:1', t('Two screen pixels per image pixel')]]
             .map(([id, text, title]) => <button type="button" key={id} aria-pressed={zoom === id} title={title} onClick={() => setZoom(id)}>{text}</button>)}
         </div>
       </span>
     </div>
     <div className="image-view">{body}</div>
-    {regions.length > 0 && <div className="image-regions" role="group" aria-label="Changed areas">
+    {regions.length > 0 && <div className="image-regions" role="group" aria-label={t('Changed areas')}>
       {regions.map((region, index) => <button type="button" key={index} aria-pressed={active === index}
-        onClick={() => setActive(active === index ? null : index)} title={`${region.pixels} changed pixels${comparison.scale < 1 ? ' (counted at the compared scale)' : ''}`}>
+        onClick={() => setActive(active === index ? null : index)} title={comparison.scale < 1 ? tn(region.pixels, '{n} changed pixel (counted at the compared scale)', '{n} changed pixels (counted at the compared scale)')
+          : tn(region.pixels, '{n} changed pixel', '{n} changed pixels')}>
         <span className="image-area-number">{index + 1}</span>{regionLabel(region)}</button>)}
-      {comparison.more > 0 && <span className="muted">and {comparison.more} smaller {comparison.more === 1 ? 'area' : 'areas'} not drawn</span>}
+      {comparison.more > 0 && <span className="muted">{tn(comparison.more, 'and {n} smaller area not drawn', 'and {n} smaller areas not drawn')}</span>}
     </div>}
   </div>;
 }

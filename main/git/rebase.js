@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Rebase, including the interactive one.
@@ -33,17 +34,17 @@ function validateEntries(entries) {
   for (const entry of entries) {
     if (!entry || typeof entry !== 'object' || !TODO_ACTIONS.includes(entry.action)) throw new TypeError('Invalid rebase plan');
     validateOid(entry.oid);
-    if (seen.has(entry.oid)) throw new TypeError('A commit appears twice in the rebase plan');
+    if (seen.has(entry.oid)) throw new TypeError(ui`A commit appears twice in the rebase plan`);
     seen.add(entry.oid);
     if (entry.action === 'reword' && (typeof entry.message !== 'string' || entry.message.trim().length === 0)) {
-      throw new TypeError('A reworded commit needs a message');
+      throw new TypeError(ui`A reworded commit needs a message`);
     }
   }
   const kept = entries.filter(entry => entry.action !== 'drop');
-  if (kept.length === 0) throw new TypeError('A rebase plan must keep at least one commit');
+  if (kept.length === 0) throw new TypeError(ui`A rebase plan must keep at least one commit`);
   // Git refuses a todo whose first command melds into a commit that the plan
   // does not contain, and refusing here explains it before the process starts.
-  if (MELDING.has(kept[0].action)) throw new TypeError('The first commit cannot be squashed into the one before it');
+  if (MELDING.has(kept[0].action)) throw new TypeError(ui`The first commit cannot be squashed into the one before it`);
   return entries;
 }
 
@@ -134,5 +135,5 @@ export async function startRebase({ cwd, log, gitDir, stateDir, oid, entries = n
     operation: interactive ? 'Interactive rebase · 🌱 Twig supplies the plan and messages' : 'Rebase'
   });
   if (result.code === 0) return { ok: true, stopped: false, message: null };
-  return { ok: false, stopped: true, message: 'The rebase stopped. Resolve what it reports, then continue it.' };
+  return { ok: false, stopped: true, message: ui`The rebase stopped. Resolve what it reports, then continue it.` };
 }

@@ -1,5 +1,6 @@
 import { Bookmark, BookmarkX, ClipboardCopy, Combine, FileOutput, GitBranch, GitCommitHorizontal, GitMerge, Link2, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Trash2, Undo2, Upload } from 'lucide-react';
 import { squashable } from './squash-plan.js';
+import { t, tn } from '../../i18n/i18n.js';
 
 /**
  * What can be done to one ref itself — rename, upstream, publish, delete — the
@@ -15,35 +16,35 @@ export function refActionItems({ ref, remotes = [], head = {}, reason, handlers 
   if (ref.type === 'local') {
     const current = ref.name === head.branch;
     return [
-      { key: `ref-rename-${ref.fullName}`, icon: PenLine, text: `Rename ${ref.name}…`, reason, run: () => handlers.renameBranch(ref.name) },
-      { key: `ref-upstream-${ref.fullName}`, icon: Link2, text: `Set upstream for ${ref.name}…`, reason, run: () => handlers.setUpstream(ref) },
+      { key: `ref-rename-${ref.fullName}`, icon: PenLine, text: t`Rename ${ref.name}…`, reason, run: () => handlers.renameBranch(ref.name) },
+      { key: `ref-upstream-${ref.fullName}`, icon: Link2, text: t`Set upstream for ${ref.name}…`, reason, run: () => handlers.setUpstream(ref) },
       ...perRemote(name => ({
         key: `ref-publish-${ref.fullName}-${name}`, icon: Upload,
-        text: remoteNames.length > 1 ? `Publish ${ref.name} to ${name}` : `Publish ${ref.name}`,
+        text: remoteNames.length > 1 ? t`Publish ${ref.name} to ${name}` : t`Publish ${ref.name}`,
         reason, run: () => handlers.publishBranch(ref.name, name)
       })),
-      { key: `ref-delete-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete ${ref.name}`,
-        reason: reason || (current ? 'A checked-out branch cannot be deleted' : undefined),
+      { key: `ref-delete-${ref.fullName}`, icon: Trash2, danger: true, text: t`Delete ${ref.name}`,
+        reason: reason || (current ? t('A checked-out branch cannot be deleted') : undefined),
         run: () => handlers.deleteBranch(ref.name) }
     ];
   }
   if (ref.type === 'remote') {
     return [
-      { key: `ref-checkout-remote-${ref.fullName}`, icon: GitCommitHorizontal, text: `Check out ${ref.name} as a new branch…`, reason, run: () => handlers.checkoutRemote(ref) },
-      { key: `ref-delete-remote-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete ${ref.name} on its remote`, reason, run: () => handlers.deleteRemoteBranch(ref) }
+      { key: `ref-checkout-remote-${ref.fullName}`, icon: GitCommitHorizontal, text: t`Check out ${ref.name} as a new branch…`, reason, run: () => handlers.checkoutRemote(ref) },
+      { key: `ref-delete-remote-${ref.fullName}`, icon: Trash2, danger: true, text: t`Delete ${ref.name} on its remote`, reason, run: () => handlers.deleteRemoteBranch(ref) }
     ];
   }
   if (ref.type === 'tag') {
     return [
       ...perRemote(name => ({
         key: `ref-tag-publish-${ref.fullName}-${name}`, icon: Upload,
-        text: remoteNames.length > 1 ? `Publish ${ref.name} to ${name}` : `Publish ${ref.name}`,
+        text: remoteNames.length > 1 ? t`Publish ${ref.name} to ${name}` : t`Publish ${ref.name}`,
         reason, run: () => handlers.publishTag(ref, name)
       })),
-      { key: `ref-tag-delete-${ref.fullName}`, icon: Trash2, danger: true, text: `Delete tag ${ref.name}`, reason, run: () => handlers.deleteTag(ref) },
+      { key: `ref-tag-delete-${ref.fullName}`, icon: Trash2, danger: true, text: t`Delete tag ${ref.name}`, reason, run: () => handlers.deleteTag(ref) },
       ...perRemote(name => ({
         key: `ref-tag-delete-remote-${ref.fullName}-${name}`, icon: Trash2, danger: true,
-        text: remoteNames.length > 1 ? `Delete ${ref.name} on ${name}` : `Delete ${ref.name} on its remote`,
+        text: remoteNames.length > 1 ? t`Delete ${ref.name} on ${name}` : t`Delete ${ref.name} on its remote`,
         reason, run: () => handlers.deleteTagOnRemote(ref, name)
       }))
     ];
@@ -68,18 +69,18 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
   bisect = { active: false, done: false, terms: { bad: 'bad', good: 'good' } }, dirty = false, mark = null, handlers }) {
   const short = commit.oid.slice(0, 7);
   const busy = operation.kind !== 'none';
-  const reason = busy ? `Finish or abort the ${operation.kind} first` : undefined;
+  const reason = busy ? t`Finish or abort the ${operation.kind} first` : undefined;
   const branches = refs.filter(ref => ref.type === 'local' || ref.type === 'remote');
   const isHead = head.oid === commit.oid;
   const target = head.branch ? head.branch : 'HEAD';
 
   const items = [
-    { key: 'branch', icon: GitBranch, text: 'Create branch here…', reason, run: handlers.createBranch },
-    { key: 'tag', icon: Tag, text: 'Create tag here…', reason, run: handlers.createTag },
+    { key: 'branch', icon: GitBranch, text: t('Create branch here…'), reason, run: handlers.createBranch },
+    { key: 'tag', icon: Tag, text: t('Create tag here…'), reason, run: handlers.createTag },
     ...branches
       .filter(ref => ref.type === 'local' && ref.name !== head.branch)
-      .map(ref => ({ key: `checkout-${ref.fullName}`, icon: GitCommitHorizontal, text: `Check out ${ref.name}`, reason, run: () => handlers.checkoutBranch(ref.name) })),
-    { key: 'detach', icon: GitCommitHorizontal, text: `Check out ${short} (detached)`, reason: reason || (isHead && head.detached ? 'Already checked out' : undefined), run: handlers.checkoutCommit },
+      .map(ref => ({ key: `checkout-${ref.fullName}`, icon: GitCommitHorizontal, text: t`Check out ${ref.name}`, reason, run: () => handlers.checkoutBranch(ref.name) })),
+    { key: 'detach', icon: GitCommitHorizontal, text: t`Check out ${short} (detached)`, reason: reason || (isHead && head.detached ? t('Already checked out') : undefined), run: handlers.checkoutCommit },
     { separator: true }
   ];
 
@@ -91,16 +92,16 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
   for (const ref of branches) {
     if (ref.type === 'local' && ref.name === head.branch) continue;
     items.push({
-      key: `merge-${ref.fullName}`, icon: GitMerge, text: `Merge ${ref.name} into ${target}`,
+      key: `merge-${ref.fullName}`, icon: GitMerge, text: t`Merge ${ref.name} into ${target}`,
       reason, run: () => handlers.merge(ref.name, false)
     });
     items.push({
-      key: `merge-noff-${ref.fullName}`, icon: GitMerge, text: `Merge ${ref.name} into ${target} without fast-forward`,
+      key: `merge-noff-${ref.fullName}`, icon: GitMerge, text: t`Merge ${ref.name} into ${target} without fast-forward`,
       reason, run: () => handlers.merge(ref.name, true)
     });
   }
   if (branches.length === 0) {
-    items.push({ key: 'merge-none', icon: GitMerge, text: `Merge into ${target}`, reason: 'No branch points at this commit', run: () => {} });
+    items.push({ key: 'merge-none', icon: GitMerge, text: t`Merge into ${target}`, reason: t('No branch points at this commit'), run: () => {} });
   }
 
   // Rewording the tip is `commit --amend`, which needs nothing but HEAD. An
@@ -108,65 +109,65 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
   // condition a rebase has: a clean tree, a commit that has a parent to replay
   // from, and no merge, which a plain rebase does not replay at all.
   const rewordReason = reason || (isHead ? undefined
-    : commit.parents.length === 0 ? 'Only the newest commit can be reworded here; this one starts the history'
-      : commit.parents.length > 1 ? 'A merge commit cannot be replayed by rebase'
-        : dirty ? 'Commit or stash your changes first' : undefined);
+    : commit.parents.length === 0 ? t('Only the newest commit can be reworded here; this one starts the history')
+      : commit.parents.length > 1 ? t('A merge commit cannot be replayed by rebase')
+        : dirty ? t('Commit or stash your changes first') : undefined);
   items.push(
-    { key: 'reword', icon: PenLine, text: `Reword ${short}…`,
-      hint: isHead ? 'change the message only' : 'replays the commits after it', reason: rewordReason, run: handlers.reword },
-    { key: 'rebase', icon: Redo2, text: `Rebase ${target} onto ${short}`, reason: reason || (isHead ? 'This is already where the branch is' : undefined), run: handlers.rebase },
-    { key: 'rebase-i', icon: ListOrdered, text: `Rebase ${target} interactively from ${short}…`, reason: reason || (isHead ? 'There is nothing after this commit to replay' : undefined), run: handlers.interactiveRebase },
+    { key: 'reword', icon: PenLine, text: t`Reword ${short}…`,
+      hint: isHead ? t('change the message only') : t('replays the commits after it'), reason: rewordReason, run: handlers.reword },
+    { key: 'rebase', icon: Redo2, text: t`Rebase ${target} onto ${short}`, reason: reason || (isHead ? t('This is already where the branch is') : undefined), run: handlers.rebase },
+    { key: 'rebase-i', icon: ListOrdered, text: t`Rebase ${target} interactively from ${short}…`, reason: reason || (isHead ? t('There is nothing after this commit to replay') : undefined), run: handlers.interactiveRebase },
     { separator: true },
-    { key: 'cherry-pick', icon: Scissors, text: `Cherry-pick ${short} onto ${target}`, reason: reason || (isHead ? 'This commit is already the tip' : undefined), run: handlers.cherryPick },
-    { key: 'revert', icon: Undo2, text: `Revert ${short}`, reason, hint: commit.parents.length > 1 ? 'merge commit' : undefined, run: handlers.revert },
+    { key: 'cherry-pick', icon: Scissors, text: t`Cherry-pick ${short} onto ${target}`, reason: reason || (isHead ? t('This commit is already the tip') : undefined), run: handlers.cherryPick },
+    { key: 'revert', icon: Undo2, text: t`Revert ${short}`, reason, hint: commit.parents.length > 1 ? t('merge commit') : undefined, run: handlers.revert },
     { separator: true }
   );
 
-  for (const [mode, note] of [['soft', 'keep the changes staged'], ['mixed', 'keep the changes, unstaged'], ['hard', 'throw the changes away']]) {
+  for (const [mode, note] of [['soft', t('keep the changes staged')], ['mixed', t('keep the changes, unstaged')], ['hard', t('throw the changes away')]]) {
     items.push({
-      key: `reset-${mode}`, icon: RotateCcw, text: `Reset ${target} to ${short} — ${mode}`, hint: note,
+      key: `reset-${mode}`, icon: RotateCcw, text: t`Reset ${target} to ${short} — ${mode}`, hint: note,
       danger: mode === 'hard', reason, run: () => handlers.reset(mode)
     });
   }
 
   // Bisect checks commits out one after another, so it needs the same clean
   // working tree a checkout does; saying so is more use than hiding the item.
-  const bisectReason = reason || (dirty ? 'Commit or stash your changes first' : undefined);
+  const bisectReason = reason || (dirty ? t('Commit or stash your changes first') : undefined);
   const terms = bisect.terms || { bad: 'bad', good: 'good' };
   items.push({ separator: true });
   if (!bisect.active) {
     items.push({
-      key: 'bisect-start', icon: Target, text: `🌱 BugHunter (bisect) — start at ${short}`,
-      hint: 'this commit has the bug; find where it started', reason: bisectReason, run: () => handlers.bisect('start')
+      key: 'bisect-start', icon: Target, text: t`🌱 BugHunter (bisect) — start at ${short}`,
+      hint: t('this commit has the bug; find where it started'), reason: bisectReason, run: () => handlers.bisect('start')
     });
   } else {
     if (!bisect.done) {
       items.push(
-        { key: 'bisect-bad', icon: Target, text: `Mark ${short} as ${terms.bad}`, reason: bisectReason, run: () => handlers.bisect('bad') },
-        { key: 'bisect-good', icon: Target, text: `Mark ${short} as ${terms.good}`, reason: bisectReason, run: () => handlers.bisect('good') }
+        { key: 'bisect-bad', icon: Target, text: t`Mark ${short} as ${terms.bad}`, reason: bisectReason, run: () => handlers.bisect('bad') },
+        { key: 'bisect-good', icon: Target, text: t`Mark ${short} as ${terms.good}`, reason: bisectReason, run: () => handlers.bisect('good') }
       );
     }
-    items.push({ key: 'bisect-reset', icon: Target, text: 'Stop BugHunter and return', reason, run: () => handlers.bisect('reset') });
+    items.push({ key: 'bisect-reset', icon: Target, text: t('Stop BugHunter and return'), reason, run: () => handlers.bisect('reset') });
   }
 
   // Local marks are userData metadata, not a Git command, so nothing about an
   // unfinished operation blocks them: the item stays enabled mid-rebase.
   items.push(
     { separator: true },
-    { key: 'mark', icon: Bookmark, text: mark ? 'Edit mark and note…' : 'Mark this commit…', run: handlers.mark }
+    { key: 'mark', icon: Bookmark, text: mark ? t('Edit mark and note…') : t('Mark this commit…'), run: handlers.mark }
   );
-  if (mark) items.push({ key: 'unmark', icon: BookmarkX, text: 'Remove mark', run: handlers.removeMark });
+  if (mark) items.push({ key: 'unmark', icon: BookmarkX, text: t('Remove mark'), run: handlers.removeMark });
 
   if (handlers.exportPatch) {
     items.push({ separator: true }, {
-      key: 'export-patch', icon: FileOutput, text: `Export ${short} as a patch…`, hint: 'git format-patch',
-      reason: commit.parents.length > 1 ? 'A merge commit has no single diff to export' : undefined, run: handlers.exportPatch
+      key: 'export-patch', icon: FileOutput, text: t`Export ${short} as a patch…`, hint: 'git format-patch',
+      reason: commit.parents.length > 1 ? t('A merge commit has no single diff to export') : undefined, run: handlers.exportPatch
     });
   }
   items.push(
     { separator: true },
-    { key: 'copy-sha', icon: ClipboardCopy, text: 'Copy full SHA', run: () => handlers.copy(commit.oid, 'SHA') },
-    { key: 'copy-message', icon: ClipboardCopy, text: 'Copy message', run: () => handlers.copy([commit.subject, commit.body].filter(Boolean).join('\n\n'), 'Message') }
+    { key: 'copy-sha', icon: ClipboardCopy, text: t('Copy full SHA'), run: () => handlers.copy(commit.oid, 'SHA') },
+    { key: 'copy-message', icon: ClipboardCopy, text: t('Copy message'), run: () => handlers.copy([commit.subject, commit.body].filter(Boolean).join('\n\n'), t('Message')) }
   );
   return items;
 }
@@ -186,14 +187,14 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
 export function buildMultiCommitMenu({ commits, operation = { kind: 'none' }, dirty = false, onCurrentBranch = true,
   someOnCurrentBranch = onCurrentBranch, head = {}, handlers }) {
   const busy = operation.kind !== 'none';
-  const busyReason = busy ? `Finish or abort the ${operation.kind} first` : undefined;
+  const busyReason = busy ? t`Finish or abort the ${operation.kind} first` : undefined;
   const check = squashable(commits);
   const items = [];
   if (check.ok && onCurrentBranch) {
     items.push({
-      key: 'squash', icon: Combine, text: `Squash ${commits.length} commits into one…`,
-      hint: 'replays them as a single commit',
-      reason: busyReason || (dirty ? 'Commit or stash your changes first' : undefined),
+      key: 'squash', icon: Combine, text: tn(commits.length, 'Squash {n} commit into one…', 'Squash {n} commits into one…'),
+      hint: t('replays them as a single commit'),
+      reason: busyReason || (dirty ? t('Commit or stash your changes first') : undefined),
       run: handlers.squash
     });
     items.push({ separator: true });
@@ -202,30 +203,30 @@ export function buildMultiCommitMenu({ commits, operation = { kind: 'none' }, di
   // with the reason: which commits are on the branch is not visible at a glance.
   const target = head.branch || 'HEAD';
   const merge = commits.some(commit => commit.parents.length > 1)
-    ? 'A merge commit is selected; cherry-pick or revert merge commits one at a time' : undefined;
+    ? t('A merge commit is selected; cherry-pick or revert merge commits one at a time') : undefined;
   if (handlers.cherryPick) {
     items.push({
-      key: 'cherry-pick-many', icon: Scissors, text: `Cherry-pick ${commits.length} commits onto ${target}…`,
-      hint: 'oldest first', reason: busyReason || merge
-        || (someOnCurrentBranch ? `${onCurrentBranch ? 'These commits are' : 'Some of these commits are'} already on ${target}` : undefined),
+      key: 'cherry-pick-many', icon: Scissors, text: tn(commits.length, 'Cherry-pick {n} commit onto {target}…', 'Cherry-pick {n} commits onto {target}…', { target }),
+      hint: t('oldest first'), reason: busyReason || merge
+        || (someOnCurrentBranch ? (onCurrentBranch ? t`These commits are already on ${target}` : t`Some of these commits are already on ${target}`) : undefined),
       run: handlers.cherryPick
     });
   }
   if (handlers.revert) {
     items.push({
-      key: 'revert-many', icon: Undo2, text: `Revert ${commits.length} commits…`,
-      hint: 'newest first, one revert commit each', reason: busyReason || merge
-        || (!onCurrentBranch ? `Only commits on ${target} can be reverted here` : undefined),
+      key: 'revert-many', icon: Undo2, text: tn(commits.length, 'Revert {n} commit…', 'Revert {n} commits…'),
+      hint: t('newest first, one revert commit each'), reason: busyReason || merge
+        || (!onCurrentBranch ? t`Only commits on ${target} can be reverted here` : undefined),
       run: handlers.revert
     });
   }
   if (handlers.exportPatch) {
     items.push({
-      key: 'export-patches', icon: FileOutput, text: `Export ${commits.length} commits as a patch…`, hint: 'one file, oldest first',
-      reason: merge ? 'A merge commit is selected; it has no single diff to export' : undefined, run: handlers.exportPatch
+      key: 'export-patches', icon: FileOutput, text: tn(commits.length, 'Export {n} commit as a patch…', 'Export {n} commits as a patch…'), hint: t('one file, oldest first'),
+      reason: merge ? t('A merge commit is selected; it has no single diff to export') : undefined, run: handlers.exportPatch
     });
   }
   if (handlers.cherryPick || handlers.revert || handlers.exportPatch) items.push({ separator: true });
-  items.push({ key: 'copy-shas', icon: ClipboardCopy, text: `Copy ${commits.length} SHAs`, run: handlers.copyShas });
+  items.push({ key: 'copy-shas', icon: ClipboardCopy, text: tn(commits.length, 'Copy {n} SHA', 'Copy {n} SHAs'), run: handlers.copyShas });
   return items;
 }

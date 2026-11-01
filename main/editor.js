@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { validateFile } from './git/commit.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 
 /**
  * "Open in editor" and "Reveal in Finder" for a file of an open repository.
@@ -13,12 +14,12 @@ import { validateFile } from './git/commit.js';
  */
 
 export const EDITOR_PRESETS = Object.freeze([
-  { id: 'system', label: 'System default' },
+  { id: 'system', label: ui`System default` },
   { id: 'vscode', label: 'Visual Studio Code', macApp: 'Visual Studio Code', cli: 'code', winExe: 'Code.exe' },
   { id: 'cursor', label: 'Cursor', macApp: 'Cursor', cli: 'cursor', winExe: 'Cursor.exe' },
   { id: 'zed', label: 'Zed', macApp: 'Zed', cli: 'zed', winExe: 'Zed.exe' },
   { id: 'sublime', label: 'Sublime Text', macApp: 'Sublime Text', cli: 'subl', winExe: 'sublime_text.exe' },
-  { id: 'custom', label: 'Other application…' }
+  { id: 'custom', label: ui`Other application…` }
 ]);
 
 const PRESET_IDS = new Set(EDITOR_PRESETS.map(preset => preset.id));
@@ -51,7 +52,7 @@ const LAUNCHABLE = new Set([
 
 export function editorLabel(settings) {
   const value = normalizeEditorSettings(settings);
-  if (value.preset === 'custom') return value.customPath ? applicationName(value.customPath) : 'Other application';
+  if (value.preset === 'custom') return value.customPath ? applicationName(value.customPath) : ui`Other application`;
   return EDITOR_PRESETS.find(preset => preset.id === value.preset).label;
 }
 
@@ -141,7 +142,7 @@ export function planOpen({ settings, file, platform = process.platform, pathStri
     // An executable bit is the Linux way of saying "run me", extension or not.
     if (isLaunchable(file) || (platform !== 'win32' && executableBit)) {
       return { kind: 'refused', reason: 'launchable',
-        message: 'This file type would run as a program. Choose an editor in Settings to open it as text.' };
+        message: ui`This file type would run as a program. Choose an editor in Settings to open it as text.` };
     }
     return { kind: 'shell' };
   }
@@ -156,7 +157,7 @@ export function planOpen({ settings, file, platform = process.platform, pathStri
   const executable = findEditorExecutable(preset, { pathString, platform, exists });
   if (!executable) {
     return { kind: 'refused', reason: 'not-found',
-      message: `${preset.label} was not found on PATH (${preset.cli}). Install its command-line launcher or pick the application in Settings.` };
+      message: ui`${preset.label} was not found on PATH (${preset.cli}). Install its command-line launcher or pick the application in Settings.` };
   }
   return { kind: 'spawn', executable, args: [file], wait: false };
 }

@@ -2,6 +2,7 @@ import { runGit } from './exec.js';
 import { parseFileHistory, parseHistoryV1 } from './history-parser.js';
 import { validateFile, validateOid } from './commit.js';
 import { HISTORY_REFS } from './history-refs.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 const FORMAT = '%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b';
 const MIN_LIMIT = 1;
@@ -68,7 +69,7 @@ export function buildHistoryStreamArgv() {
 export async function loadHistoryPage({ cwd, log, limit = 250, skip = 0 }) {
   const argv = buildHistoryArgv({ limit, skip });
   const result = await runGit({ argv, cwd, log, operation: 'Read commit history' });
-  if (result.code !== 0) throw new Error('Git could not read commit history.');
+  if (result.code !== 0) throw new Error(ui`Git could not read commit history.`);
   const commits = parseHistoryV1(result.stdout);
   return { commits, nextSkip: commits.length < limit ? null : skip + commits.length };
 }
@@ -99,7 +100,7 @@ export function buildFileHistoryArgv(file, limit = 250) {
 export async function loadFileHistory({ cwd, log, file, limit = 250 }) {
   const argv = buildFileHistoryArgv(file, limit);
   const result = await runGit({ argv, cwd, log, operation: 'Read file history' });
-  if (result.code !== 0) throw new Error('Git could not read the history for this file.');
+  if (result.code !== 0) throw new Error(ui`Git could not read the history for this file.`);
   return { commits: parseFileHistory(result.stdout, file) };
 }
 
@@ -164,9 +165,9 @@ export async function searchHistory({ cwd, log, query, mode = 'message', limit =
   if (result.code !== 0) {
     if (mode === 'regex' && /regex|regular expression|Invalid|brack|paren/i.test(result.stderr)) {
       const reason = result.stderr.split('\n').map(line => line.replace(/^(fatal|error):\s*/, '').trim()).find(Boolean) || 'invalid pattern';
-      return { commits: [], truncated: false, invalid: `Git cannot use that pattern: ${reason}` };
+      return { commits: [], truncated: false, invalid: ui`Git cannot use that pattern: ${reason}` };
     }
-    throw new Error('Git could not search commit history.');
+    throw new Error(ui`Git could not search commit history.`);
   }
   const commits = parseHistoryV1(result.stdout);
   const truncated = commits.length >= limit;
@@ -197,9 +198,9 @@ export function buildRebaseTodoArgv(oid) {
 /** @param {{ cwd: string, log: import('../command-log.js').CommandLog, oid: string }} options */
 export async function loadRebaseCandidates({ cwd, log, oid }) {
   const result = await runGit({ argv: buildRebaseTodoArgv(oid), cwd, log, operation: 'Read commits to rebase' });
-  if (result.code !== 0) throw new Error('Git could not list the commits to rebase. This commit may not be behind the current branch.');
+  if (result.code !== 0) throw new Error(ui`Git could not list the commits to rebase. This commit may not be behind the current branch.`);
   const commits = parseHistoryV1(result.stdout);
-  if (commits.length === 0) throw new Error('There is nothing between this commit and the current branch to rebase.');
-  if (commits.length > MAX_REBASE_ENTRIES) throw new Error(`That is ${commits.length} commits. 🌱 Twig edits a rebase plan of at most ${MAX_REBASE_ENTRIES}.`);
+  if (commits.length === 0) throw new Error(ui`There is nothing between this commit and the current branch to rebase.`);
+  if (commits.length > MAX_REBASE_ENTRIES) throw new Error(ui`That is ${commits.length} commits. 🌱 Twig edits a rebase plan of at most ${MAX_REBASE_ENTRIES}.`);
   return commits;
 }

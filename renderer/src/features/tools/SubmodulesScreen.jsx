@@ -3,6 +3,7 @@ import { ArrowLeft, Boxes, Download, ExternalLink, RefreshCw } from 'lucide-reac
 import Button from '../../ui/Button.jsx';
 import OperationNote from '../../ui/OperationNote.jsx';
 import { submoduleAction, submoduleConsequence, submoduleState, submoduleUpdateCommand } from './tools-view.js';
+import { failureText, t, tr } from '../../i18n/i18n.js';
 
 /**
  * The submodules of this repository: where each is pinned, what is checked
@@ -22,7 +23,7 @@ export default function SubmodulesScreen({ repository, busy, refreshKey = 0, onB
     try {
       const list = await window.twig.getSubmodules(repository.id);
       if (epoch === generation.current) { setSubmodules(list); setError(''); }
-    } catch (failure) { if (epoch === generation.current) setError(failure.message || 'Could not read the submodules.'); }
+    } catch (failure) { if (epoch === generation.current) setError(failureText(failure, t('Could not read the submodules.'))); }
     finally { if (epoch === generation.current) setLoading(false); }
   }, [repository.id]);
   useEffect(() => { void refresh(); const token = generation; return () => { token.current++; }; }, [refresh, refreshKey]);
@@ -31,47 +32,47 @@ export default function SubmodulesScreen({ repository, busy, refreshKey = 0, onB
     setRunning(true); setNote('');
     try {
       const result = await window.twig.updateSubmodules(repository.id, all ? null : entries.map(entry => entry.path));
-      setNote(result.ok ? (all ? 'Submodules updated to their pinned commits.' : `${entries[0].path} is at its pinned commit.`) : { text: result.message, failed: !result.cancelled });
-    } catch (failure) { setNote({ text: failure.message || 'Could not update the submodules.', failed: true }); }
+      setNote(result.ok ? (all ? t('Submodules updated to their pinned commits.') : t`${entries[0].path} is at its pinned commit.`) : { text: tr(result.message), failed: !result.cancelled });
+    } catch (failure) { setNote({ text: failureText(failure, t('Could not update the submodules.')), failed: true }); }
     finally { setRunning(false); void refresh(); onChanged(); }
   }
   function confirmUpdate(entries, all = false) {
     onDialog({
-      type: 'confirm', danger: false, title: all ? 'Update all submodules' : `Update ${entries[0].path}`,
+      type: 'confirm', danger: false, title: all ? t('Update all submodules') : t`Update ${entries[0].path}`,
       command: submoduleUpdateCommand(all ? null : entries.map(entry => entry.path)),
-      consequence: submoduleConsequence(entries), confirmLabel: all ? 'Update all' : submoduleAction(entries[0]) || 'Update',
+      consequence: submoduleConsequence(entries), confirmLabel: all ? t('Update all') : submoduleAction(entries[0]) || t('Update'),
       onConfirm: () => void update(entries, all)
     });
   }
 
-  const reason = busy || running ? 'Git is working' : undefined;
-  return <section className="tool-screen" aria-label="Submodules">
+  const reason = busy || running ? t('Git is working') : undefined;
+  return <section className="tool-screen" aria-label={t('Submodules')}>
     <header className="panel-heading">
-      <Button icon={ArrowLeft} onClick={onBack}>Back to history</Button>
-      <div><Boxes aria-hidden="true" /><strong>Submodules</strong><span className="count">{submodules.length}</span></div>
+      <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
+      <div><Boxes aria-hidden="true" /><strong>{t('Submodules')}</strong><span className="count">{submodules.length}</span></div>
       <div className="tool-actions">
-        {running && <Button onClick={() => void window.twig.cancelRepositoryTool(repository.id)}>Cancel</Button>}
-        <Button icon={Download} className="primary" reason={reason || (submodules.length === 0 ? 'This repository has no submodules' : undefined)}
-          onClick={() => confirmUpdate(submodules, true)}>Update all…</Button>
-        <Button icon={RefreshCw} reason={reason} onClick={() => void refresh()}>Refresh</Button>
+        {running && <Button onClick={() => void window.twig.cancelRepositoryTool(repository.id)}>{t('Cancel')}</Button>}
+        <Button icon={Download} className="primary" reason={reason || (submodules.length === 0 ? t('This repository has no submodules') : undefined)}
+          onClick={() => confirmUpdate(submodules, true)}>{t('Update all…')}</Button>
+        <Button icon={RefreshCw} reason={reason} onClick={() => void refresh()}>{t('Refresh')}</Button>
       </div>
     </header>
-    <p className="tool-intro muted">A submodule is another repository pinned at one commit inside this one. The pin is part of your commits; what is checked out inside it may differ.</p>
+    <p className="tool-intro muted">{t('A submodule is another repository pinned at one commit inside this one. The pin is part of your commits; what is checked out inside it may differ.')}</p>
     <OperationNote note={note} onConsole={onConsole} onDismiss={() => setNote('')} />
-    {error && <p className="history-error" role="alert">{error}<button onClick={onConsole}>Show output</button></p>}
-    {loading && <div className="loading-shell" aria-label="Loading submodules">{Array.from({ length: 3 }, (_, index) => <div className="skeleton" key={index} />)}</div>}
-    {!loading && !error && submodules.length === 0 && <p className="empty-inline">This repository has no submodules.</p>}
-    <ul className="tool-list" aria-label="Submodules">
+    {error && <p className="history-error" role="alert">{error}<button onClick={onConsole}>{t('Show output')}</button></p>}
+    {loading && <div className="loading-shell" aria-label={t('Loading submodules')}>{Array.from({ length: 3 }, (_, index) => <div className="skeleton" key={index} />)}</div>}
+    {!loading && !error && submodules.length === 0 && <p className="empty-inline">{t('This repository has no submodules.')}</p>}
+    <ul className="tool-list" aria-label={t('Submodules')}>
       {submodules.map(entry => <li key={entry.path}>
         <div className="tool-item">
-          <strong>{entry.path}{entry.state !== 'pinned' && <span className="tool-badge">{entry.state === 'moved' ? 'Moved' : 'Not initialized'}</span>}</strong>
+          <strong>{entry.path}{entry.state !== 'pinned' && <span className="tool-badge">{entry.state === 'moved' ? t('Moved') : t('Not initialized')}</span>}</strong>
           <span>{submoduleState(entry)}</span>
-          {entry.url && <code className="tool-path" title={entry.url}>{entry.url}{entry.branch ? ` · tracks ${entry.branch}` : ''}</code>}
+          {entry.url && <code className="tool-path" title={entry.url}>{entry.url}{entry.branch ? ` · ${t`tracks ${entry.branch}`}` : ''}</code>}
         </div>
         <div className="tool-actions">
           {submoduleAction(entry) && <Button icon={Download} reason={reason} onClick={() => confirmUpdate([entry])}>{submoduleAction(entry)}…</Button>}
-          <Button icon={ExternalLink} reason={entry.state === 'uninitialized' ? 'Initialize it first: its files are not here yet' : undefined}
-            onClick={() => void onOpen(entry.path)}>Open as tab</Button>
+          <Button icon={ExternalLink} reason={entry.state === 'uninitialized' ? t('Initialize it first: its files are not here yet') : undefined}
+            onClick={() => void onOpen(entry.path)}>{t('Open as tab')}</Button>
         </div>
       </li>)}
     </ul>

@@ -1,9 +1,10 @@
 import { AlignLeft, ClipboardCopy, EyeOff, FilePenLine, FileText, FolderOpen, History, Minus, Plus, Trash2, Undo2 } from 'lucide-react';
 import { ignoreChoices } from '../../../../main/git/ignore-plan.js';
+import { t, tr } from '../../i18n/i18n.js';
 
 /** What the file manager is called here, for menu text. */
 export function fileManagerName(platform) {
-  return platform === 'darwin' ? 'Finder' : platform === 'win32' ? 'Explorer' : 'file manager';
+  return platform === 'darwin' ? 'Finder' : platform === 'win32' ? 'Explorer' : t('file manager');
 }
 
 /**
@@ -28,7 +29,7 @@ export function absolutePath(root, file) {
 export function ignoreMenuItems({ path, run, reason }) {
   let choices;
   try { choices = ignoreChoices(path); } catch { return []; }
-  return choices.map(choice => ({ key: `ignore-${choice.kind}`, icon: EyeOff, text: choice.text, hint: choice.pattern, reason,
+  return choices.map(choice => ({ key: `ignore-${choice.kind}`, icon: EyeOff, text: tr(choice.text), hint: choice.pattern, reason,
     run: () => run(choice) }));
 }
 
@@ -49,19 +50,19 @@ export function ignoreMenuItems({ path, run, reason }) {
  * uncommitted one — whole, not as a diff.
  */
 export function buildFileMenu({ path, platform, editor = 'System default', blameOid = null, tracked = true, move = null, discard = null, handlers }) {
-  const editorText = !editor || editor === 'System default' ? 'Open in default editor' : `Open in ${editor}`;
+  const editorText = !editor || editor === 'System default' ? t('Open in default editor') : t`Open in ${editor}`;
   const items = [
     { key: 'open-editor', icon: FilePenLine, text: editorText, run: () => handlers.openInEditor(path) },
-    { key: 'reveal', icon: FolderOpen, text: platform === 'darwin' ? 'Reveal in Finder' : `Show in ${fileManagerName(platform)}`, run: () => handlers.reveal(path) },
-    handlers.viewFile && { key: 'view-file', icon: FileText, text: 'View full file', hint: move ? 'As it is now' : 'As of this commit', run: () => handlers.viewFile(path) },
+    { key: 'reveal', icon: FolderOpen, text: platform === 'darwin' ? t('Reveal in Finder') : platform === 'win32' ? t('Show in Explorer') : t('Show in file manager'), run: () => handlers.reveal(path) },
+    handlers.viewFile && { key: 'view-file', icon: FileText, text: t('View full file'), hint: move ? t('As it is now') : t('As of this commit'), run: () => handlers.viewFile(path) },
     { separator: true },
-    { key: 'copy-path', icon: ClipboardCopy, text: 'Copy path', hint: 'relative', run: () => handlers.copyPath(path) },
-    { key: 'copy-full-path', icon: ClipboardCopy, text: 'Copy full path', run: () => handlers.copyFullPath(path) }
+    { key: 'copy-path', icon: ClipboardCopy, text: t('Copy path'), hint: t('relative'), run: () => handlers.copyPath(path) },
+    { key: 'copy-full-path', icon: ClipboardCopy, text: t('Copy full path'), run: () => handlers.copyFullPath(path) }
   ];
   if (move) {
     items.push({ separator: true }, move === 'unstage'
-      ? { key: 'unstage', icon: Minus, text: 'Unstage', reason: handlers.moveReason, run: () => handlers.move(path) }
-      : { key: 'stage', icon: Plus, text: 'Stage', reason: handlers.moveReason, run: () => handlers.move(path) });
+      ? { key: 'unstage', icon: Minus, text: t('Unstage'), reason: handlers.moveReason, run: () => handlers.move(path) }
+      : { key: 'stage', icon: Plus, text: t('Stage'), reason: handlers.moveReason, run: () => handlers.move(path) });
   }
   if (discard === 'untracked' && handlers.ignore) {
     const ignore = ignoreMenuItems({ path, run: handlers.ignore, reason: handlers.ignoreReason });
@@ -69,15 +70,15 @@ export function buildFileMenu({ path, platform, editor = 'System default', blame
   }
   if (discard) {
     items.push(discard === 'untracked'
-      ? { key: 'discard', icon: Trash2, danger: true, text: path.endsWith('/') ? 'Delete folder…' : 'Delete file…', reason: handlers.discardReason, run: () => handlers.discard(path) }
-      : { key: 'discard', icon: Undo2, danger: true, text: 'Discard changes…', reason: handlers.discardReason, run: () => handlers.discard(path) });
+      ? { key: 'discard', icon: Trash2, danger: true, text: path.endsWith('/') ? t('Delete folder…') : t('Delete file…'), reason: handlers.discardReason, run: () => handlers.discard(path) }
+      : { key: 'discard', icon: Undo2, danger: true, text: t('Discard changes…'), reason: handlers.discardReason, run: () => handlers.discard(path) });
   }
   if (tracked) {
     items.push(
       { separator: true },
-      { key: 'file-history', icon: History, text: 'File history', hint: 'Every commit that changed this file', run: () => handlers.fileHistory(path) },
-      { key: 'blame', icon: AlignLeft, text: 'Blame history', hint: 'Who changed each line',
-        reason: blameOid ? undefined : 'Select a committed version first', run: () => handlers.blame(path, blameOid) }
+      { key: 'file-history', icon: History, text: t('File history'), hint: t('Every commit that changed this file'), run: () => handlers.fileHistory(path) },
+      { key: 'blame', icon: AlignLeft, text: t('Blame history'), hint: t('Who changed each line'),
+        reason: blameOid ? undefined : t('Select a committed version first'), run: () => handlers.blame(path, blameOid) }
     );
   }
   return items.filter(Boolean);

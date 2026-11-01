@@ -1,4 +1,6 @@
 import { app, clipboard, dialog, ipcMain } from 'electron';
+import { nt } from './language.js';
+import { ui } from '../renderer/src/i18n/i18n.js';
 import { createBumper } from './automation/bump.js';
 import { isTrustedPage } from './security.js';
 import { registerHistoryIpc } from './history-ipc.js';
@@ -28,7 +30,7 @@ function validSender(event, getWindow, entryUrl, args, count) {
     && isTrustedPage(event.senderFrame.url, entryUrl) && args.length === count;
 }
 
-export function registerIpc(getWindow, entryUrl, { journal, repositories, git, undo, marks, automations, automationRuns, automationPath, editor, fetchSettings, updateSettings, mcpSettings }) {
+export function registerIpc(getWindow, entryUrl, { journal, repositories, git, undo, marks, automations, automationRuns, automationPath, editor, fetchSettings, updateSettings, mcpSettings, language }) {
   // The "Bump version" action: planned for the commit panel and agent proposals, applied by their commit.
   const bumper = createBumper({ log: journal, automations });
   registerUpdateIpc(getWindow, entryUrl, { journal, store: updateSettings });
@@ -62,13 +64,23 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
     // So does the MCP server's idea of "the repository open in 🌱 Twig".
     if (args[0] === null) { void watcher.watch(null); fetcher.follow(null); mcp.follow(null); return true; }
     const repo = repositories.snapshot().repositories.find(item => item.id === args[0] && item.available);
-    if (!repo) throw new Error('Repository is unavailable');
+    if (!repo) throw new Error(ui`Repository is unavailable`);
     void watcher.watch(repo.path);
     fetcher.follow(repo.path);
     mcp.follow(repo.id);
     const window = getWindow();
     if (window && !hooked.has(window)) { hooked.add(window); window.once('closed', () => { fetcher.follow(null); mcp.follow(null); }); }
     return true;
+  });
+  // The interface language. The renderer asks before its first paint and
+  // loads its own catalog; main switches the menu bar and native dialogs.
+  ipcMain.handle('language:get', (event, ...args) => {
+    if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid language request');
+    return language.get();
+  });
+  ipcMain.handle('language:set', (event, ...args) => {
+    if (!validSender(event, getWindow, entryUrl, args, 1) || typeof args[0] !== 'string' || args[0].length > 16) throw new Error('Invalid language request');
+    return language.set(args[0]);
   });
   ipcMain.handle('app:info', (event, ...args) => {
     if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid app information request');
@@ -81,7 +93,7 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
   ipcMain.handle('repositories:open', async (event, ...args) => {
     if (!validSender(event, getWindow, entryUrl, args, 0)) throw new Error('Invalid repository request');
     const window = getWindow();
-    const choice = await dialog.showOpenDialog(window, { title: 'Open Git repository', properties: ['openDirectory'] });
+    const choice = await dialog.showOpenDialog(window, { title: nt('Open Git repository'), properties: ['openDirectory'] });
     if (choice.canceled || !choice.filePaths[0]) return repositories.snapshot();
     const directory = choice.filePaths[0];
     // Before the first `git status`: a folder whose own Git config runs
@@ -89,11 +101,10 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, git, u
     const risky = await findRiskyConfig(directory, journal);
     if (risky.length) {
       const answer = await dialog.showMessageBox(window, {
-        type: 'warning', buttons: ['Cancel', 'Open anyway'], defaultId: 0, cancelId: 0, noLink: true,
-        message: 'This repository’s Git settings run programs',
+        type: 'warning', buttons: [nt('Cancel'), nt('Open anyway')], defaultId: 0, cancelId: 0, noLink: true,
+        message: nt('This repository’s Git settings run programs'),
         detail: `${risky.map(({ key, value }) => `${key} = ${value.length > 200 ? `${value.slice(0, 200)}…` : value}`).join('\n')}\n\n`
-          + 'Git runs these while 🌱 Twig only reads the repository — on opening it and on every refresh. '
-          + 'Open it only if you trust where this folder came from. A fresh clone never carries these settings.'
+          + nt('Git runs these while 🌱 Twig only reads the repository — on opening it and on every refresh. Open it only if you trust where this folder came from. A fresh clone never carries these settings.')
       });
       if (answer.response !== 1) return repositories.snapshot();
     }

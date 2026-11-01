@@ -47,7 +47,7 @@ try {
   await writeFile(path.join(profile, 'repositories.json'), JSON.stringify({
     repositories: [{ id: cwd, path: cwd, name: 'race' }], activeId: cwd, sandboxHidden: true
   }));
-  const env = { ...process.env, PATH: `${wrapper}${path.delimiter}${process.env.PATH}` };
+  const env = { ...process.env, TWIG_LANGUAGE: 'en', PATH: `${wrapper}${path.delimiter}${process.env.PATH}` };
   delete env.ELECTRON_RUN_AS_NODE; delete env.TWIG_DEV;
   app = await electron.launch({ args: ['.', `--user-data-dir=${profile}`], env });
   const page = await app.firstWindow();

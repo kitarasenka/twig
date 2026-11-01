@@ -2,6 +2,7 @@ import { runGit } from './exec.js';
 import { buildPatch } from './patch-builder.js';
 import { loadWorktree } from './worktree.js';
 import { loadOperationState } from './operation-state.js';
+import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * Index-writing operations. Every path reaches Git as `:(literal)<path>`
@@ -17,9 +18,9 @@ function validatePath(file) {
   return `:(literal)${file}`;
 }
 
-async function mutate({ cwd, log, argv, operation, stdin = null }) {
+async function mutate({ cwd, log, argv, operation, failed, stdin = null }) {
   const result = await runGit({ argv, cwd, log, operation, stdin });
-  if (result.code !== 0) throw new Error(`${operation} failed. See the command console.`);
+  if (result.code !== 0) throw new Error(failed);
   return result;
 }
 
@@ -53,7 +54,7 @@ export function buildStageEverythingArgv() {
 
 /** @param {{ cwd: string, log: object }} options */
 export function stageEverything({ cwd, log }) {
-  return mutate({ cwd, log, argv: buildStageEverythingArgv(), operation: 'Stage all changes' });
+  return mutate({ cwd, log, argv: buildStageEverythingArgv(), operation: 'Stage all changes', failed: ui`Stage all changes failed. See the command console.` });
 }
 
 /** Everything Git already tracks: modifications and deletions, never a new file. */
@@ -87,12 +88,12 @@ export function buildApplyArgv(reverse) {
 
 /** @param {{ cwd: string, log: object, path: string }} options */
 export function stageFile({ cwd, log, path }) {
-  return mutate({ cwd, log, argv: buildStageArgv(path), operation: 'Stage file' });
+  return mutate({ cwd, log, argv: buildStageArgv(path), operation: 'Stage file', failed: ui`Stage file failed. See the command console.` });
 }
 
 /** @param {{ cwd: string, log: object, path: string, unborn?: boolean }} options */
 export function unstageFile({ cwd, log, path, unborn = false }) {
-  return mutate({ cwd, log, argv: buildUnstageArgv(path, unborn), operation: 'Unstage file' });
+  return mutate({ cwd, log, argv: buildUnstageArgv(path, unborn), operation: 'Unstage file', failed: ui`Unstage file failed. See the command console.` });
 }
 
 /**
@@ -102,7 +103,7 @@ export function unstageFile({ cwd, log, path, unborn = false }) {
  * @param {{ cwd: string, log: object, path: string }} options
  */
 export function intentToAdd({ cwd, log, path }) {
-  return mutate({ cwd, log, argv: buildIntentToAddArgv(path), operation: 'Track new file' });
+  return mutate({ cwd, log, argv: buildIntentToAddArgv(path), operation: 'Track new file', failed: ui`Track new file failed. See the command console.` });
 }
 
 /**
@@ -118,7 +119,8 @@ export async function applySelection({ cwd, log, path, hunks, selection, reverse
   if (patch === null) return false;
   await mutate({
     cwd, log, argv: buildApplyArgv(reverse), stdin: patch,
-    operation: reverse ? 'Unstage selection' : 'Stage selection'
+    operation: reverse ? 'Unstage selection' : 'Stage selection',
+    failed: reverse ? ui`Unstage selection failed. See the command console.` : ui`Stage selection failed. See the command console.`
   });
   return true;
 }
@@ -138,7 +140,8 @@ async function readBulkTarget({ cwd, log }) {
   const tree = await loadWorktree({ cwd, log });
   const conflicts = tree.unstaged.filter(entry => entry.status === 'U').length;
   if (conflicts) {
-    throw new Error(`Resolve ${conflicts} conflicted file${conflicts === 1 ? '' : 's'} first: a bulk action would mark ${conflicts === 1 ? 'it' : 'them'} resolved as ${conflicts === 1 ? 'it is' : 'they are'}.`);
+    throw new Error(uiN(conflicts, 'Resolve {n} conflicted file first: a bulk action would mark it resolved as it is.',
+      'Resolve {n} conflicted files first: a bulk action would mark them resolved as they are.'));
   }
   return tree;
 }
@@ -179,11 +182,14 @@ export async function stageAll({ cwd, log, scope, only = null }) {
   const paths = narrow(scope === 'tracked' ? tree.unstaged : tree.untracked, only);
   if (paths.length === 0) return 0;
   if (scope === 'tracked' && only === null) {
-    await mutate({ cwd, log, argv: buildStageTrackedArgv(), operation: 'Stage all tracked changes' });
+    await mutate({ cwd, log, argv: buildStageTrackedArgv(), operation: 'Stage all tracked changes', failed: ui`Stage all tracked changes failed. See the command console.` });
   } else {
     const what = scope === 'tracked' ? 'changed file' : 'untracked path';
     await mutate({
       cwd, log, argv: buildStagePathsArgv(), operation: `Stage ${paths.length} ${what}${paths.length === 1 ? '' : 's'}`,
+      failed: scope === 'tracked'
+        ? uiN(paths.length, 'Stage {n} changed file failed. See the command console.', 'Stage {n} changed files failed. See the command console.')
+        : uiN(paths.length, 'Stage {n} untracked path failed. See the command console.', 'Stage {n} untracked paths failed. See the command console.'),
       stdin: pathList(paths)
     });
   }
@@ -205,16 +211,17 @@ export async function stageAll({ cwd, log, scope, only = null }) {
 export async function unstageAll({ cwd, log, only = null }) {
   if (only === null) {
     const state = await loadOperationState({ cwd, log });
-    if (state.kind !== 'none') throw new Error(`Finish or abort the ${state.kind} first: unstaging everything would cancel it.`);
+    if (state.kind !== 'none') throw new Error(ui`Finish or abort the ${state.kind} first: unstaging everything would cancel it.`);
   }
   const tree = await readBulkTarget({ cwd, log });
   const paths = narrow(tree.staged, only);
   if (paths.length === 0) return 0;
-  if (only === null) await mutate({ cwd, log, argv: buildUnstageAllArgv(), operation: 'Unstage everything' });
+  if (only === null) await mutate({ cwd, log, argv: buildUnstageAllArgv(), operation: 'Unstage everything', failed: ui`Unstage everything failed. See the command console.` });
   else {
     await mutate({
       cwd, log, argv: buildUnstagePathsArgv(Boolean(tree.branch?.unborn)),
-      operation: `Unstage ${paths.length} file${paths.length === 1 ? '' : 's'}`, stdin: pathList(paths)
+      operation: `Unstage ${paths.length} file${paths.length === 1 ? '' : 's'}`, stdin: pathList(paths),
+      failed: uiN(paths.length, 'Unstage {n} file failed. See the command console.', 'Unstage {n} files failed. See the command console.')
     });
   }
   return paths.length;

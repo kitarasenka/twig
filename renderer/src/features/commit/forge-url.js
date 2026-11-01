@@ -7,9 +7,10 @@
  * credentials or an unknown transport yields no link at all — the panel then
  * shows plain text, never a broken or secret-bearing address.
  *
- * No imports: Vite loads this for the commit panel and Node loads it in the
- * self-check, and both read the same file.
+ * Only the i18n module is imported: Vite loads this for the commit panel and
+ * Node loads it in the self-check, and both read the same file.
  */
+import { t } from '../../i18n/i18n.js';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -113,5 +114,5 @@ const LABELS = { github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket' };
 
 /** Human name of a forge id. */
 export function forgeLabel(forge) {
-  return LABELS[forge] || 'the remote';
+  return LABELS[forge] || t('the remote');
 }

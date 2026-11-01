@@ -2,6 +2,7 @@ import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
 import { validateRefName } from './refs-ops.js';
 import { buildEditorEnv } from './rebase.js';
+import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * The operations that move or rewrite history: merge, cherry-pick, revert,
@@ -56,9 +57,9 @@ export function buildRevertArgv(oid, mainline = null) {
 export const MAX_PICKED = 100;
 
 function pickedOids(oids) {
-  if (!Array.isArray(oids) || oids.length < 2 || oids.length > MAX_PICKED) throw new TypeError('Choose between 2 and 100 commits');
+  if (!Array.isArray(oids) || oids.length < 2 || oids.length > MAX_PICKED) throw new TypeError(ui`Choose between 2 and 100 commits`);
   oids.forEach(validateOid);
-  if (new Set(oids.map(oid => oid.toLowerCase())).size !== oids.length) throw new TypeError('A commit is named twice');
+  if (new Set(oids.map(oid => oid.toLowerCase())).size !== oids.length) throw new TypeError(ui`A commit is named twice`);
   return oids;
 }
 
@@ -90,7 +91,7 @@ export function buildResetArgv(mode, oid) {
 
 export function buildSequencerArgv(kind, step) {
   const steps = Object.hasOwn(SEQUENCER_STEPS, kind) ? SEQUENCER_STEPS[kind] : null;
-  if (!steps || !steps.includes(step)) throw new TypeError('This operation cannot be continued that way');
+  if (!steps || !steps.includes(step)) throw new TypeError(ui`This operation cannot be continued that way`);
   return [kind, `--${step}`];
 }
 
@@ -106,25 +107,25 @@ const LABELS = {
  * `loadOperationState`, which is what tells the two apart.
  * @returns {Promise<{ ok: boolean, message: ?string }>}
  */
-async function run({ cwd, log, gitDir, argv, operation, messagesFile = null }) {
+async function run({ cwd, log, gitDir, argv, operation, failed, messagesFile = null }) {
   const result = await runGit({ argv, cwd, log, operation, env: buildEditorEnv({ gitDir, messagesFile }) });
   if (result.code === 0) return { ok: true, message: null };
-  return { ok: false, message: `${operation} did not finish. Show output in the console.` };
+  return { ok: false, message: failed };
 }
 
 /** @param {{ cwd: string, log: object, gitDir: string, revision: string, noFf?: boolean }} options */
 export function merge({ cwd, log, gitDir, revision, noFf = false }) {
-  return run({ cwd, log, gitDir, argv: buildMergeArgv(revision, { noFf }), operation: LABELS.merge });
+  return run({ cwd, log, gitDir, argv: buildMergeArgv(revision, { noFf }), operation: LABELS.merge, failed: ui`Merge did not finish. Show output in the console.` });
 }
 
 /** @param {{ cwd: string, log: object, gitDir: string, oid: string }} options */
 export function cherryPick({ cwd, log, gitDir, oid }) {
-  return run({ cwd, log, gitDir, argv: buildCherryPickArgv(oid), operation: LABELS['cherry-pick'] });
+  return run({ cwd, log, gitDir, argv: buildCherryPickArgv(oid), operation: LABELS['cherry-pick'], failed: ui`Cherry-pick did not finish. Show output in the console.` });
 }
 
 /** @param {{ cwd: string, log: object, gitDir: string, oid: string, mainline?: ?number }} options */
 export function revert({ cwd, log, gitDir, oid, mainline = null }) {
-  return run({ cwd, log, gitDir, argv: buildRevertArgv(oid, mainline), operation: LABELS.revert });
+  return run({ cwd, log, gitDir, argv: buildRevertArgv(oid, mainline), operation: LABELS.revert, failed: ui`Revert did not finish. Show output in the console.` });
 }
 
 /**
@@ -135,23 +136,34 @@ export function revert({ cwd, log, gitDir, oid, mainline = null }) {
 export async function findMergeCommits({ cwd, log, oids }) {
   pickedOids(oids);
   const result = await runGit({ cwd, log, argv: ['rev-list', '--no-walk=unsorted', '--min-parents=2', ...oids, '--'], operation: 'Background: check the selection for merge commits' });
-  if (result.code !== 0) throw new Error('Git could not read the selected commits.');
+  if (result.code !== 0) throw new Error(ui`Git could not read the selected commits.`);
   return result.stdout.split('\n').filter(Boolean);
 }
 
 /** @param {{ cwd: string, log: object, gitDir: string, oids: string[] }} options oldest first */
 export function cherryPickMany({ cwd, log, gitDir, oids }) {
-  return run({ cwd, log, gitDir, argv: buildCherryPickManyArgv(oids), operation: `Cherry-pick ${oids.length} commits` });
+  return run({ cwd, log, gitDir, argv: buildCherryPickManyArgv(oids), operation: `Cherry-pick ${oids.length} commits`,
+    failed: uiN(oids.length, 'Cherry-pick {n} commit did not finish. Show output in the console.', 'Cherry-pick {n} commits did not finish. Show output in the console.') });
 }
 
 /** @param {{ cwd: string, log: object, gitDir: string, oids: string[] }} options newest first */
 export function revertMany({ cwd, log, gitDir, oids }) {
-  return run({ cwd, log, gitDir, argv: buildRevertManyArgv(oids), operation: `Revert ${oids.length} commits` });
+  return run({ cwd, log, gitDir, argv: buildRevertManyArgv(oids), operation: `Revert ${oids.length} commits`,
+    failed: uiN(oids.length, 'Revert {n} commit did not finish. Show output in the console.', 'Revert {n} commits did not finish. Show output in the console.') });
 }
 
 /** @param {{ cwd: string, log: object, gitDir: string, mode: string, oid: string }} options */
 export function reset({ cwd, log, gitDir, mode, oid }) {
-  return run({ cwd, log, gitDir, argv: buildResetArgv(mode, oid), operation: `${LABELS.reset} --${mode}` });
+  return run({ cwd, log, gitDir, argv: buildResetArgv(mode, oid), operation: `${LABELS.reset} --${mode}`, failed: ui`Reset --${mode} did not finish. Show output in the console.` });
+}
+
+/** What the window says when `--continue`, `--skip` or `--abort` stops short. */
+function sequencerFailure(kind, step) {
+  if (kind === 'merge') return ui`Merge --${step} did not finish. Show output in the console.`;
+  if (kind === 'cherry-pick') return ui`Cherry-pick --${step} did not finish. Show output in the console.`;
+  if (kind === 'revert') return ui`Revert --${step} did not finish. Show output in the console.`;
+  if (kind === 'rebase') return ui`Rebase --${step} did not finish. Show output in the console.`;
+  return ui`Apply patches (am) --${step} did not finish. Show output in the console.`;
 }
 
 /** @param {{ cwd: string, log: object, gitDir: string, kind: string, step: string, messagesFile?: ?string }} options */
@@ -159,6 +171,7 @@ export function sequencer({ cwd, log, gitDir, kind, step, messagesFile = null })
   return run({
     cwd, log, gitDir, messagesFile,
     argv: buildSequencerArgv(kind, step),
-    operation: `${LABELS[kind]} --${step}`
+    operation: `${LABELS[kind]} --${step}`,
+    failed: sequencerFailure(kind, step)
   });
 }

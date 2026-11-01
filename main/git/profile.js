@@ -1,4 +1,5 @@
 import { runGit } from './exec.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 export const PROFILE_KEYS = Object.freeze(['user.name', 'user.email', 'core.editor', 'pull.rebase', 'init.defaultBranch',
   'commit.gpgSign', 'tag.gpgSign', 'gpg.format', 'user.signingKey', 'gpg.ssh.allowedSignersFile']);
@@ -32,7 +33,7 @@ export function parseProfile(output) {
 async function readValues({ cwd, log, env }, scope) {
   // Query only these non-secret keys: dumping all config would put credentials in the journal.
   const result = await runGit({ cwd, log, env, argv: ['config', ...(scope ? [`--${scope}`] : []), '--null', '--get-regexp', PATTERN] });
-  if (result.code !== 0 && result.code !== 1) throw new Error('Could not read Git profile. Show output in the console.');
+  if (result.code !== 0 && result.code !== 1) throw new Error(ui`Could not read Git profile. Show output in the console.`);
   return parseProfile(result.stdout);
 }
 
@@ -48,23 +49,23 @@ export async function saveProfileValue(options) {
   if (!PROFILE_KEYS.includes(key)) throw new TypeError('Unsupported Git profile field');
   if (expected !== null && (typeof expected !== 'string' || expected.length > 32768)) throw new TypeError('Invalid previous value');
   if (value !== null && (typeof value !== 'string' || !value.trim() || value.length > 4096 || /[\0\r\n]/.test(value))) {
-    throw new TypeError('Enter a non-empty, single-line value or remove the setting.');
+    throw new TypeError(ui`Enter a non-empty, single-line value or remove the setting.`);
   }
   if (Object.hasOwn(PROFILE_CHOICES, key) && value !== null && !PROFILE_CHOICES[key].includes(value)) {
-    throw new TypeError(key === 'pull.rebase' ? 'Choose a supported pull strategy.' : `Choose one of: ${PROFILE_CHOICES[key].join(', ')}.`);
+    throw new TypeError(key === 'pull.rebase' ? ui`Choose a supported pull strategy.` : ui`Choose one of: ${PROFILE_CHOICES[key].join(', ')}.`);
   }
   if (key === 'init.defaultBranch' && value !== null) {
-    if (value.startsWith('-') || value === 'HEAD') throw new TypeError('Invalid default branch name.');
+    if (value.startsWith('-') || value === 'HEAD') throw new TypeError(ui`Invalid default branch name.`);
     const checked = await runGit({ cwd, log, env, argv: ['check-ref-format', `refs/heads/${value}`] });
-    if (checked.code !== 0) throw new TypeError('Invalid default branch name.');
+    if (checked.code !== 0) throw new TypeError(ui`Invalid default branch name.`);
   }
   const previous = await readValues(options, scope);
-  if (previous[key] !== expected) throw new Error('This setting changed outside 🌱 Twig. Reload the profile before saving.');
+  if (previous[key] !== expected) throw new Error(ui`This setting changed outside 🌱 Twig. Reload the profile before saving.`);
   if (previous[key] !== value) {
     const argv = ['config', `--${scope}`, value === null ? '--unset-all' : '--replace-all', '--', key];
     if (value !== null) argv.push(value);
     const result = await runGit({ cwd, log, env, argv, operation: `Update ${scope} Git profile: ${key}` });
-    if (result.code !== 0) throw new Error('Git could not save this setting. Show output in the console.');
+    if (result.code !== 0) throw new Error(ui`Git could not save this setting. Show output in the console.`);
   }
   return loadProfile(options);
 }

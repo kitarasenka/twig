@@ -2,6 +2,7 @@ import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
 import { validateRefName } from './refs-ops.js';
 import { REFLOG_PAGE, moveBranchCommand, reflogRef, splitReflogSubject } from './reflog-plan.js';
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
  * The reflog: every place HEAD and each branch pointed to, newest first. It is
@@ -70,7 +71,7 @@ export async function findLost({ cwd, log, oids }) {
   if (!unique.length) return new Set();
   const result = await runGit({ cwd, log, argv: ['rev-list', '--ignore-missing', '--stdin', '--not', '--branches', '--tags', '--remotes', 'HEAD'],
     stdin: `${unique.join('\n')}\n`, operation: 'Read which reflog commits are on no branch' });
-  if (result.code !== 0) throw new Error('Git could not tell which commits are on no branch.');
+  if (result.code !== 0) throw new Error(ui`Git could not tell which commits are on no branch.`);
   const unreachable = new Set(result.stdout.split('\n').filter(Boolean));
   return new Set(unique.filter(oid => unreachable.has(oid)));
 }
@@ -83,7 +84,7 @@ export async function findLost({ cwd, log, oids }) {
 export async function loadReflog({ cwd, log, branch = null, skip = 0, limit = REFLOG_PAGE }) {
   const argv = buildReflogArgv({ branch, skip, limit });
   const result = await runGit({ cwd, log, argv, operation: `Read the reflog of ${branch ?? 'HEAD'}` });
-  if (result.code !== 0) throw new Error(`Git could not read the reflog of ${branch ?? 'HEAD'}.`);
+  if (result.code !== 0) throw new Error(ui`Git could not read the reflog of ${branch ?? 'HEAD'}.`);
   const all = parseReflog(result.stdout, skip, branch ?? 'HEAD');
   const entries = all.slice(0, limit);
   const lost = await findLost({ cwd, log, oids: entries.map(entry => entry.oid) });
@@ -103,20 +104,20 @@ async function read(cwd, log, argv, operation) {
 export async function moveBranch({ cwd, log, branch, oid, expected }) {
   validateRefName(branch); validateOid(oid); validateOid(expected);
   moveBranchCommand({ branch, oid, expected, current: false }); // refuses a name like `--force` before any Git runs
-  if (oid === expected) throw new Error(`${branch} already points at ${oid.slice(0, 7)}.`);
+  if (oid === expected) throw new Error(ui`${branch} already points at ${oid.slice(0, 7)}.`);
   const tip = await read(cwd, log, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`], 'Background: read branch before moving it');
-  if (tip.code !== 0) throw new Error(`There is no branch ${branch} any more. Create a branch from the commit instead.`);
-  if (tip.stdout.trim() !== expected) throw new Error(`${branch} moved since the reflog was read. Refresh and choose again.`);
+  if (tip.code !== 0) throw new Error(ui`There is no branch ${branch} any more. Create a branch from the commit instead.`);
+  if (tip.stdout.trim() !== expected) throw new Error(ui`${branch} moved since the reflog was read. Refresh and choose again.`);
   const target = await read(cwd, log, ['cat-file', '-e', `${oid}^{commit}`], 'Background: check the reflog commit still exists');
-  if (target.code !== 0) throw new Error(`Commit ${oid.slice(0, 7)} is no longer in this repository.`);
+  if (target.code !== 0) throw new Error(ui`Commit ${oid.slice(0, 7)} is no longer in this repository.`);
   const head = await read(cwd, log, ['symbolic-ref', '--quiet', 'HEAD'], 'Background: read the checked-out branch');
   const current = head.code === 0 && head.stdout.trim() === `refs/heads/${branch}`;
   const argv = moveBranchCommand({ branch, oid, expected, current });
   const result = await runGit({ cwd, log, argv, operation: `Move ${branch} to ${oid.slice(0, 7)} from the reflog` });
   if (result.code !== 0) {
     throw new Error(current
-      ? `Git refused to move ${branch}: uncommitted changes touch files that differ at ${oid.slice(0, 7)}. Commit or stash them first.`
-      : `Git refused to move ${branch}. See the command console.`);
+      ? ui`Git refused to move ${branch}: uncommitted changes touch files that differ at ${oid.slice(0, 7)}. Commit or stash them first.`
+      : ui`Git refused to move ${branch}. See the command console.`);
   }
   return { ok: true, message: null, undo: [branch, expected, oid, current] };
 }

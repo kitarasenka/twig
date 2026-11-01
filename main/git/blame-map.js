@@ -1,10 +1,12 @@
+import { ui } from '../../renderer/src/i18n/i18n.js';
 /**
  * Maps one line number in the *new* side of a `parent → commit` patch to the
  * range it corresponds to on the *old* (parent) side, so "Blame before this
  * change" can land on the right place instead of the same line number.
  *
- * No imports: this module is loaded both by Vite in the renderer and by Node
- * in the self-check, the same arrangement as `drop-plan.js`.
+ * Only the import-free i18n module is imported: this module is loaded both by
+ * Vite in the renderer and by Node in the self-check, the same arrangement as
+ * `drop-plan.js`.
  *
  * @param {{ hunks: { oldStart:number, oldLines:number, newStart:number, newLines:number, lines: { kind:'context'|'add'|'delete' }[] }[] }} patch
  * @param {number} newLine 1-based line number in the commit being blamed
@@ -28,11 +30,11 @@ export function mapLineBack(patch, newLine) {
         if (newNo === newLine) {
           if (deletes.length) {
             return { range: [deletes[0], deletes[deletes.length - 1]], exact: false,
-              note: 'This line was changed here; the lines it replaced are highlighted in the earlier version.' };
+              note: ui`This line was changed here; the lines it replaced are highlighted in the earlier version.` };
           }
           const around = Math.max(1, hunk.oldStart);
           return { range: [around, around], exact: false,
-            note: 'This line was added here; the surrounding lines of the earlier version are highlighted.' };
+            note: ui`This line was added here; the surrounding lines of the earlier version are highlighted.` };
         }
         newNo++;
         continue;
