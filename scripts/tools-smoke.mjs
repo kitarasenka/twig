@@ -248,6 +248,15 @@ esac
   const twin = path.join(cwd, '.claude', 'worktrees', 'fix-login-b');
   await git(['worktree', 'add', '-q', '-b', 'agent/fix-login-b', twin, baseTip]);
   await commit('login.txt', 'login\n', 'feat: login only', twin);
+  // A long file list must not eat the diff: the open diff keeps real height, on the board and when comparing.
+  await mkdir(path.join(twin, 'many'));
+  for (let index = 0; index < 40; index++) await writeFile(path.join(twin, 'many', `file-${index}.txt`), `many ${index}\n`);
+  await git(['add', '--', 'many'], twin);
+  await git(['commit', '--message', 'feat: many files'], twin);
+  const diffHasRoom = async where => {
+    const box = await boardDetail.locator('.diff-view').boundingBox();
+    assert.ok(box?.height >= 200, `${where}: the open diff is ${box?.height} px tall`);
+  };
   await page.locator('.workspace-tab:not([hidden]) .worktree-board').getByRole('button', { name: 'Refresh', exact: true }).click();
   await mainList.locator('li').filter({ hasText: 'fix-login-b' }).waitFor();
   await boardDetail.getByLabel('Compare with').selectOption({ label: 'fix-login-b (agent/fix-login-b)' });
@@ -256,9 +265,36 @@ esac
   await compareTable.getByRole('row', { name: /login\.txt/ }).getByText('+2 −0').waitFor();
   await compareTable.getByRole('button', { name: 'login.txt' }).click();
   await boardDetail.locator('.diff-view').getByText('logout').waitFor();
+  await diffHasRoom('comparing two worktrees');
   await page.screenshot({ path: 'artifacts/worktree-compare.png', animations: 'disabled' });
   await boardDetail.getByRole('button', { name: 'Stop comparing' }).click();
   await boardDetail.getByRole('list', { name: 'Files this worktree changed' }).waitFor();
+  await mainList.getByRole('button', { name: /fix-login-b/ }).click();
+  await boardDetail.getByRole('list', { name: 'Files this worktree changed' }).getByRole('button', { name: /many\/file-1\.txt/ }).click();
+  await boardDetail.locator('.diff-view').getByText('many 1').waitFor();
+  await diffHasRoom('a worktree with 41 changed files');
+  await page.screenshot({ path: 'artifacts/worktree-board-diff.png', animations: 'disabled' });
+  // In a short window the diff starts below the fold: opening a file brings it up.
+  const windowSize = size => app.evaluate(({ BrowserWindow }, next) => {
+    const [win] = BrowserWindow.getAllWindows();
+    const before = win.getContentSize();
+    win.setContentSize(...next);
+    return before;
+  }, size);
+  const fullSize = await windowSize([1000, 640]);
+  await page.waitForFunction(() => window.innerHeight === 640);
+  await boardDetail.getByRole('list', { name: 'Files this worktree changed' }).getByRole('button', { name: /many\/file-2\.txt/ }).click();
+  await boardDetail.locator('.diff-view').getByText('many 2').waitFor();
+  await diffHasRoom('a short window');
+  const revealed = await boardDetail.locator('.diff-view').evaluate(pane => {
+    const box = pane.getBoundingClientRect();
+    const view = pane.closest('.board-detail').getBoundingClientRect();
+    return box.top >= view.top && box.bottom <= view.bottom + 1;
+  });
+  assert.ok(revealed, 'the open diff is inside the detail pane of a short window');
+  await page.screenshot({ path: 'artifacts/worktree-board-diff-compact.png', animations: 'disabled' });
+  await windowSize(fullSize);
+  await mainList.getByRole('button', { name: /^fix-login(?!-b)/ }).click();
   await git(['worktree', 'remove', '--force', twin]);
   await git(['branch', '-D', 'agent/fix-login-b']);
   await page.locator('.workspace-tab:not([hidden]) .worktree-board').getByRole('button', { name: 'Refresh', exact: true }).click();

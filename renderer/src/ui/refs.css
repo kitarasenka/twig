@@ -191,22 +191,34 @@ button.danger:disabled { border-color: var(--border); }
 .board-list span { font-size: var(--text-sm); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .board-list small { color: var(--muted); font-size: var(--text-xs); }
 .tool-badge.strong { border-color: var(--accent); color: var(--accent); }
-.board-detail { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: auto; }
+.board-detail { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: auto; container-type: inline-size; }
 .board-detail-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-2);
   padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border); }
 .board-detail-head > div:first-child { display: grid; gap: 2px; min-width: 0; }
 .board-detail-head code { font-family: var(--font-mono); font-size: var(--text-xs); }
 .board-launch { margin: 0; padding: var(--space-2) var(--space-4); font-size: var(--text-xs); border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .board-launch code { font-family: var(--font-mono); user-select: all; }
-.board-review { display: flex; flex-direction: column; min-height: 0; }
+.board-review { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+/* The files and the open diff share the space: a long file list scrolls by itself and never takes the diff's height.
+   Stacked in a narrow detail and when comparing (the table needs the width), side by side otherwise. A short window
+   scrolls .board-detail rather than squeezing the diff. */
+.board-review.has-diff { min-height: 34rem; }
+.board-split { display: grid; flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); border-top: 1px solid var(--border); }
+.board-review.has-diff .board-split { grid-template-rows: minmax(0, 2fr) minmax(0, 3fr); }
+.board-split-files { min-height: 0; overflow: auto; }
 .board-summary { margin: 0; padding: var(--space-2) var(--space-4); font-size: var(--text-sm); }
 .board-commits { margin: 0; padding: 0 var(--space-4) var(--space-2); list-style: none; max-height: 9rem; overflow: auto; }
 .board-commits li { display: flex; gap: var(--space-2); font-size: var(--text-sm); line-height: 1.6; }
 .board-commits code { flex: none; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--accent); line-height: 1.9; }
 .board-commits span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.board-review .stash-files { max-height: none; border-top: 1px solid var(--border); }
+.board-review .stash-files { max-height: none; min-height: 0; }
 .board-review .stash-files small { margin-left: auto; }
 .board-review .diff-view { border-top: 1px solid var(--border); }
+@container (min-width: 640px) {
+  .board-review.has-diff:not(.board-compare) { min-height: 24rem; }
+  .board-review.has-diff:not(.board-compare) .board-split { grid-template-columns: minmax(200px, 30%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .board-review:not(.board-compare) .diff-view { border-top: 0; border-left: 1px solid var(--border); }
+}
 .squash-dialog { display: grid; gap: var(--space-2); }
 .squash-dialog textarea { width: 100%; font-family: var(--font-mono); font-size: var(--text-sm); }
 .squash-dialog .board-commits { padding: 0; }
@@ -217,7 +229,7 @@ button.danger:disabled { border-color: var(--border); }
   border-bottom: 1px solid var(--border); font-size: var(--text-sm); }
 .board-compare-pick label { display: flex; align-items: center; gap: var(--space-1); }
 .board-compare-pick svg { width: 14px; height: 14px; }
-.board-compare-files { width: 100%; border-collapse: collapse; font-size: var(--text-sm); border-top: 1px solid var(--border); }
+.board-compare-files { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .board-compare-files th, .board-compare-files td { padding: 0 var(--space-4); height: var(--row-height); text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .board-compare-files thead th { color: var(--muted); font-size: var(--text-xs); font-weight: 500; }
 .board-compare-files tbody th { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: normal; padding: 0; }

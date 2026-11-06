@@ -14,6 +14,24 @@ import { tx } from '../../i18n/rich.js';
 const shown = command => command.map(arg => (/[\s"'`$\\]/.test(arg) ? JSON.stringify(arg) : arg)).join(' ');
 
 /**
+ * Brings a file's diff into view when one opens: in a short window it starts
+ * below the fold, and the click would seem to do nothing. Only the detail
+ * pane moves — scrollIntoView would also shift the screens around it.
+ */
+function useRevealDiff(path) {
+  const pane = useRef(null);
+  useEffect(() => {
+    const scroller = pane.current?.closest('.board-detail');
+    if (!scroller) return;
+    const box = pane.current.getBoundingClientRect();
+    const view = scroller.getBoundingClientRect();
+    const below = box.bottom - view.bottom;
+    if (below > 0) scroller.scrollTop += Math.min(below, box.top - view.top);
+  }, [path]);
+  return pane;
+}
+
+/**
  * Every worktree of this repository, as a board for parallel work: each card
  * says what is not committed, how far its branch is from the base (the branch
  * of the main worktree) and when it last changed. Choosing a card shows
@@ -221,32 +239,35 @@ export default function WorktreesScreen({ repository, platform, busy, refreshKey
 
 /** What one worktree changed since its branch left the base: its commits, then every file. */
 function Review({ review, diff, base, onFile }) {
+  const diffPane = useRevealDiff(diff?.path);
   if (!review) return <div className="loading-shell" aria-label={t('Reading what this worktree changed')}><div className="skeleton" /></div>;
   if (review.error) return <p role="alert" className="empty-inline">{review.error}</p>;
   const committed = review.commits.length;
-  return <div className="board-review">
+  return <div className={`board-review${diff ? ' has-diff' : ''}`}>
     <p className="board-summary">{review.fork ? t`Since it left ${base}` : t('Not committed yet')}: {tn(committed, '{n} commit', '{n} commits')}, {tn(review.uncommitted, '{n} file not committed', '{n} files not committed')} — {tn(review.files.length, '{n} file changed in all.', '{n} files changed in all.')}</p>
     {committed > 0 && <ul className="board-commits" aria-label={t('Commits in this worktree')}>
       {review.commits.map(commit => <li key={commit.oid}><code>{commit.oid.slice(0, 7)}</code><span>{commit.subject}</span></li>)}
     </ul>}
-    <ul className="stash-files" aria-label={t('Files this worktree changed')}>
-      {review.files.length === 0 && <li className="empty-inline">{t('Nothing changed yet.')}</li>}
-      {review.files.map(file => <li key={`${file.path}:${file.untracked}`}>
-        <button type="button" className={diff?.path === file.path ? 'selected' : ''} aria-pressed={diff?.path === file.path} onClick={() => onFile(file)}>
-          <FileStatus status={file.status} />
-          <span>{file.path}</span>
-          {file.untracked ? <small><FilePlus2 aria-hidden="true" />{t('untracked')}</small>
-            : file.insertions !== null && <small>+{file.insertions} −{file.deletions}</small>}
-        </button>
-      </li>)}
-    </ul>
-    {diff && <div className="diff-view" aria-label={t`Diff of ${diff.path}`}>
-      {diff.loading ? <div className="loading-shell"><div className="skeleton" /></div>
-        : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p>
-          : diff.note ? <p className="empty-inline">{tr(diff.note)}</p>
-            : diff.binary ? <p className="empty-inline">{t('Binary file. A text diff is unavailable.')}</p>
-              : <DiffLines patch={diff.patch} path={diff.path} label={t`Diff of ${diff.path}`} />}
-    </div>}
+    <div className="board-split">
+      <ul className="stash-files" aria-label={t('Files this worktree changed')}>
+        {review.files.length === 0 && <li className="empty-inline">{t('Nothing changed yet.')}</li>}
+        {review.files.map(file => <li key={`${file.path}:${file.untracked}`}>
+          <button type="button" className={diff?.path === file.path ? 'selected' : ''} aria-pressed={diff?.path === file.path} onClick={() => onFile(file)}>
+            <FileStatus status={file.status} />
+            <span title={file.path}>{file.path}</span>
+            {file.untracked ? <small><FilePlus2 aria-hidden="true" />{t('untracked')}</small>
+              : file.insertions !== null && <small>+{file.insertions} −{file.deletions}</small>}
+          </button>
+        </li>)}
+      </ul>
+      {diff && <div className="diff-view" ref={diffPane} aria-label={t`Diff of ${diff.path}`}>
+        {diff.loading ? <div className="loading-shell"><div className="skeleton" /></div>
+          : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p>
+            : diff.note ? <p className="empty-inline">{tr(diff.note)}</p>
+              : diff.binary ? <p className="empty-inline">{t('Binary file. A text diff is unavailable.')}</p>
+                : <DiffLines patch={diff.patch} path={diff.path} label={t`Diff of ${diff.path}`} />}
+      </div>}
+    </div>
   </div>;
 }
 
@@ -261,6 +282,7 @@ function Compare({ repositoryId, left, right, base }) {
   const [diff, setDiff] = useState(null);
   const request = useRef(0);
   const diffRequest = useRef(0);
+  const diffPane = useRevealDiff(diff?.path);
   const key = [left, right].map(entry => `${entry.path}:${entry.head}:${entry.changes?.files}:${entry.changes?.insertions}:${entry.changes?.deletions}:${entry.lastActivity}`).join('|');
   useEffect(() => {
     const epoch = ++request.current;
@@ -282,31 +304,35 @@ function Compare({ repositoryId, left, right, base }) {
   if (result.error) return <p role="alert" className="empty-inline">{result.error}</p>;
   const names = [folderLabel(left.path), folderLabel(right.path)];
   const side = summary => `${tn(summary.commits, '{n} commit', '{n} commits')}, ${tn(summary.uncommitted, '{n} file not committed', '{n} files not committed')}, ${tn(summary.files, '{n} file changed', '{n} files changed')}`;
-  return <div className="board-review board-compare">
+  return <div className={`board-review board-compare${diff ? ' has-diff' : ''}`}>
     <p className="board-summary">{tx(base ? '{left}: {leftSide} · {right}: {rightSide}, each since it left {base}.' : '{left}: {leftSide} · {right}: {rightSide}.',
       { left: <strong>{names[0]}</strong>, leftSide: side(result.left), right: <strong>{names[1]}</strong>, rightSide: side(result.right), base })}</p>
     <p className="board-summary muted">{base
       ? t`Pick the one to keep, squash it into ${base}, then remove the other. In a file’s diff, − lines are ${names[0]}’s and + lines are ${names[1]}’s.`
       : t`Pick the one to keep, squash it into the base, then remove the other. In a file’s diff, − lines are ${names[0]}’s and + lines are ${names[1]}’s.`}</p>
-    <table className="board-compare-files" aria-label={t`Files changed in ${names[0]} or ${names[1]}`}>
-      <thead><tr><th scope="col">{t('File')}</th><th scope="col">{names[0]}</th><th scope="col">{names[1]}</th></tr></thead>
-      <tbody>
-        {result.files.length === 0 && <tr><td colSpan={3} className="empty-inline">{t('Neither changed anything yet.')}</td></tr>}
-        {result.files.map(file => <tr key={file.path} className={diff?.path === file.path ? 'selected' : ''}>
-          <th scope="row"><button type="button" aria-pressed={diff?.path === file.path} onClick={() => void open(file)}>{file.path}</button></th>
-          <td className={file.left ? '' : 'muted'}>{compareCell(file.left)}</td>
-          <td className={file.right ? '' : 'muted'}>{compareCell(file.right)}</td>
-        </tr>)}
-      </tbody>
-    </table>
-    {diff && <div className="diff-view" aria-label={t`${diff.path}: ${names[0]} against ${names[1]}`}>
-      {diff.loading ? <div className="loading-shell"><div className="skeleton" /></div>
-        : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p>
-          : diff.note ? <p className="empty-inline">{tr(diff.note)}</p>
-            : diff.same ? <p className="empty-inline">{t`${diff.path} is the same in both.`}</p>
-              : diff.binary ? <p className="empty-inline">{t('Binary file, different in the two. A text diff is unavailable.')}</p>
-                : <DiffLines patch={diff.patch} path={diff.path} label={t`${diff.path}: ${names[0]} against ${names[1]}`} />}
-    </div>}
+    <div className="board-split">
+      <div className="board-split-files">
+        <table className="board-compare-files" aria-label={t`Files changed in ${names[0]} or ${names[1]}`}>
+          <thead><tr><th scope="col">{t('File')}</th><th scope="col">{names[0]}</th><th scope="col">{names[1]}</th></tr></thead>
+          <tbody>
+            {result.files.length === 0 && <tr><td colSpan={3} className="empty-inline">{t('Neither changed anything yet.')}</td></tr>}
+            {result.files.map(file => <tr key={file.path} className={diff?.path === file.path ? 'selected' : ''}>
+              <th scope="row"><button type="button" aria-pressed={diff?.path === file.path} onClick={() => void open(file)}>{file.path}</button></th>
+              <td className={file.left ? '' : 'muted'}>{compareCell(file.left)}</td>
+              <td className={file.right ? '' : 'muted'}>{compareCell(file.right)}</td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div>
+      {diff && <div className="diff-view" ref={diffPane} aria-label={t`${diff.path}: ${names[0]} against ${names[1]}`}>
+        {diff.loading ? <div className="loading-shell"><div className="skeleton" /></div>
+          : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p>
+            : diff.note ? <p className="empty-inline">{tr(diff.note)}</p>
+              : diff.same ? <p className="empty-inline">{t`${diff.path} is the same in both.`}</p>
+                : diff.binary ? <p className="empty-inline">{t('Binary file, different in the two. A text diff is unavailable.')}</p>
+                  : <DiffLines patch={diff.patch} path={diff.path} label={t`${diff.path}: ${names[0]} against ${names[1]}`} />}
+      </div>}
+    </div>
   </div>;
 }
 
