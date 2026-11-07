@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, FilePlus2, GitBranch, RefreshCw, Trash2 } from 'lucide-react';
 import { StashBox, StashPop } from '../../ui/stash-icons.js';
 import Button from '../../ui/Button.jsx';
+import ScreenTitle from '../../ui/ScreenTitle.jsx';
 import DiffLines from '../diff/DiffLines.jsx';
 import FileStatus from '../diff/FileStatus.jsx';
 import ImageDiff from '../diff/ImageDiff.jsx';
@@ -99,7 +100,7 @@ export default function StashScreen({ repository, busy, onBack, onPerform, onDia
   return <section className="stash-screen" aria-label={t('Stashes')}>
     <header className="panel-heading">
       <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
-      <div><StashBox aria-hidden="true" /><strong>{t('Stashes')}</strong><span className="count">{stashes.length}</span></div>
+      <ScreenTitle icon={StashBox} title={t('Stashes')}><span className="count">{stashes.length}</span></ScreenTitle>
       <Button icon={RefreshCw} reason={reason} onClick={() => void refresh()}>{t('Refresh')}</Button>
     </header>
     {error && <p className="history-error" role="alert">{error}<button onClick={onConsole}>{t('Show output')}</button></p>}

@@ -29,6 +29,7 @@ export default function TrustPrompt({ repo, onTrust, onClose }) {
         {tn(pipelines.length,
           'This repository ships {n} automation pipeline. They can run local commands on your machine. Nothing runs until you enable it here, and any edit to the file turns them all off again.',
           'This repository ships {n} automation pipelines. They can run local commands on your machine. Nothing runs until you enable it here, and any edit to the file turns them all off again.')}</p>
+      <p className="muted">{t('A command you enable also runs what it finds in this repository. The scripts and files named below are pinned: if one changes, the pipelines turn off again. What those files load, and what a command like npm test reads from the repository, is not pinned, so it can change with any pull.')}</p>
       {repo.error && <p className="field-error">{tr(repo.error)}</p>}
       <div className="rule-list">
         {pipelines.map(pipeline => <div key={pipeline.id} className="rule-row" style={{ alignItems: 'flex-start' }}>

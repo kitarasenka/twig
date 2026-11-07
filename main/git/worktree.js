@@ -203,13 +203,13 @@ export const UNTRACKED_DIFF_LIMIT = 1024 * 1024;
  * @param {{ cwd: string, log: import('../command-log.js').CommandLog, path: string, context?: ?number, limit?: number }} options
  * @returns {Promise<(import('./diff-parser.js').FilePatch & { text: string }) | { directory: true } | { tooLarge: true, size: number }>}
  */
-export async function loadUntrackedDiff({ cwd, log, path, context = null, limit = UNTRACKED_DIFF_LIMIT }) {
+export async function loadUntrackedDiff({ cwd, log, path, context = null, limit = UNTRACKED_DIFF_LIMIT, git = [] }) {
   validatePath(path);
   if (path.endsWith('/')) return { directory: true };
   const info = await lstat(nodePath.join(cwd, path));
   if (info.isDirectory()) return { directory: true };
   if (info.size > Math.min(limit, UNTRACKED_DIFF_LIMIT)) return { tooLarge: true, size: info.size };
-  const result = await runGit({ argv: buildUntrackedDiffArgv({ path, context }), cwd, log, operation: 'Read untracked file as a diff' });
+  const result = await runGit({ argv: [...git, ...buildUntrackedDiffArgv({ path, context })], cwd, log, operation: 'Read untracked file as a diff' });
   // `--no-index` answers 1 when the two sides differ, which they always do here.
   if (result.code !== 0 && result.code !== 1) throw new Error(ui`Git could not read this file.`);
   return { ...parseFilePatchV1(result.stdout), text: result.stdout };

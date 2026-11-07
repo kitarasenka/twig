@@ -1,4 +1,5 @@
 import { runGit } from './exec.js';
+import { rebaseTodoCommands } from './config-risk.js';
 import { validateOid } from './commit.js';
 import { validateRefName } from './refs-ops.js';
 import { buildEditorEnv } from './rebase.js';
@@ -34,7 +35,7 @@ export function validateRevision(revision) {
 }
 
 export function buildMergeArgv(revision, { noFf = false } = {}) {
-  return ['merge', '--no-edit', ...(noFf ? ['--no-ff'] : []), validateRevision(revision)];
+  return ['merge', '--no-edit', ...(noFf ? ['--no-ff'] : []), '--end-of-options', validateRevision(revision)];
 }
 
 export function buildCherryPickArgv(oid) {
@@ -166,8 +167,17 @@ function sequencerFailure(kind, step) {
   return ui`Apply patches (am) --${step} did not finish. Show output in the console.`;
 }
 
-/** @param {{ cwd: string, log: object, gitDir: string, kind: string, step: string, messagesFile?: ?string }} options */
-export function sequencer({ cwd, log, gitDir, kind, step, messagesFile = null }) {
+/**
+ * 🌱 Twig's own rebase plans hold no `exec` line. One in the todo list comes from
+ * a rebase started in a terminal, or from whoever wrote this `.git`, and Continue
+ * would run it, so it stays for the terminal. Abort runs nothing of the list.
+ * @param {{ cwd: string, log: object, gitDir: string, kind: string, step: string, messagesFile?: ?string }} options
+ */
+export async function sequencer({ cwd, log, gitDir, kind, step, messagesFile = null }) {
+  if (kind === 'rebase' && step !== 'abort') {
+    const [command] = await rebaseTodoCommands(gitDir);
+    if (command) return { ok: false, message: ui`This rebase runs a command next: ${command}. Continue it in a terminal if you trust it.` };
+  }
   return run({
     cwd, log, gitDir, messagesFile,
     argv: buildSequencerArgv(kind, step),

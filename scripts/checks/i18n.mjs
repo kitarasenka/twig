@@ -56,6 +56,19 @@ import { effectiveLocale, normalizeLanguage } from '../../main/language.js';
   assert.equal(ui`Finish or abort the ${'merge'} first.`, 'Finish or abort the merge first.');
   assert.equal(uiN(2, '{n} possible secret in {where}', '{n} possible secrets in {where}', { where: 'the index' }), '2 possible secrets in the index');
   assert.equal(mark('Stage all'), 'Stage all');
+  // The brand never breaks at a line end, in any path a text takes to the screen.
+  const brand = createI18n();
+  assert.equal(brand.t('Restart 🌱 Twig'), 'Restart 🌱\u00a0Twig');
+  assert.equal(brand.t`${'x'} in 🌱 Twig`, 'x in 🌱\u00a0Twig');
+  assert.equal(brand.tn(2, '{n} in 🌱 Twig', '{n} in 🌱 Twig'), '2 in 🌱\u00a0Twig');
+  assert.equal(brand.tr('Restart 🌱 Twig'), 'Restart 🌱\u00a0Twig');
+  brand.setLocale('ru', { 'Restart 🌱 Twig': 'Перезапустите 🌱 Twig' });
+  assert.equal(brand.t('Restart 🌱 Twig'), 'Перезапустите 🌱\u00a0Twig');
+  assert.equal(brand.tr('Restart 🌱 Twig'), 'Перезапустите 🌱\u00a0Twig');
+  assert.equal(brand.tr('Restart 🌱\u00a0Twig'), 'Перезапустите 🌱\u00a0Twig', 'a message that passed through t() in a shared module still finds its key');
+  assert.equal(brand.failureText(new Error('Restart 🌱 Twig')), 'Перезапустите 🌱\u00a0Twig');
+  // Main's English stays as written: the journal and the MCP server read it.
+  assert.equal(ui`Restart 🌱 Twig`, 'Restart 🌱 Twig');
 }
 
 // The system language and the stored choice.
@@ -78,7 +91,7 @@ assert.ok(keys.size > 0);
 // tr() matches only main's messages as patterns; the list is generated from the source.
 assert.equal(await readFile(MESSAGES_FILE, 'utf8'), messagesModule(messageKeys(keys)),
   'renderer/src/i18n/messages.js is out of date: run node scripts/i18n-keys.mjs --messages');
-assert.ok(messageKeys(keys).includes('Undo {0}'), 'a ui`…` key from main is a message');
+assert.ok(messageKeys(keys).includes('Undo commit {0}'), 'a ui`…` key from main is a message');
 assert.ok(!messageKeys(keys).includes('{0}s'), 'a renderer-only t`…` key is not');
 
 const placeholders = text => [...text.matchAll(/\{(\w+)\}/g)].map(match => match[1]).sort();
@@ -96,6 +109,10 @@ const GIT_WORDS = {
   ja: /ブランチ|コミット|マージ|リベース|スタッシュ|タグ|プッシュ|プル(?!ダウン)/u
 };
 
+// Two buttons that do different things and stand side by side must not read the
+// same: Undo next to Cancel during a push, Abort of a merge next to a dialog's Cancel.
+const DISTINCT = [['Undo', 'Cancel'], ['Abort', 'Cancel'], ['Dismiss', 'Discard']];
+
 const root = fileURLToPath(new URL('../../renderer/src/i18n/locales/', import.meta.url));
 const failures = [];
 // `node scripts/checks/i18n.mjs ru de` checks only those catalogs.
@@ -107,6 +124,9 @@ for (const locale of LANGUAGE_CODES.filter(code => code !== 'en' && (!only.lengt
   const orphans = Object.keys(catalog).filter(key => !keys.has(key));
   if (missing.length) failures.push(`${locale}: ${missing.length} missing, e.g. ${JSON.stringify(missing.slice(0, 5))}`);
   if (orphans.length) failures.push(`${locale}: ${orphans.length} not in the source, e.g. ${JSON.stringify(orphans.slice(0, 5))}`);
+  for (const [one, other] of DISTINCT) {
+    if (catalog[one] === catalog[other]) failures.push(`${locale}: "${one}" and "${other}" are both "${catalog[one]}"`);
+  }
   for (const [key, value] of Object.entries(catalog)) {
     const source = keys.get(key);
     if (!source) continue;
@@ -141,5 +161,17 @@ for (const locale of LANGUAGE_CODES.filter(code => code !== 'en' && (!only.lengt
   }
 }
 assert.deepEqual(failures, [], `catalogs:\n${failures.join('\n')}`);
+
+// Undo's words reach the window as English from main and are translated whole.
+{
+  const i18n = createI18n();
+  i18n.setLocale('ru', JSON.parse(await readFile(`${root}ru.json`, 'utf8')), messageKeys(keys));
+  assert.equal(i18n.tr('Undo commit abc1234'), 'Отменить commit abc1234');
+  assert.equal(i18n.tr('Undo the discard of 3 files'), 'Отменить сброс 3 файлов');
+  assert.equal(i18n.tr('Finish or abort applying the patches first.'), 'Сначала завершите или прервите применение patch.');
+  assert.equal(i18n.tr('main is in the middle of an operation. Finish or abort the merge first.'), 'В main идёт операция. Сначала завершите или прервите merge.');
+  assert.equal(i18n.tr('A discarded file changed since, so Undo cannot put it back safely. What you discarded is still in Reflog, under Discarded changes.'),
+    'Отброшенный файл с тех пор изменился, поэтому отмена не может безопасно его вернуть. То, что вы отбросили, по-прежнему есть в Reflog, раздел «Отброшенные изменения».');
+}
 
 console.log(`i18n checks passed: ${keys.size} keys in ${LANGUAGE_CODES.length - 1} catalogs`);

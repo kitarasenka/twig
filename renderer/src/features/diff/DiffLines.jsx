@@ -1,19 +1,20 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HardDrive } from 'lucide-react';
-import { annotatePatch } from './intraline.js';
+import { PAIRED_ROWS, annotatePatch } from './intraline.js';
 import { displayRows, patchSourceLines, sideSyntax } from './diff-view.js';
 import { languageFor, languageLabel } from './languages.js';
 import useHighlighter from './useHighlighter.js';
 import useDiffPrefs from './useDiffPrefs.js';
 import { formatSize, lfsChangeLabel, lfsPointerDiff } from './lfs-pointer.js';
 import { VIRTUAL_FROM, visibleRange, widestRow } from './virtual-rows.js';
+import { revealInvisible } from '../../ui/invisible.js';
 import { t } from '../../i18n/i18n.js';
 
 /** A row's text: the marker, then pieces carrying syntax and change classes. */
 export function DiffPieces({ marker, pieces }) {
   return <span>{marker && <span className="diff-marker">{marker}</span>}
     {pieces.length === 0 || (pieces.length === 1 && !pieces[0].text) ? (marker ? '' : ' ')
-      : pieces.map((piece, index) => (piece.cls ? <span key={index} className={piece.cls}>{piece.text}</span> : piece.text))}</span>;
+      : pieces.map((piece, index) => (piece.cls ? <span key={index} className={piece.cls}>{revealInvisible(piece.text)}</span> : revealInvisible(piece.text)))}</span>;
 }
 
 const digits = (rows, side) => String(rows.reduce((max, row) => Math.max(max, row[side] ?? 0), 0)).length;
@@ -79,7 +80,7 @@ export default function DiffLines({ patch, path = null, className = '', label = 
   const rows = useMemo(() => annotatePatch(patch), [patch]);
   const highlight = useHighlighter(prefs.syntax && Boolean(language));
   const syntax = useMemo(
-    () => (highlight ? sideSyntax(patchSourceLines(rows), lines => highlight(lines, language)) : null),
+    () => (highlight && rows.length <= PAIRED_ROWS ? sideSyntax(patchSourceLines(rows), lines => highlight(lines, language)) : null),
     [rows, language, highlight]);
   const shown = useMemo(() => displayRows(rows, { syntax, words: prefs.mode === 'words' }), [rows, syntax, prefs.mode]);
   // The gutter is as wide as the longest number on each side, so the code

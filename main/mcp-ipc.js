@@ -27,11 +27,12 @@ export function registerMcpIpc(getWindow, entryUrl, { repositories, journal, sto
   const proposals = createCommitProposals({
     log: journal, undo, automations, runs: automationRuns, loginPath: automationPath, bump: bumper,
     isAllowed: () => store.get().allowCommits,
-    // A proposal brings the window forward: the person has to see it to answer it.
-    present: view => {
+    // The first proposal brings the window forward: the person has to see it to
+    // answer it. What follows it lands in the dialog already there.
+    present: (view, { focus = false } = {}) => {
       const window = getWindow();
       if (!window || window.isDestroyed()) return false;
-      if (view) {
+      if (view && focus) {
         if (window.isMinimized()) window.restore();
         window.show();
         if (process.platform === 'darwin') app.focus({ steal: true });
@@ -76,6 +77,11 @@ export function registerMcpIpc(getWindow, entryUrl, { repositories, journal, sto
   ipcMain.handle('mcp:proposal-current', (event, ...args) => {
     if (!valid(event, args, 0)) throw new Error('Invalid MCP request');
     return proposals.current();
+  });
+  ipcMain.handle('mcp:proposal-file', (event, ...args) => {
+    const [id, file] = args;
+    if (!valid(event, args, 2) || typeof id !== 'string' || id.length > 64 || typeof file !== 'string' || file.length > 4096) throw new Error('Invalid MCP request');
+    return proposals.fileDiff(id, file);
   });
   ipcMain.handle('mcp:proposal-decide', (event, ...args) => {
     const [id, decision] = args;

@@ -27,6 +27,21 @@ export function validateRepositoryUrl(value) {
   return value;
 }
 
+/**
+ * What every network command checks about the remotes already in the config.
+ * `validateRepositoryUrl` is the rule for an address the person types; here an
+ * address that worked yesterday keeps working (a token in the URL, `host:path`,
+ * a relative path, an installed remote helper), and only the two transports
+ * that run a command or attach to a descriptor, and an address that would read
+ * as an option, are refused.
+ */
+export function validateRemoteTransport(value) {
+  if (typeof value !== 'string' || hasControlCharacters(value) || value.startsWith('-') || /^(ext|fd)::/i.test(value)) {
+    throw new TypeError(ui`Unsupported repository transport.`);
+  }
+  return value;
+}
+
 export function parseRemotes(output) {
   const remotes = new Map();
   if (!output) return [];

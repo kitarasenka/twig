@@ -50,8 +50,7 @@ export function NameDialog({ title, label, placeholder, confirmLabel, extra, wit
   return <Dialog title={title} onClose={onClose}>
     <form className="name-dialog" onSubmit={event => { event.preventDefault(); onClose(); onConfirm({ name: name.trim(), message, checked }); }}>
       <label htmlFor="ref-name">{label}</label>
-      {/* showModal() focuses the first control by itself, so this field is where the caret lands. */}
-      <input id="ref-name" value={name} placeholder={placeholder} autoComplete="off" spellCheck={false}
+      <input id="ref-name" data-autofocus value={name} placeholder={placeholder} autoComplete="off" spellCheck={false}
         onFocus={initialValue ? event => event.currentTarget.select() : undefined}
         aria-describedby={invalid ? 'ref-name-error' : undefined} onChange={event => setName(event.target.value)} />
       {invalid && <p id="ref-name-error" role="alert" className="warn">{tx('A Git ref name cannot contain spaces, {dots}, {symbols}, or end with {slash} or {lock}.',
@@ -80,7 +79,7 @@ export function NameDialog({ title, label, placeholder, confirmLabel, extra, wit
 export function MessageDialog({ title, label, initial, confirmLabel, command, consequence, allowUnchanged = false, onConfirm, onClose }) {
   const [text, setText] = useState(initial);
   const field = useRef(null);
-  // showModal() focuses the textarea; the caret belongs after the text, not before it.
+  // Dialog focuses the field; the caret belongs after the text, not before it.
   useEffect(() => { field.current?.setSelectionRange(initial.length, initial.length); }, [initial]);
   const subject = text.split('\n')[0];
   const reason = text.trim().length === 0 ? t('Write a message first')
@@ -88,7 +87,7 @@ export function MessageDialog({ title, label, initial, confirmLabel, command, co
   return <Dialog title={title} onClose={onClose}>
     <form className="name-dialog message-dialog" onSubmit={event => { event.preventDefault(); onClose(); onConfirm(text); }}>
       <label htmlFor="reword-message">{label}</label>
-      <textarea id="reword-message" ref={field} rows={6} value={text} spellCheck={false}
+      <textarea id="reword-message" data-autofocus ref={field} rows={6} value={text} spellCheck={false}
         onChange={event => setText(event.target.value)} />
       <p className={subject.length > 72 ? 'warn' : 'muted'}>{t`${subject.length}/72 in the subject`}</p>
       <p className="confirm-consequence"><AlertTriangle aria-hidden="true" />{consequence}</p>

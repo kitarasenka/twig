@@ -43,6 +43,14 @@ export class AutomationsStore {
     return next;
   }
 
+  /** A repository that moved keeps its pipelines and its trust: the digest still guards the file. */
+  rekey(from, to) {
+    return this.#write(state => {
+      if (state[from]) { state[to] = state[from]; delete state[from]; }
+      return to;
+    });
+  }
+
   saveConfig(repoId, rawConfig) {
     const clean = normalizeConfig(rawConfig);
     return this.#write(state => {

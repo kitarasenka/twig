@@ -129,6 +129,7 @@ export function createToolContext({ repositories, journal, getActiveId, getUiCon
   };
 
   function usable(repo, extra = {}) {
+    if (repo.blocked) throw new McpError('REPOSITORY_NOT_FOUND', `${repo.name} is stopped: its Git settings changed, and the person has not accepted them in 🌱 Twig.`);
     if (!repo.available) throw new McpError('REPOSITORY_NOT_FOUND', `${repo.name} is connected but unavailable — it may have moved or been removed.`);
     return { id: repo.id, name: repo.name, path: repo.path, active: repo.id === getActiveId(), implicit: false,
       ...(repo.worktreeOf ? { worktreeOf: repo.worktreeOf } : {}), ...extra };

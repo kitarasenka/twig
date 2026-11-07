@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import { LANGUAGES, languageFor, languageLabel } from '../../renderer/src/features/diff/languages.js';
-import { MAX_LINE_CHARS, SYNTAX_CLASSES, highlightLines } from '../../renderer/src/features/diff/syntax.js';
+import { MAX_BLOCK_CHARS, MAX_LINE_CHARS, SYNTAX_CLASSES, WORKER_BLOCK_CHARS, WORKER_LINE_CHARS, highlightLines } from '../../renderer/src/features/diff/syntax.js';
+import { HIGHLIGHT_DEADLINE_MS, createHighlightClient } from '../../renderer/src/features/diff/highlight-client.js';
 import { displayRows, lineSpans, patchSourceLines, sideSyntax, splitByRanges } from '../../renderer/src/features/diff/diff-view.js';
 import { annotatePatch, segmentPair } from '../../renderer/src/features/diff/intraline.js';
 import { readDiffPrefs, writeDiffPrefs } from '../../renderer/src/features/diff/diff-prefs.js';
@@ -53,20 +55,91 @@ for (const language of Object.keys(LANGUAGES)) {
 }
 assert.deepEqual(highlightLines(['a', 'b'], null), [null, null], 'no language, no colours');
 assert.deepEqual(highlightLines(['a'], 'no-such-grammar'), [null]);
-assert.deepEqual(highlightLines(['x'.repeat(MAX_LINE_CHARS + 1), 'const y = 1'], 'javascript'), [null, null],
-  'a minified line is never tokenized — the whole block shows plain');
+{
+  const [long, next] = highlightLines(['const x = 1;'.repeat(MAX_LINE_CHARS), 'const y = 1'], 'javascript');
+  assert.equal(long, null, 'a minified line is never tokenized');
+  assert.equal(next[0].cls, 'syn-keyword', 'and the lines around it keep their colours');
+}
 for (const cls of highlightLines(['<div class="a">x</div>'], 'markup')[0].map(range => range.cls)) assert.ok(SYNTAX_CLASSES.includes(cls));
 {
   const lines = Array.from({ length: 4000 }, (_, i) => `export function f${i}(a, b) { return a + b * ${i}; } // ${i}`);
   const chars = lines.reduce((total, line) => total + line.length + 1, 0);
+  const limits = { maxBlock: WORKER_BLOCK_CHARS, maxLine: WORKER_LINE_CHARS };
   const started = performance.now();
-  const ranges = highlightLines(lines, 'javascript');
+  const ranges = highlightLines(lines, 'javascript', limits);
   const ms = performance.now() - started;
   assert.ok(ranges.every(Boolean), `a ${chars}-character block under the limit is highlighted`);
   assert.ok(ms < 2000, `4000 lines highlight in ${ms.toFixed(0)} ms`);
   console.log(`  4000 JavaScript lines (${Math.round(chars / 1024)} KB) highlighted in ${ms.toFixed(0)} ms`);
-  assert.deepEqual(highlightLines(Array.from({ length: 6000 }, () => 'x'.repeat(60)), 'javascript').filter(Boolean), [],
+  assert.deepEqual(highlightLines(Array.from({ length: 6000 }, () => 'x'.repeat(60)), 'javascript', limits).filter(Boolean), [],
     'past the block limit nothing is tokenized');
+  assert.deepEqual(highlightLines(lines, 'javascript').filter(Boolean), [], 'on the main thread the limit is smaller');
+  assert.ok(MAX_BLOCK_CHARS <= 32_000 && MAX_LINE_CHARS <= 500);
+}
+
+// --- the worker client: colours arrive later, a block past its deadline ends the worker ---------
+{
+  const workers = [];
+  const timers = new Map();
+  let clock = 0;
+  const schedule = (run, ms) => { timers.set(++clock, { run, ms }); return clock; };
+  const cancel = id => timers.delete(id);
+  const fire = ms => { for (const [id, timer] of [...timers]) if (timer.ms === ms) { timers.delete(id); timer.run(); } };
+  let ready = 0;
+  const client = createHighlightClient({ onReady: () => ready++, schedule, cancel, fallback: async () => (lines => lines.map(() => ['local'])),
+    spawn: () => { const worker = { sent: [], terminated: false, postMessage(message) { this.sent.push(message); }, terminate() { this.terminated = true; } }; workers.push(worker); return worker; } });
+  const answer = (worker, ranges) => worker.onmessage({ data: { id: worker.sent.at(-1).id, ranges } });
+
+  assert.deepEqual(client.highlight(['a'], 'javascript'), [null], 'plain until the worker answers');
+  assert.deepEqual(client.highlight(['a'], 'javascript'), [null], 'and asked once');
+  assert.equal(workers[0].sent.length, 1);
+  answer(workers[0], [[{ start: 0, end: 1, cls: 'syn-keyword' }]]);
+  assert.equal(timers.size, 1, 'the deadline is off, the announcement is on');
+  fire(16);
+  assert.equal(ready, 1);
+  assert.deepEqual(client.highlight(['a'], 'javascript'), [[{ start: 0, end: 1, cls: 'syn-keyword' }]]);
+
+  // One block at a time; a block that does not finish takes its worker and its language with it, not the window.
+  client.highlight(['[['], 'markdown');
+  client.highlight(['[[ [['], 'markdown');
+  client.highlight(['b'], 'javascript');
+  assert.equal(workers[0].sent.length, 2, 'the others wait their turn');
+  fire(HIGHLIGHT_DEADLINE_MS);
+  assert.equal(workers[0].terminated, true);
+  assert.equal(workers.length, 2, 'a fresh worker for what is left');
+  assert.equal(workers[1].sent.at(-1).language, 'javascript', 'the rest of the language is skipped');
+  assert.deepEqual(client.highlight(['[['], 'markdown'), [null], 'plain, and not asked again');
+  assert.deepEqual(client.highlight(['[[ [['], 'markdown'), [null]);
+  assert.equal(workers[1].sent.length, 1);
+
+  // No workers here: the highlighter runs in place, under its smaller limits.
+  workers[1].onerror();
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(client.highlight(['b'], 'javascript'), [['local']]);
+  client.highlight(['c'], 'javascript');
+  assert.deepEqual(client.highlight(['c'], 'javascript'), [['local']]);
+
+  const noWorker = createHighlightClient({ onReady: () => {}, schedule, cancel, spawn: () => { throw new Error('no workers'); }, fallback: async () => (lines => lines.map(() => ['local'])) });
+  noWorker.highlight(['d'], 'javascript');
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(noWorker.highlight(['d'], 'javascript'), [['local']]);
+}
+
+// The worst blocks the audit found, under the limits of the main thread. Each is measured in a child
+// that may be killed, because a regular expression cannot be: this is what a machine without workers gets.
+{
+  const child = `import { highlightLines } from ${JSON.stringify(new URL('../../renderer/src/features/diff/syntax.js', import.meta.url).href)};
+    for (const [language, unit] of ${JSON.stringify([['markdown', '[['], ['csharp', 'a.'], ['css', '- '], ['nginx', 'a '], ['markup', '<a ']])}) {
+      const line = unit.repeat(1000).slice(0, 2000);
+      const started = performance.now();
+      highlightLines(Array(20).fill(line), language);
+      console.log(language, Math.round(performance.now() - started));
+    }`;
+  const measured = spawnSync(process.execPath, ['--input-type=module', '-e', child], { encoding: 'utf8', timeout: 20_000 });
+  assert.equal(measured.status, 0, measured.stderr);
+  for (const line of measured.stdout.trim().split('\n')) assert.ok(Number(line.split(' ')[1]) < 500, `a 2000-character line is left out at once: ${line}`);
 }
 
 // --- each side of a hunk is highlighted as one block ----------------------------------------

@@ -26,5 +26,5 @@ export function splitRemoteRef(fullName, remoteNames) {
  * text in the dialog cannot drift away from the command that actually runs.
  */
 export function pushRefCommand({ remote, ref, remove = false }) {
-  return ['push', '--progress', ...(remove ? ['--delete'] : []), remote, '--', ref];
+  return ['push', '--progress', ...(remove ? ['--delete'] : []), remote, '--', remove ? ref : `${ref}:${ref}`];
 }

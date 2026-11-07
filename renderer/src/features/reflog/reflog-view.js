@@ -1,5 +1,7 @@
 import { moveBranchCommand } from '../../../../main/git/reflog-plan.js';
-import { mark, t } from '../../i18n/i18n.js';
+import { restoreCommand } from '../../../../main/git/discard-plan.js';
+import { finishFirst } from '../../../../main/git/operation-words.js';
+import { mark, t, tn, tr } from '../../i18n/i18n.js';
 
 export { relativeTime } from '../../ui/relative-time.js';
 
@@ -85,6 +87,25 @@ export function moveBranchDialog({ branch, oid, expected, current }) {
   };
 }
 
+/** A discard in the list: its file, or how many. */
+export const discardedTitle = item => (item.count === 1 ? item.files[0] : tn(item.count, '{n} file', '{n} files'));
+
+/** The paths of a discard of several files, shortened. */
+export function discardedLine(item) {
+  if (item.count === 1) return '';
+  const named = item.files.slice(0, 3).join(', ');
+  return item.count > 3 ? tn(item.count - 3, '{list} and {n} more', '{list} and {n} more', { list: named }) : named;
+}
+
+/** The §6.5 confirmation of Restore. */
+export function restoreDiscardDialog(item) {
+  return {
+    title: tn(item.count, 'Restore {n} discarded file', 'Restore {n} discarded files'), command: restoreCommand(item.id),
+    consequence: t('The files go back to how they were just before the discard; the paths reach Git on stdin. What is at those paths now is backed up first, so Undo takes this back.'),
+    confirmLabel: t('Restore')
+  };
+}
+
 /**
  * Why "Move <branch> here" cannot run for this entry, or undefined.
  * @param {{ branch: ?string, tip: ?string, oid: string, operation: string, busy: boolean }} state
@@ -93,7 +114,7 @@ export function moveReason({ branch, tip, oid, operation, busy }) {
   if (busy) return t('Git is working');
   if (!branch) return t('HEAD is detached: there is no branch to move. Create a branch here instead.');
   if (!tip) return t`${branch} does not exist any more. Create a branch here instead.`;
-  if (operation !== 'none') return t`Finish or abort the ${operation} first`;
+  if (operation !== 'none') return tr(finishFirst(operation));
   if (tip === oid) return t`${branch} already points here`;
   return undefined;
 }

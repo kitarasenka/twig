@@ -37,7 +37,7 @@ assert.equal(pickFailedEntry([{ id: 'x', code: 1, startedAt: 'nonsense', ms: 1 }
 
 // Parity: the console renders the class this module's target gets, and App feeds it.
 const console_ = await read('renderer/src/app/Console.jsx');
-assert.ok(console_.includes("focusedId === entry.id ? 'focused' : ''"), 'Console marks the focused entry');
+assert.ok(console_.includes("focused ? 'focused' : ''") && console_.includes('focused={focusedId === entry.id}'), 'Console marks the focused entry');
 assert.ok(console_.includes('scrollIntoView'), 'Console scrolls the focused entry into view');
 const css = await read('renderer/src/ui/layout.css');
 assert.ok(/\.console-entry\.focused\s*\{/.test(css), 'layout.css styles the focused entry');
@@ -65,7 +65,7 @@ for (const name of ['features/graph/HistoryWorkspace.jsx', 'features/tools/Maint
 const note = await read('renderer/src/ui/OperationNote.jsx');
 assert.ok(note.includes('className="note-output" onClick={onConsole}>'), 'a failure note offers Show output');
 // A note leaves by itself, but a failure stays until it is dismissed: its Show output is the way to the reason.
-assert.ok(note.includes('if (!note || failed || held || !region) return undefined;'), 'a failure note does not leave by itself');
+assert.ok(note.includes('const stays = failed || actions.length > 0;') && note.includes('if (!note || stays || held || !region) return undefined;'), 'a failure note does not leave by itself');
 assert.ok(note.includes('createPortal('), 'notes rise above the console, not inside the screen');
 
 // --- what the "My" filter keeps -------------------------------------------

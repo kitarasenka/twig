@@ -1,3 +1,4 @@
+import { readPushPlan } from './git/push-plan.js';
 import { ipcMain } from 'electron';
 import { runGit } from './git/exec.js';
 import { randomUUID } from 'node:crypto';
@@ -69,7 +70,7 @@ export function registerAutomationsIpc(getWindow, entryUrl, { repositories, jour
   handler('automation:trust', 2, async ({ repo }, trust) => {
     if (!trust || typeof trust !== 'object') throw new TypeError('Invalid trust request');
     const repoConfig = await readRepoConfig(repo.path);
-    if (!repoConfig.config) throw new TypeError('This repository has no automations to enable.');
+    if (!repoConfig.config) throw new TypeError(ui`This repository has no automations to enable.`);
     // Bind the approval to what the person reviewed, not to whatever the file
     // (or a script it runs) holds by the time they click.
     if (trust.digest !== repoConfig.digest) {
@@ -94,6 +95,12 @@ export function registerAutomationsIpc(getWindow, entryUrl, { repositories, jour
    * Runs the pipelines for one event. `options.bypass` records a bypassed run
    * without executing anything, so the log still shows that checks were skipped.
    */
+  /** A pre-push pipeline hears the remote the push will really go to, not the one the branch tracks. */
+  async function pushedTo({ cwd, eventName, branch, remote }) {
+    if (eventName !== 'pre-push' || !branch) return remote ?? null;
+    const plan = await readPushPlan({ cwd, log: journal, branch, publish: remote ?? null }).catch(() => null);
+    return plan?.remote ?? remote ?? 'origin';
+  }
   handler('automation:run', 3, async ({ repo, window }, eventName, options) => {
     if (!isKnownEvent(eventName)) throw new TypeError('Unknown hook event');
     if (options !== null && typeof options !== 'object') throw new TypeError('Invalid run options');
@@ -101,6 +108,8 @@ export function registerAutomationsIpc(getWindow, entryUrl, { repositories, jour
     const remote = options?.remote;
     if (message != null && (typeof message !== 'string' || message.length > 1_000_000)) throw new TypeError('Invalid commit message');
     if (remote != null && (typeof remote !== 'string' || remote.length > 255)) throw new TypeError('Invalid remote');
+    const branch = options?.branch;
+    if (branch != null && (typeof branch !== 'string' || branch.length > 255)) throw new TypeError('Invalid branch');
 
     if (options?.bypass === true) {
       const execution = {
@@ -118,7 +127,7 @@ export function registerAutomationsIpc(getWindow, entryUrl, { repositories, jour
     try {
       return await triggerPipeline({
         event: eventName, repoId: repo.id, cwd: repo.path, log: journal, automations, runs, loginPath,
-        message: message ?? null, remote: remote ?? null, operation: options?.operation || eventName,
+        message: message ?? null, remote: await pushedTo({ cwd: repo.path, eventName, branch, remote }), operation: options?.operation || eventName,
         signal: controller.signal,
         onStep: step => { if (!window.isDestroyed()) window.webContents.send('automation:step', step); }
       });

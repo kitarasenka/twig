@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Gauge, RefreshCw, Sparkles, Wrench } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import ScreenTitle from '../../ui/ScreenTitle.jsx';
 import OperationNote from '../../ui/OperationNote.jsx';
 import { formatBytes, maintenanceAdvice, maintenanceCommands, maintenanceText } from '../../../../main/git/maintenance-plan.js';
 import { failureText, formatNumber, t, tn, tr } from '../../i18n/i18n.js';
@@ -25,9 +26,11 @@ function outcomeText(task, result) {
   const finished = task === 'gc' ? t`Clean up finished in ${seconds}.` : t`Optimize finished in ${seconds}.`;
   if (!result.after) return finished;
   const freed = result.before.diskBytes - result.after.diskBytes;
-  return `${finished} ${t`On disk: ${formatBytes(result.before.diskBytes)} → ${formatBytes(result.after.diskBytes)}`}`
-    + `${freed > 0 ? ` (${t`${formatBytes(freed)} freed`})` : ''}; ${t`loose objects: ${count(result.before.loose)} → ${count(result.after.loose)}`}`
-    + `; ${t`packs: ${result.before.packs} → ${result.after.packs}`}.`;
+  const [disk, loose, packs] = [[formatBytes(result.before.diskBytes), formatBytes(result.after.diskBytes)],
+    [count(result.before.loose), count(result.after.loose)], [result.before.packs, result.after.packs]];
+  return `${finished} ${freed > 0
+    ? t`On disk: ${disk[0]} → ${disk[1]} (${formatBytes(freed)} freed); loose objects: ${loose[0]} → ${loose[1]}; packs: ${packs[0]} → ${packs[1]}.`
+    : t`On disk: ${disk[0]} → ${disk[1]}; loose objects: ${loose[0]} → ${loose[1]}; packs: ${packs[0]} → ${packs[1]}.`}`;
 }
 
 /**
@@ -76,7 +79,7 @@ export default function MaintenanceScreen({ repository, busy, onBack, onDialog, 
   return <section className="tool-screen maintenance-screen" aria-label={t('Maintenance')}>
     <header className="panel-heading">
       <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
-      <div><Wrench aria-hidden="true" /><strong>{t('Maintenance')}</strong></div>
+      <ScreenTitle icon={Wrench} title={t('Maintenance')} />
       <div className="tool-actions">
         <Button icon={RefreshCw} reason={running ? t('Maintenance is running') : undefined} onClick={() => void refresh()}>{t('Refresh')}</Button>
       </div>
@@ -89,7 +92,7 @@ export default function MaintenanceScreen({ repository, busy, onBack, onDialog, 
       {stats && <Stats stats={stats} />}
       {stats && <p className={`maintenance-advice ${advice ? '' : 'muted'}`} role="status">{advice || t('Nothing is due: Git would not tidy this repository up by itself yet.')}</p>}
       {running && <div className="git-drag-status" role="status">
-        <span>{tx('Running {commands}…', { commands: <code>{maintenanceText(running).join(t(', then '))}</code> })}</span>
+        <span>{tx('Running {commands}…', { commands: <code>{maintenanceText(running).join(' && ')}</code> })}</span>
         <Button onClick={() => void window.twig.cancelRepositoryTool(repository.id)}>{t('Cancel')}</Button>
       </div>}
       <ul className="tool-list maintenance-tasks" aria-label={t('Maintenance tasks')}>

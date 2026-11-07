@@ -69,6 +69,13 @@ function fill(text, values) {
   return text.replace(PLACEHOLDER, (whole, name) => (Object.hasOwn(values, name) ? String(values[name]) : whole));
 }
 
+/** The name on screen: the sprout and the word never part at a line break. The keys keep a plain space. */
+export const BRAND = '🌱\u00a0Twig';
+
+function keepBrand(text) {
+  return typeof text === 'string' && text.includes('🌱 Twig') ? text.replaceAll('🌱 Twig', BRAND) : text;
+}
+
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -139,6 +146,33 @@ export function createI18n() {
     return value;
   }
 
+  function message(text) {
+    if (typeof text !== 'string' || !text) return text ?? '';
+    if (!state.catalog) return text;
+    const exact = state.catalog[text];
+    if (typeof exact === 'string') return exact;
+    for (const pattern of patterns()) {
+      const match = pattern.regex.exec(text);
+      if (!match) continue;
+      const values = {};
+      pattern.names.forEach((name, index) => { values[name] = match.groups[`p${index}`]; });
+      if (pattern.plural) {
+        const { one, other, entry } = pattern.plural;
+        return fill(pickForm(entry, values.n, one, other), values);
+      }
+      return fill(pattern.value, values);
+    }
+    // A message made of sentences the catalog knows one by one. The
+    // whitespace between them — a line break in a reason with details —
+    // stays as it was.
+    const pieces = text.split(/(?<=[.!?:])(\s+)(?=[A-Z"“(`]|🌱)/u);
+    if (pieces.length > 1) {
+      const parts = pieces.map((part, index) => (index % 2 ? part : message(part)));
+      if (parts.some((part, index) => part !== pieces[index])) return parts.join('');
+    }
+    return text;
+  }
+
   const api = {
     getLocale: () => state.locale,
 
@@ -169,17 +203,17 @@ export function createI18n() {
         const values = {};
         rest.forEach((value, index) => { values[index] = value; });
         const text = state.catalog?.[key];
-        return fill(typeof text === 'string' ? text : key, values);
+        return keepBrand(fill(typeof text === 'string' ? text : key, values));
       }
       if (typeof first !== 'string') return first == null ? '' : String(first);
       const text = state.catalog?.[first];
-      return fill(typeof text === 'string' ? text : first, rest[0]);
+      return keepBrand(fill(typeof text === 'string' ? text : first, rest[0]));
     },
 
     /** A count with its noun: tn(3, '{n} file', '{n} files'). `{n}` is the count. */
     tn(count, one, other, values = null) {
       const form = pickForm(state.catalog?.[pluralKey(one, other)], count, one, other);
-      return fill(form, { ...values, n: count });
+      return keepBrand(fill(form, { ...values, n: count }));
     },
 
     /**
@@ -187,32 +221,8 @@ export function createI18n() {
      * label from a shared module — in the current language when the catalog
      * has it.
      */
-    tr(text) {
-      if (typeof text !== 'string' || !text) return text ?? '';
-      if (!state.catalog) return text;
-      const exact = state.catalog[text];
-      if (typeof exact === 'string') return exact;
-      for (const pattern of patterns()) {
-        const match = pattern.regex.exec(text);
-        if (!match) continue;
-        const values = {};
-        pattern.names.forEach((name, index) => { values[name] = match.groups[`p${index}`]; });
-        if (pattern.plural) {
-          const { one, other, entry } = pattern.plural;
-          return fill(pickForm(entry, values.n, one, other), values);
-        }
-        return fill(pattern.value, values);
-      }
-      // A message made of sentences the catalog knows one by one. The
-      // whitespace between them — a line break in a reason with details —
-      // stays as it was.
-      const pieces = text.split(/(?<=[.!?:])(\s+)(?=[A-Z"“(`]|🌱)/u);
-      if (pieces.length > 1) {
-        const parts = pieces.map((part, index) => (index % 2 ? part : api.tr(part)));
-        if (parts.some((part, index) => part !== pieces[index])) return parts.join('');
-      }
-      return text;
-    },
+    // A shared module's t() may already have kept the brand; the key has a plain space.
+    tr: text => keepBrand(message(typeof text === 'string' ? text.replaceAll(BRAND, '🌱 Twig') : text)),
 
     /** The message of a failure from IPC, in the current language, or the fallback. */
     failureText(failure, fallback = '') {

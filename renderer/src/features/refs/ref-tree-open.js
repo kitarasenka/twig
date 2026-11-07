@@ -17,6 +17,21 @@ export const sectionKey = type => `section:${type}`;
 /** Key of a folder: its type and path, `local:feat/ui`. */
 export const folderKey = (type, path) => `${type}:${path}`;
 
+/** Refs as folders by the slashes in their names; a leaf keeps its ref as it is and the last part as its label. */
+export function buildRefTree(refs) {
+  const root = { folders: new Map(), leaves: [] };
+  for (const ref of refs) {
+    const parts = ref.name.split('/');
+    let node = root;
+    for (const part of parts.slice(0, -1)) {
+      if (!node.folders.has(part)) node.folders.set(part, { folders: new Map(), leaves: [] });
+      node = node.folders.get(part);
+    }
+    node.leaves.push({ ref, label: parts.at(-1) });
+  }
+  return root;
+}
+
 /** The section key and every folder key above a ref, outermost first. */
 export function ancestorKeys(ref) {
   const keys = [sectionKey(ref.type)];

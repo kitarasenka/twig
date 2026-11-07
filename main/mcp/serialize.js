@@ -51,6 +51,13 @@ const escapeUnits = char => [...char].flatMap(c => {
 }).join('');
 
 /**
+ * Every answer goes through this on its way out, so hidden text in a commit
+ * subject, an author name, a message or a diff line reaches the agent spelled
+ * out, as a path always did. In JSON answers the escape is also valid JSON.
+ */
+export const escapeInvisible = text => text.replace(INVISIBLE, escapeUnits);
+
+/**
  * A path as one token: quoted like JSON only when it could be misread — control
  * or invisible characters, quotes, edge spaces, an arrow. Invisible characters
  * are written as `\uXXXX` escapes (JSON leaves them raw).

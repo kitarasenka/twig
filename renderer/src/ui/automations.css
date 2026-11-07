@@ -76,14 +76,8 @@
 .rule-row .rule-body.stacked { flex-direction: column; align-items: stretch; gap: var(--space-3); }
 .rule-row .rule-command { flex: 1; min-width: 200px; }
 
-/* execution: overlay + inline panel + log detail share step rows */
-.execution-overlay { position: fixed; inset: 0; display: flex; align-items: flex-start; justify-content: center;
-  padding: var(--space-8) var(--space-4); background: var(--overlay); z-index: 40; overflow: auto; }
-.execution-panel { width: min(640px, 100%); background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); box-shadow: var(--shadow); display: flex; flex-direction: column; }
-.execution-panel > header { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border); }
-.execution-panel > header h3 { margin: 0; font-size: var(--text-lg); flex: 1; }
+/* execution: the dialog, the inline panel and the log detail share step rows */
+.execution-panel { display: flex; flex-direction: column; }
 .execution-verdict { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4);
   font-size: var(--text-md); }
 .execution-verdict.passed { color: var(--mark-green); }

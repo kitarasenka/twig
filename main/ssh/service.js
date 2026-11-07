@@ -20,17 +20,40 @@ export function publicKeyInfo(content) {
   return { type, fingerprint: `SHA256:${createHash('sha256').update(bytes).digest('base64').replace(/=+$/, '')}` };
 }
 
+/**
+ * The first word of a config line as OpenSSH's own reader takes it: a quote
+ * anywhere in it is removed (`"Match"` and `Ma"tch"` are both Match), and it
+ * ends at a space, a tab or `=`. Read any other way, a line slips past the
+ * checks below and into `ssh -G`.
+ */
+export function configKeyword(line) {
+  let at = line.search(/[^ \t\r]/);
+  if (at < 0) return { word: '', rest: '' };
+  let word = '';
+  for (; at < line.length; at++) {
+    const character = line[at];
+    if (' \t\r='.includes(character)) break;
+    if (character !== '"') { word += character; continue; }
+    const end = line.indexOf('"', at + 1);
+    if (end < 0) return { word: `${word}${line.slice(at + 1)}`.toLowerCase(), rest: '' };
+    word += line.slice(at + 1, end);
+    at = end + 1;
+    break;
+  }
+  return { word: word.toLowerCase(), rest: line.slice(at).replace(/^[ \t\r]*=?[ \t\r]*/, '') };
+}
+
 export function validationCopy(content) {
   // ssh -G can run Match exec. Check its syntax but never execute user commands to validate a file.
   return content.split(/\r?\n/).map((line, index) => {
-    if (/^\s*include(?:\s|=)/i.test(line)) {
-      if (!line.replace(/^\s*include(?:\s+|\s*=\s*)/i, '').trim()) throw new Error(ui`Include needs a path on line ${index + 1}.`);
+    const { word, rest } = configKeyword(line);
+    if (word === 'include') {
+      if (!rest.trim()) throw new Error(ui`Include needs a path on line ${index + 1}.`);
       return '# Include paths are validated when SSH opens the connection.';
     }
-    if (/^\s*match(?:\s|=)/i.test(line)) {
-      const value = line.replace(/^\s*match(?:\s*=\s*|\s+)/i, '');
+    if (word === 'match') {
       const tokens = []; let token = ''; let quote = ''; let escaped = false;
-      for (const character of value) {
+      for (const character of rest) {
         if (escaped) { token += character; escaped = false; }
         else if (character === '\\') escaped = true;
         else if (quote) { if (character === quote) quote = ''; else token += character; }
@@ -44,6 +67,9 @@ export function validationCopy(content) {
       for (let at = 0; at < tokens.length; at++) {
         const criterion = tokens[at].replace(/^!/, '').toLowerCase();
         if (['all', 'canonical', 'final'].includes(criterion)) continue;
+        // OpenSSH 9.9 also takes `exec=command` as one word.
+        if (criterion.startsWith('exec=')) { tokens[at] = `${tokens[at].startsWith('!') ? '!' : ''}host=twig-validation.invalid`; continue; }
+        if (criterion.includes('=')) continue;
         if (!tokens[at + 1]) throw new Error(ui`Missing Match argument on line ${index + 1}.`);
         if (criterion === 'exec') { tokens[at] = tokens[at].startsWith('!') ? '!host' : 'host'; tokens[at + 1] = 'twig-validation.invalid'; }
         at++;

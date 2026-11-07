@@ -116,7 +116,7 @@ export function progressLine(card, base) {
 
 /** Labels on a board card, words first: colour is never the only sign. */
 export function boardBadges(card) {
-  return [card.main && mark('Main'), card.current && mark('This tab'), card.agent && mark('Agent'), card.connected && mark('Agent connected'),
+  return [card.forged && mark('.git leads elsewhere'), card.main && mark('Main'), card.current && mark('This tab'), card.agent && mark('Agent'), card.connected && mark('Agent connected'),
     card.proposal && mark('Commit proposed'), card.integrated && mark('Done'), card.locked && mark('Locked'), card.prunable && mark('Folder missing')].filter(Boolean);
 }
 

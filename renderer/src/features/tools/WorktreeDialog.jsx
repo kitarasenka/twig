@@ -67,7 +67,7 @@ export default function WorktreeDialog({ repository, refs, headOid, headBranch, 
           : t`A checkout of its own for one agent: a new branch from ${start} (no commit) in this repository’s .claude/worktrees folder, where claude --worktree puts its own. It stays on the board; copy its command there to start the agent.`}</p>
         {error && <p role="alert" className="warn">{error}</p>}
         <label htmlFor="worktree-agent-name">{t('Task name')}
-          <input id="worktree-agent-name" value={name} autoComplete="off" spellCheck={false} placeholder="fix-login" onChange={event => setName(event.target.value)} /></label>
+          <input id="worktree-agent-name" data-autofocus value={name} autoComplete="off" spellCheck={false} placeholder="fix-login" onChange={event => setName(event.target.value)} /></label>
         <div className="worktree-folder"><span><FolderGit2 aria-hidden="true" /><code>{plan?.path || '…'}</code></span></div>
         {command && <><p className="muted">{t('This command will run:')}</p><code className="confirm-command">$ git {shown(command)}</code>
           <p className="muted">{t('If the main checkout does not ignore .claude/worktrees/ yet, 🌱 Twig adds it to .git/info/exclude, a local file Git never commits.')}</p></>}
@@ -88,12 +88,12 @@ export default function WorktreeDialog({ repository, refs, headOid, headBranch, 
         <button type="button" aria-pressed={mode === 'new'} onClick={() => { setMode('new'); setChosen(false); }}>{t('New branch')}</button>
       </div>
       {mode === 'existing'
-        ? <label htmlFor="worktree-branch">{t('Branch')}<select id="worktree-branch" value={branch} onChange={event => { setBranch(event.target.value); setChosen(false); }}>
+        ? <label htmlFor="worktree-branch">{t('Branch')}<select id="worktree-branch" data-autofocus value={branch} onChange={event => { setBranch(event.target.value); setChosen(false); }}>
           {free.length === 0 && <option value="">{t('No branch is free — each is checked out somewhere')}</option>}
           {free.map(item => <option key={item} value={item}>{item}</option>)}
         </select></label>
         : <label htmlFor="worktree-new-branch">{headOid ? t`New branch name, starting at ${start} (${headOid.slice(0, 7)})` : t`New branch name, starting at ${start} (no commit)`}
-          <input id="worktree-new-branch" value={name} autoComplete="off" spellCheck={false} placeholder="hotfix/login" onChange={event => { setName(event.target.value); setChosen(false); }} /></label>}
+          <input id="worktree-new-branch" data-autofocus value={name} autoComplete="off" spellCheck={false} placeholder="hotfix/login" onChange={event => { setName(event.target.value); setChosen(false); }} /></label>}
       <div className="worktree-folder"><span><FolderGit2 aria-hidden="true" /><code>{plan?.path || '…'}</code></span>
         <Button type="button" icon={FolderOpen} reason={!target || invalid ? t('Choose the branch first') : undefined} onClick={() => void chooseFolder()}>{t('Choose another folder…')}</Button></div>
       {command && <><p className="muted">{t('This command will run:')}</p><code className="confirm-command">$ git {shown(command)}</code></>}

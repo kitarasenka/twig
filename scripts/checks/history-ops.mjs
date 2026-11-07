@@ -16,7 +16,7 @@ import { buildMarkResolvedArgv, buildStageContentArgv, buildTakeSideArgv } from 
 import { buildRewordArgv } from '../../main/git/commit-ops.js';
 import { buildRewordPlan } from '../../renderer/src/features/ops/reword-plan.js';
 import { buildSquashPlan, squashable } from '../../renderer/src/features/ops/squash-plan.js';
-import { buildCommitMenu, buildMultiCommitMenu } from '../../renderer/src/features/ops/commit-menu.js';
+import { buildCommitMenu, buildMultiCommitMenu, flatMenuItems } from '../../renderer/src/features/ops/commit-menu.js';
 
 const A = '82df62445b05a04be53291bb36b5db80e46dad77';
 const B = 'ebb6e9d3dec115ba8b429d3b143db9d27777a083';
@@ -33,11 +33,18 @@ for (const bad of ['', ' ', 'has space', 'a..b', 'tip~1', 'q^', 'a:b', 'wild*', 
   '.hidden', 'a/.hidden', 'ends.', 'thing.lock', 'a//b', '/leading', 'trailing/', '@', 'ref@{0}', 'nul\0byte']) {
   assert.throws(() => validateRefName(bad), TypeError, `should reject ${JSON.stringify(bad)}`);
 }
-// A name that looks like a flag is still only a name, and every argv puts it
-// after `--` so Git can never read it as an option.
-assert.deepEqual(buildCreateBranchArgv('--force', A), ['branch', '--', '--force', A]);
+// A name that looks like a flag comes only from a server, and a clone keeps it:
+// no argv takes one, except deleting it, behind `--`.
+for (const bad of ['--force', '-D', '--squash', '-Xtheirs']) {
+  assert.throws(() => validateRefName(bad), TypeError, bad);
+  assert.throws(() => buildCreateBranchArgv(bad, A), TypeError, bad);
+  assert.throws(() => buildCheckoutBranchArgv(bad), TypeError, bad);
+  assert.throws(() => buildMergeArgv(bad), TypeError, bad);
+}
+assert.equal(validateRefName('feature/-x'), 'feature/-x', 'only the start of the name reads as an option');
 assert.deepEqual(buildDeleteBranchArgv('-D', false), ['branch', '-d', '--', '-D']);
-assert.deepEqual(buildCheckoutBranchArgv('main'), ['checkout', 'main', '--']);
+assert.deepEqual(buildDeleteTagArgv('--squash'), ['tag', '-d', '--', '--squash']);
+assert.deepEqual(buildCheckoutBranchArgv('main'), ['checkout', '--end-of-options', 'main', '--']);
 assert.deepEqual(buildCheckoutCommitArgv(A), ['checkout', '--detach', A, '--']);
 assert.deepEqual(buildCheckoutNewBranchArgv('topic', A), ['checkout', '-b', 'topic', A, '--']);
 assert.deepEqual(buildCreateTagArgv('v1', A, false), ['tag', '--', 'v1', A]);
@@ -45,8 +52,8 @@ assert.deepEqual(buildCreateTagArgv('v1', A, true), ['tag', '--annotate', '--fil
 assert.throws(() => buildCreateBranchArgv('ok', 'not-an-oid'), TypeError);
 
 // --- merge, cherry-pick, revert, reset --------------------------------------
-assert.deepEqual(buildMergeArgv('feature'), ['merge', '--no-edit', 'feature']);
-assert.deepEqual(buildMergeArgv('origin/feature', { noFf: true }), ['merge', '--no-edit', '--no-ff', 'origin/feature']);
+assert.deepEqual(buildMergeArgv('feature'), ['merge', '--no-edit', '--end-of-options', 'feature']);
+assert.deepEqual(buildMergeArgv('origin/feature', { noFf: true }), ['merge', '--no-edit', '--no-ff', '--end-of-options', 'origin/feature']);
 assert.equal(validateRevision(A), A);
 assert.throws(() => buildMergeArgv('bad name'), TypeError);
 assert.deepEqual(buildCherryPickArgv(A), ['cherry-pick', A]);
@@ -121,9 +128,11 @@ for (const bad of ['../escape', '/etc/passwd', 'a/../../b', 'nul\0']) {
 
 // --- context menu applicability ---------------------------------------------
 const commit = { oid: A, subject: 'a change', body: '', parents: [B] };
-const keysOf = menu => menu.filter(item => !item.separator).map(item => item.key);
+// Every item a person can reach, inside the ref submenus too; a submenu's own row runs nothing.
+const actions = menu => flatMenuItems(menu).filter(item => !item.separator && !item.submenu);
+const keysOf = menu => actions(menu).map(item => item.key);
 // Menu.jsx disables any item that carries a reason, so the check reads it the same way.
-const enabledOf = menu => menu.filter(item => !item.separator && !item.reason).map(item => item.key);
+const enabledOf = menu => actions(menu).filter(item => !item.reason).map(item => item.key);
 const handlers = Object.fromEntries(['createBranch', 'createTag', 'checkoutBranch', 'checkoutCommit', 'merge',
   'cherryPick', 'revert', 'rebase', 'interactiveRebase', 'reword', 'reset', 'copy', 'mark', 'removeMark',
   'renameBranch', 'setUpstream', 'publishBranch', 'deleteBranch', 'checkoutRemote', 'deleteRemoteBranch',
@@ -210,6 +219,24 @@ const handlers = Object.fromEntries(['createBranch', 'createTag', 'checkoutBranc
   assert.ok(!keysOf(noRemote).some(key => key.startsWith('ref-publish-')), 'publish needs a remote');
   assert.ok(keysOf(noRemote).includes('ref-delete-refs/heads/feature'));
 
+  // A row with several branches: what is done to the commit stays on top, each ref's
+  // own actions are one row, named after the ref, and the menu fits a 640 px window.
+  const topKeys = menu.filter(item => !item.separator).map(item => item.key);
+  assert.ok(topKeys.indexOf('reset-hard') < topKeys.indexOf('ref-refs/heads/feature'), 'commit actions come before the refs');
+  assert.ok(topKeys.includes('cherry-pick') && topKeys.includes('revert') && topKeys.includes('rebase'));
+  assert.ok(!topKeys.includes('ref-delete-refs/heads/feature') && !topKeys.includes('ref-rename-refs/heads/feature'));
+  const row = menu.find(item => item.key === 'ref-refs/heads/feature');
+  assert.equal(row.text, 'feature');
+  assert.equal(row.title, 'refs/heads/feature');
+  assert.ok(row.submenu.some(item => item.key === 'checkout-refs/heads/feature'), 'several branches: checkout is in the branch’s own submenu');
+  assert.ok(row.submenu.some(item => item.key === 'merge-refs/heads/feature'));
+  assert.ok(!menu.find(item => item.key === 'ref-refs/heads/main').submenu.some(item => item.key === 'merge-refs/heads/main'), 'HEAD’s branch does not merge into itself');
+  assert.ok(menu.filter(item => !item.separator).length <= 24, `the top level stays short: ${menu.filter(item => !item.separator).length}`);
+
+  // One other branch: Merge and Check out need no submenu to be found.
+  const single = buildCommitMenu({ commit, refs: [current, feature], remotes: ['origin'], head: { branch: 'main', oid: C }, handlers }).map(item => item.key);
+  assert.ok(single.includes('merge-refs/heads/feature') && single.includes('checkout-refs/heads/feature'));
+
   // Mid-operation the ref actions are offered but disabled, like everything else.
   const busy = buildCommitMenu({ commit, refs: [feature], remotes: ['origin'], operation: { kind: 'rebase' },
     head: { branch: 'main', oid: C }, handlers });
@@ -236,7 +263,7 @@ for (const bad of ['has space', 'a..b', '', '@']) {
 
 // --- publishing one ref -----------------------------------------------------
 assert.deepEqual(buildPushRefArgv({ remote: 'origin', ref: 'refs/tags/v1' }),
-  ['push', '--progress', 'origin', '--', 'refs/tags/v1']);
+  ['push', '--progress', 'origin', '--', 'refs/tags/v1:refs/tags/v1']);
 assert.deepEqual(buildPushRefArgv({ remote: 'origin', ref: 'refs/heads/feature', remove: true }),
   ['push', '--progress', '--delete', 'origin', '--', 'refs/heads/feature']);
 for (const bad of ['feature', 'refs/remotes/origin/feature', 'refs/heads/', '--delete', '', null]) {

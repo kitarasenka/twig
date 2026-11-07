@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { readJsonFile, writeFileAtomic } from '../../main/json-file.js';
@@ -21,6 +21,13 @@ try {
   await writeFileAtomic(file, JSON.stringify({ a: 1 }));
   assert.deepEqual(await readJsonFile(file), { a: 1 });
   assert.deepEqual((await readdir(root)).sort(), ['settings.json'], 'no temporary file is left behind');
+  if (process.platform !== 'win32') {
+    assert.equal((await stat(file)).mode & 0o777, 0o600, 'only this account reads it');
+    await writeFile(path.join(root, 'old.json'), '{}', { mode: 0o644 });
+    await readJsonFile(path.join(root, 'old.json'));
+    assert.equal((await stat(path.join(root, 'old.json'))).mode & 0o777, 0o600, 'a file from before is made private when it is read');
+    await rm(path.join(root, 'old.json'));
+  }
   await writeFile(file, '{"a": 1, "b": [');
   assert.equal(await readJsonFile(file), undefined, 'a torn file reads as nothing');
   const aside = (await readdir(root)).filter(name => name.startsWith('settings.json.broken-'));

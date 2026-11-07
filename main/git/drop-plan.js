@@ -40,7 +40,7 @@ export function dropActions(source, target, remoteNames = []) {
 
 export function buildDropPlan({ action, source, target, head, remoteNames = [], mainline = null }) {
   if (!dropActions(source, target, remoteNames).some(item => item.key === action) || action === 'compare') {
-    throw new TypeError('This action is not available for these endpoints');
+    throw new TypeError(ui`This action is not available for these endpoints`);
   }
   const destination = action === 'rebase' ? source : target;
   const commands = [];

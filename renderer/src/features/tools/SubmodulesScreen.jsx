@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Boxes, Download, ExternalLink, RefreshCw } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import ScreenTitle from '../../ui/ScreenTitle.jsx';
 import OperationNote from '../../ui/OperationNote.jsx';
 import { submoduleAction, submoduleConsequence, submoduleState, submoduleUpdateCommand } from './tools-view.js';
 import { failureText, t, tr } from '../../i18n/i18n.js';
@@ -49,7 +50,7 @@ export default function SubmodulesScreen({ repository, busy, refreshKey = 0, onB
   return <section className="tool-screen" aria-label={t('Submodules')}>
     <header className="panel-heading">
       <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
-      <div><Boxes aria-hidden="true" /><strong>{t('Submodules')}</strong><span className="count">{submodules.length}</span></div>
+      <ScreenTitle icon={Boxes} title={t('Submodules')}><span className="count">{submodules.length}</span></ScreenTitle>
       <div className="tool-actions">
         {running && <Button onClick={() => void window.twig.cancelRepositoryTool(repository.id)}>{t('Cancel')}</Button>}
         <Button icon={Download} className="primary" reason={reason || (submodules.length === 0 ? t('This repository has no submodules') : undefined)}

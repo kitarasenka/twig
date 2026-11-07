@@ -4,11 +4,11 @@ import react from 'eslint-plugin-react';
 import hooks from 'eslint-plugin-react-hooks';
 
 export default [
-  { ignores: ['dist/**', 'release/**', 'artifacts/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'release/**', 'artifacts/**', 'node_modules/**', '.claude/**'] },
   js.configs.recommended,
   { languageOptions: { ecmaVersion: 'latest', sourceType: 'module', globals: globals.node } },
   {
-    files: ['renderer/public/*.js', 'scripts/smoke.mjs', 'scripts/history-smoke.mjs', 'scripts/graph-scroll-smoke.mjs', 'scripts/blame-smoke.mjs', 'scripts/worktree-smoke.mjs', 'scripts/ops-smoke.mjs', 'scripts/drop-smoke.mjs', 'scripts/browse-smoke.mjs', 'scripts/profile-smoke.mjs', 'scripts/repositories-smoke.mjs', 'scripts/ssh-undo-smoke.mjs', 'scripts/automations-smoke.mjs', 'scripts/sandbox-smoke.mjs', 'scripts/reflog-smoke.mjs', 'scripts/tools-smoke.mjs', 'scripts/everyday-smoke.mjs', 'scripts/mcp-smoke.mjs', 'scripts/image-smoke.mjs', 'scripts/reload-race-smoke.mjs', 'scripts/startup-smoke.mjs', 'scripts/site-shots.mjs', 'scripts/i18n-smoke.mjs'],
+    files: ['renderer/public/*.js', 'scripts/smoke.mjs', 'scripts/polish-smoke.mjs', 'scripts/history-smoke.mjs', 'scripts/graph-scroll-smoke.mjs', 'scripts/blame-smoke.mjs', 'scripts/worktree-smoke.mjs', 'scripts/ops-smoke.mjs', 'scripts/drop-smoke.mjs', 'scripts/browse-smoke.mjs', 'scripts/profile-smoke.mjs', 'scripts/repositories-smoke.mjs', 'scripts/ssh-undo-smoke.mjs', 'scripts/automations-smoke.mjs', 'scripts/sandbox-smoke.mjs', 'scripts/reflog-smoke.mjs', 'scripts/tools-smoke.mjs', 'scripts/everyday-smoke.mjs', 'scripts/mcp-smoke.mjs', 'scripts/image-smoke.mjs', 'scripts/reload-race-smoke.mjs', 'scripts/startup-smoke.mjs', 'scripts/site-shots.mjs', 'scripts/i18n-smoke.mjs', 'scripts/flows-smoke.mjs'],
     languageOptions: { globals: globals.browser }
   },
   {

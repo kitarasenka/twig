@@ -2,8 +2,8 @@
  * The exact Git command each kind of discard runs, as argv. One module for
  * both sides: main executes these, and the renderer shows them verbatim in the
  * §6.5 confirmation, so the dialog can never describe a different command
- * from the one that runs. No imports — Vite and Node both load this file, as
- * they do `drop-plan.js`.
+ * from the one that runs. Only the i18n import — Vite and Node both load this
+ * file, as they do `drop-plan.js`.
  *
  * Kinds:
  * - `file`       one tracked file's unstaged changes → back to the index version
@@ -12,6 +12,7 @@
  * - `untracked-all` every untracked path in the section
  * - `lines`      the selected lines of one file's unstaged diff, reverse-applied
  */
+import { ui } from '../../renderer/src/i18n/i18n.js';
 
 export const DISCARD_REF = 'refs/twig/discard';
 
@@ -40,11 +41,16 @@ export function discardCommand(kind, paths = []) {
   }
   if (kind === 'tracked') return ['restore', '--worktree', '--pathspec-from-file=-', '--pathspec-file-nul'];
   if (kind === 'untracked-all') {
-    if (!Array.isArray(paths) || paths.length === 0) throw new TypeError('Nothing to delete');
+    if (!Array.isArray(paths) || paths.length === 0) throw new TypeError(ui`Nothing to delete`);
     return ['clean', '-f', '-d', '--', ...paths.map(path => literal(check(path)))];
   }
   if (kind === 'lines') return ['apply', '--reverse', '--whitespace=nowarn', '-'];
   throw new TypeError('Unknown discard');
+}
+
+/** Puts paths back from a backup commit; the paths go over stdin. */
+export function restoreCommand(source) {
+  return ['restore', `--source=${source}`, '--worktree', '--pathspec-from-file=-', '--pathspec-file-nul'];
 }
 
 /**
@@ -58,9 +64,7 @@ export function discardCommand(kind, paths = []) {
  */
 export function discardInverse({ before, after, paths, removed }, direction) {
   const list = items => `${items.map(literal).join('\0')}\0`;
-  const restore = (source, items) => ({
-    argv: ['restore', `--source=${source}`, '--worktree', '--pathspec-from-file=-', '--pathspec-file-nul'], stdin: list(items)
-  });
+  const restore = (source, items) => ({ argv: restoreCommand(source), stdin: list(items) });
   if (direction === 'undo') return [restore(before, paths)];
   const removedSet = new Set(removed);
   const kept = paths.filter(path => !removedSet.has(path));

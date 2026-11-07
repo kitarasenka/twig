@@ -4,6 +4,8 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { CommandLog } from '../../main/command-log.js';
+import { redactCredentials } from '../../main/git/redact.js';
+import { applyConsoleUpdates } from '../../renderer/src/app/console-entries.js';
 import { runGit } from '../../main/git/exec.js';
 import { parseStatusV2 } from '../../main/git/status-parser.js';
 import { RepositoryStore } from '../../main/store.js';
@@ -135,7 +137,75 @@ try {
   const reread = new CommandLog(quietDir);
   await reread.load();
   assert.ok(reread.list().find(entry => entry.id === 'long').stdout.endsWith('at 256 KB.\n'), 'the notice after a restart too');
-  assert.equal(reread.outputOf('read').stdout, readOutput);
+  // What an automatic read printed is the person's code: this session's memory
+  // has it (above), the file never does, and a restart has only the entry.
+  const journalText = await readFile(path.join(quietDir, 'command-log.jsonl'), 'utf8');
+  assert.ok(!journalText.includes('yyyy'), 'the output of an automatic read does not reach the file');
+  assert.ok(journalText.includes('hello'), 'what a person ran does');
+  await quiet.start({ id: 'blame', argv: ['blame'], cwd: directory, operation: 'Blame file', startedAt: now });
+  await quiet.output('blame', 'stdout', 'CODE_FROM_A_BLAME\n');
+  await quiet.finish('blame', { code: 0, ms: 1, stdout: 'CODE_FROM_A_BLAME\n', stderr: '' });
+  await quiet.settled();
+  assert.equal(quiet.list().at(-1).stdout, 'CODE_FROM_A_BLAME\n', 'a blame the person asked for shows in the console');
+  assert.ok(!(await readFile(path.join(quietDir, 'command-log.jsonl'), 'utf8')).includes('CODE_FROM_A_BLAME'), 'and its code stays out of the file');
+  assert.equal(reread.outputOf('read').stdout, '');
+  assert.equal(reread.list().find(entry => entry.id === 'read').code, 0, 'the entry itself stays');
+  if (process.platform !== 'win32') {
+    assert.equal((await stat(path.join(quietDir, 'command-log.jsonl'))).mode & 0o777, 0o600, 'the journal is private');
+    const appended = path.join(directory, 'appended');
+    const fresh = new CommandLog(appended);
+    await fresh.load();
+    await fresh.start({ id: 'one', argv: ['status'], cwd: directory, operation: 'Console command', startedAt: now });
+    await fresh.settled();
+    assert.equal((await stat(path.join(appended, 'command-log.jsonl'))).mode & 0o777, 0o600, 'from its first append');
+  }
+
+  // A journal from before: world-readable, with a diff in an automatic read. One start cleans both.
+  const oldDir = path.join(directory, 'old');
+  await mkdir(oldDir);
+  await writeFile(path.join(oldDir, 'command-log.jsonl'), [
+    JSON.stringify({ type: 'start', entry: { id: 'a', argv: ['diff'], cwd: directory, operation: 'MCP: read diff', startedAt: now } }),
+    JSON.stringify({ type: 'output', id: 'a', stream: 'stdout', chunk: '+SECRET_IN_A_DIFF\n' }),
+    JSON.stringify({ type: 'finish', id: 'a', result: { code: 0, ms: 1 } })
+  ].join('\n') + '\n', { mode: 0o644 });
+  const old = new CommandLog(oldDir);
+  await old.load();
+  await old.settled();
+  assert.ok(!(await readFile(path.join(oldDir, 'command-log.jsonl'), 'utf8')).includes('SECRET_IN_A_DIFF'));
+  if (process.platform !== 'win32') assert.equal((await stat(path.join(oldDir, 'command-log.jsonl'))).mode & 0o777, 0o600);
+
+  // Settings → Clear journal: every finished command goes, from memory and the file; one still running stays.
+  const clearing = [];
+  quiet.onChange(event => clearing.push(event.type));
+  await quiet.start({ id: 'running', argv: ['fetch'], cwd: directory, operation: 'Console command', startedAt: now });
+  await quiet.clear();
+  await quiet.settled();
+  assert.deepEqual(quiet.list().map(entry => entry.id), ['running']);
+  assert.ok(clearing.includes('clear'), 'the window hears it');
+  assert.ok(!(await readFile(path.join(quietDir, 'command-log.jsonl'), 'utf8')).includes('hello'));
+  assert.deepEqual(applyConsoleUpdates([{ id: 'x', state: 'finished' }, { id: 'y', state: 'running' }], [{ type: 'clear' }]).map(entry => entry.id), ['y']);
+
+  // Credentials in every shape a tool prints them, the same token pieced together for the push protection.
+  const token = `ghp_${'a1B2c3D4e5'.repeat(4)}`;
+  for (const [text, kept] of [
+    ['https://user:p@ss@host/x', 'https://***@host/x'],
+    [`https://x-access-token:${token}@github.com/a/b`, 'https://***@github.com/a/b'],
+    [`git clone https://${token}@github.com/a/b`, 'git clone https://***@github.com/a/b'],
+    [`Authorization: Bearer ${token}`, 'Authorization: Bearer ***'],
+    [`curl -H "authorization: token ${token}" x`, 'curl -H "authorization: token ***" x'],
+    [`https://host/x?access_token=${token}&a=1`, 'https://host/x?access_token=***&a=1'],
+    [`https://host/x?a=1&token=${token}`, 'https://host/x?a=1&token=***'],
+    [`user:${token}@github.com:a/b.git`, '***@github.com:a/b.git'],
+    [`TOKEN=${token}`, 'TOKEN=***'],
+    ['mailto:someone.else@example.com', 'mailto:someone.else@example.com'],
+    ['Ada <ada@example.com> 2026-11-07 12:00:00', 'Ada <ada@example.com> 2026-11-07 12:00:00'],
+    ['the bearer of this note', 'the bearer of this note'],
+    ['git@github.com:a/b.git and https://github.com/a/b', 'git@github.com:a/b.git and https://github.com/a/b']
+  ]) assert.equal(redactCredentials(text), kept);
+  const spin = `${'https://a.example/b?c=d&'.repeat(40_000)}`;
+  const started = performance.now();
+  redactCredentials(spin);
+  assert.ok(performance.now() - started < 1000, 'a megabyte in one line of URLs does not stall the journal');
 
   // The journal on disk is best effort: a write that fails (here the file is a
   // folder) does not stop the journal in memory, nor the git commands after it.

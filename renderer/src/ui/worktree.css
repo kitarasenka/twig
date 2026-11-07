@@ -1,5 +1,5 @@
 .worktree-screen { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-.worktree-heading { gap: var(--space-2); }
+.worktree-heading { gap: var(--space-2); justify-content: flex-start; }
 .worktree-notice { margin: 0; padding: var(--space-1) var(--space-4); color: var(--muted); font-size: var(--text-xs); }
 /* This row must stay shrinkable: giving it a min-height pushes the commit
    form out of the clipped panel when the console is expanded, and an
@@ -9,7 +9,7 @@
    form instead of scrolling inside its own panel. */
 .worktree-body { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1; min-height: 0; }
 .worktree-lists { overflow: auto; border-right: 1px solid var(--border); padding-bottom: var(--space-3); }
-.worktree-lists h3 { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-3);
+.worktree-lists h3 { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin: 0; padding: var(--space-2) var(--space-3);
   font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .worktree-lists h3 svg { width: 14px; height: 14px; }
 .worktree-lists .count { margin-left: auto; }
@@ -18,8 +18,8 @@
 .worktree-lists h3 .bulk svg { width: 12px; height: 12px; }
 .worktree-lists h3 .bulk:disabled { color: var(--muted); }
 .worktree-lists .muted { padding: 0 var(--space-3) var(--space-2); font-size: var(--text-xs); }
-.worktree-file { display: flex; align-items: center; gap: 2px; padding-right: var(--space-2); }
-.worktree-file .button-wrap > button { min-height: 24px; padding: 0 var(--space-1); }
+.worktree-file { display: flex; align-items: center; gap: 6px; padding-right: var(--space-2); }
+.worktree-file .button-wrap > button { min-height: 24px; min-width: 24px; padding: 0 var(--space-1); }
 .worktree-file.selected { background: var(--accent-bg); box-shadow: inset 2px 0 var(--accent); }
 .worktree-file:hover { background: var(--surface-hover); }
 .worktree-open { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; min-height: 24px; justify-content: flex-start;
@@ -39,6 +39,7 @@
 .stage-hunk-head em { font-style: normal; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .stage-line { display: grid; grid-template-columns: 22px 44px 44px minmax(0, 1fr); align-items: center; }
 .stage-line:hover { background: var(--surface-hover); }
+.stage-line.pickable { cursor: pointer; }
 /* The global input rule gives every control --row-height (30px) plus padding;
    on a diff that turns a 15px line into a 38px one. Diff checkboxes are sized
    to the line, not to a form field. */
@@ -48,14 +49,20 @@
 .line-text { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: var(--space-2); }
 .stage-line.no-newline .line-text { color: var(--muted); }
 
-.commit-box { display: flex; flex-direction: column; gap: var(--space-1); border-top: 1px solid var(--border); padding: var(--space-2) var(--space-3); }
+/* One line until it is written in, and the options beside Commit: on a 640 px window the
+   form took half of what the file lists had. The note stack rises above this box. */
+.commit-box { anchor-name: --commit-box; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-1) var(--space-3); border-top: 1px solid var(--border); padding: var(--space-2) var(--space-3); }
+.commit-box > * { grid-column: 1 / -1; }
+.commit-box > .commit-options, .commit-box > .commit-bump { grid-column: 1; }
+.commit-box > .commit-actions { grid-column: 2; }
 .commit-box label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-.commit-box textarea { resize: vertical; font-family: var(--font-mono); font-size: var(--text-sm);
-  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2); }
+.commit-box textarea { height: 32px; resize: vertical; font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.3;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); transition: height var(--motion); }
+.commit-box textarea:focus, .commit-box textarea:not(:placeholder-shown) { height: 76px; }
 .commit-box textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .commit-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--text-xs); }
 .commit-actions .warn { color: var(--danger); }
-.amend-toggle { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs);
+.commit-box .amend-toggle { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs);
   text-transform: none; letter-spacing: 0; color: var(--text); cursor: pointer; }
 .amend-toggle input { cursor: pointer; flex: none; }
 .amend-toggle:has(input:disabled) { color: var(--muted); cursor: not-allowed; }
@@ -107,4 +114,6 @@ button.discard:not(:disabled):hover, button.discard:not(:disabled):focus-visible
 .co-author-open svg { width: 13px; height: 13px; }
 .commit-bump { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--muted); }
 .commit-bump select { min-width: 0; max-width: 100%; flex: 1; }
-.worktree-list-controls { padding: 0 var(--space-3); }
+.worktree-list-controls { padding: var(--space-1) var(--space-3) 0; }
+.worktree-list-controls .file-controls { margin: 0 0 var(--space-1); }
+.worktree-list-controls input, .worktree-list-controls select { min-height: 26px; padding-block: 0; }

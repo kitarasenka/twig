@@ -152,7 +152,7 @@ try {
   {
     const undo = new UndoService({ directory: path.join(root, 'undo'), log }); await undo.load();
     const shown = [];
-    const proposals = createCommitProposals({ log, undo, automations, runs, isAllowed: () => true, present: view => { shown.push(view); return true; }, bump: bumper });
+    const proposals = createCommitProposals({ log, undo, automations, runs, minIntervalMs: 0, isAllowed: () => true, present: view => { shown.push(view); return true; }, bump: bumper });
     await write('src/game.js', 'export const speed = 4;\n');
     const id = await proposals.propose({ repo, message: 'feat: speed 4', push: false });
     const view = shown.at(-1);

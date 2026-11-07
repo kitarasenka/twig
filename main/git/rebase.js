@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runGit } from './exec.js';
@@ -111,6 +111,12 @@ export async function writePlan({ stateDir, cwd, entries }) {
 /** Called once an operation is over, so a finished plan cannot leak into the next one. */
 export async function clearPlan({ stateDir, cwd }) {
   await rm(planDirectory(stateDir, cwd), { recursive: true, force: true });
+}
+
+/** A repository that moved mid-rebase keeps its plan: every `--continue` needs its messages. */
+export async function movePlan({ stateDir, from, to }) {
+  try { await rename(planDirectory(stateDir, from), planDirectory(stateDir, to)); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
 
 /** The plan file of a rebase still in progress, needed by every `--continue`. */

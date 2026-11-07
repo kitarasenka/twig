@@ -1,8 +1,13 @@
+import { randomUUID } from 'node:crypto';
+import { copyFile, rm, stat, utimes } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { runGit } from './exec.js';
 import { buildPatch } from './patch-builder.js';
 import { loadWorktree } from './worktree.js';
 import { loadOperationState } from './operation-state.js';
 import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
+import { finishFirst } from './operation-words.js';
 
 /**
  * Index-writing operations. Every path reaches Git as `:(literal)<path>`
@@ -55,6 +60,44 @@ export function buildStageEverythingArgv() {
 /** @param {{ cwd: string, log: object }} options */
 export function stageEverything({ cwd, log }) {
   return mutate({ cwd, log, argv: buildStageEverythingArgv(), operation: 'Stage all changes', failed: ui`Stage all changes failed. See the command console.` });
+}
+
+/**
+ * With the original's time: Git compares a file written in the same second as
+ * the index by content, and it knows that second from the index file's own
+ * time. A fresh copy would pass for newer, and a same-size edit go unseen.
+ */
+async function copyIndex(from, to) {
+  try {
+    const { atime, mtime } = await stat(from);
+    await copyFile(from, to);
+    await utimes(to, atime, mtime);
+  } catch { /* no index yet: Git starts an empty one */ }
+}
+
+/**
+ * What `git add --all` would make of the working tree, without touching the
+ * index: a throwaway copy of it takes the add, and `read` asks Git about that
+ * copy through the environment it gets. Starting from a copy keeps Git's stat
+ * cache, so this costs about one `git status` even in a big repository; the
+ * blobs it writes are what the add itself would write.
+ * @template T
+ * @param {{ cwd: string, log: object }} options
+ * @param {(env: Record<string, string>) => Promise<T>} read
+ * @returns {Promise<T>}
+ */
+export async function withEverythingStaged({ cwd, log }, read) {
+  const index = path.join(os.tmpdir(), `twig-candidate-${randomUUID()}.index`);
+  const env = { GIT_INDEX_FILE: index };
+  try {
+    const real = await runGit({ cwd, log, argv: ['rev-parse', '--git-path', 'index'], operation: 'Read where the index is' });
+    if (real.code === 0) await copyIndex(path.resolve(cwd, real.stdout.trim()), index);
+    const added = await runGit({ cwd, log, env, argv: buildStageEverythingArgv(), operation: 'Read what a commit of everything takes' });
+    if (added.code !== 0) throw new Error(ui`Git could not read the working tree.`);
+    return await read(env);
+  } finally {
+    await Promise.all([rm(index, { force: true }), rm(`${index}.lock`, { force: true })]).catch(() => {});
+  }
 }
 
 /** Everything Git already tracks: modifications and deletions, never a new file. */
@@ -211,7 +254,7 @@ export async function stageAll({ cwd, log, scope, only = null }) {
 export async function unstageAll({ cwd, log, only = null }) {
   if (only === null) {
     const state = await loadOperationState({ cwd, log });
-    if (state.kind !== 'none') throw new Error(ui`Finish or abort the ${state.kind} first: unstaging everything would cancel it.`);
+    if (state.kind !== 'none') throw new Error(`${finishFirst(state.kind)} ${ui`Unstaging everything would cancel it.`}`);
   }
   const tree = await readBulkTarget({ cwd, log });
   const paths = narrow(tree.staged, only);

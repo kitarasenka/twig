@@ -47,8 +47,15 @@ for (const file of ['README.md', 'app.ts', 'notes.txt', 'image.png']) assert.equ
 // --- config keys that run a program on a read -----------------------------
 for (const key of ['core.fsmonitor', 'core.sshCommand', 'filter.x.clean', 'filter.x.process', 'diff.x.textconv',
   'diff.external', 'credential.helper', 'credential.https://h.helper', 'gpg.program', 'gpg.ssh.program',
-  'include.path', 'includeIf.gitdir:/x/.path']) assert.equal(isRiskyConfigKey(key), true, key);
-for (const key of ['core.hooksPath', 'user.name', 'remote.origin.url', 'filter.x.required', 'core.editor']) {
+  'include.path', 'includeIf.gitdir:/x/.path', 'core.hooksPath', 'core.alternateRefsCommand', 'core.worktree',
+  'extensions.partialClone', 'remote.origin.promisor', 'remote.origin.uploadpack', 'remote.origin.receivepack', 'remote.origin.vcs',
+  'protocol.ext.allow', 'url.ext::x.insteadOf', 'merge.x.driver', 'gpg.ssh.defaultKeyCommand', 'lfs.customtransfer.x.path',
+  'interactive.diffFilter', 'sequence.editor', 'something.nobody.knows',
+  // Nothing runs, and a push goes elsewhere.
+  'remote.origin.pushurl', 'remote.origin.mirror', 'remote.origin.push', 'remote.pushDefault', 'branch.main.pushRemote', 'push.default'
+]) assert.equal(isRiskyConfigKey(key), true, key);
+for (const key of ['user.name', 'remote.origin.url', 'remote.origin.fetch', 'branch.main.merge', 'filter.x.required', 'core.editor', 'core.autocrlf',
+  'submodule.lib.url', 'commit.gpgSign', 'gpg.format', 'gitflow.branch.master', 'alias.co']) {
   assert.equal(isRiskyConfigKey(key), false, key);
 }
 
@@ -89,7 +96,6 @@ try {
   git(repo, 'config', 'filter.lfs.clean', 'git-lfs clean -- %f');
   git(repo, 'config', 'filter.lfs.process', 'git-lfs filter-process');
   git(repo, 'config', 'core.fsmonitor', 'true');
-  git(repo, 'config', 'core.hooksPath', '.husky');
   // Everyday local settings: SSH signing, a keychain helper, a deploy key.
   git(repo, 'config', 'gpg.format', 'ssh');
   git(repo, 'config', 'gpg.ssh.program', 'ssh-keygen');

@@ -48,6 +48,12 @@ export function isWatchedPath(filename) {
   return !name.endsWith('.lock') && !OWN_REFS.test(name) && WATCHED.test(name);
 }
 
+// What the repository's trust is read from (main/repository-trust.js): nothing
+// to redraw, but a change here is checked right away, before any Git process.
+const SETTINGS = /(^|[/\\])(config|config\.worktree)$|(^|[/\\])hooks([/\\]|$)|(^|[/\\])objects[/\\]info[/\\]alternates$/;
+
+export const isSettingsPath = filename => Boolean(filename) && !String(filename).endsWith('.lock') && SETTINGS.test(String(filename));
+
 /**
  * The folder to watch for `gitDir`. A linked worktree's git directory holds
  * only its own HEAD and index; its branches, tags and `packed-refs` live in
@@ -76,14 +82,16 @@ export async function resolveWatchedDir(gitDir) {
 /**
  * @param {() => (import('electron').BrowserWindow | null)} getWindow
  * @param {number} [debounceMs]
+ * @param {(cwd: string) => void} [onSettings] the repository's config or hooks changed
  */
-export function createRepositoryWatcher(getWindow, debounceMs = DEBOUNCE_MS) {
+export function createRepositoryWatcher(getWindow, debounceMs = DEBOUNCE_MS, onSettings = () => {}) {
   let token = 0;
   let active = null; // { cwd, handle: fs.FSWatcher, timer: NodeJS.Timeout | null }
 
   function stop() {
     if (!active) return;
     if (active.timer) clearTimeout(active.timer);
+    if (active.settingsTimer) clearTimeout(active.settingsTimer);
     try { active.handle?.close(); } catch { /* already gone */ }
     active = null;
   }
@@ -97,7 +105,7 @@ export function createRepositoryWatcher(getWindow, debounceMs = DEBOUNCE_MS) {
     const gitDir = ownDir && await resolveWatchedDir(ownDir);
     if (mine !== token || !gitDir) return;
 
-    const state = { cwd, handle: null, timer: null, changedAt: 0 };
+    const state = { cwd, handle: null, timer: null, settingsTimer: null, changedAt: 0 };
     // `changedAt`: when the last change of this burst reached the watch. The
     // window compares it with when it last read the refs, so it can tell a
     // change it has not seen from the echo of its own action — instead of
@@ -108,6 +116,10 @@ export function createRepositoryWatcher(getWindow, debounceMs = DEBOUNCE_MS) {
       if (window && !window.isDestroyed()) window.webContents.send('repo:external-change', { cwd, changedAt: state.changedAt });
     };
     const onEvent = (_type, filename) => {
+      if (isSettingsPath(filename)) {
+        if (state.settingsTimer) clearTimeout(state.settingsTimer);
+        state.settingsTimer = setTimeout(() => { state.settingsTimer = null; onSettings(cwd); }, debounceMs);
+      }
       if (!isWatchedPath(filename)) return;
       state.changedAt = Date.now();
       if (state.timer) clearTimeout(state.timer);

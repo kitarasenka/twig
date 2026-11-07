@@ -17,7 +17,7 @@ export const CONSOLE_FLUSH_MS = 40;
  * over the events. Entries are replaced, never mutated, so a row that did not
  * change keeps its identity.
  * @param {object[]} entries
- * @param {{ type: 'start'|'output'|'finish', id?: string, entry?: object, stream?: string, chunk?: string, result?: object }[]} updates
+ * @param {{ type: 'start'|'output'|'finish'|'clear', id?: string, entry?: object, stream?: string, chunk?: string, result?: object }[]} updates
  */
 export function applyConsoleUpdates(entries, updates) {
   if (!updates.length) return entries;
@@ -28,6 +28,11 @@ export function applyConsoleUpdates(entries, updates) {
     return index.get(id);
   };
   for (const update of updates) {
+    if (update.type === 'clear') {
+      next = next.filter(entry => entry.state === 'running');
+      index = null;
+      continue;
+    }
     if (update.type === 'start') {
       next.push({ ...update.entry, stdout: '', stderr: '', state: 'running', code: null, ms: null });
       index?.set(update.entry.id, next.length - 1);

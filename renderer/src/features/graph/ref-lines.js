@@ -19,6 +19,12 @@ export const BADGE_GAP = 4;
 export const HEAD_WIDTH = 20;
 export const MARK_WIDTH = 18;
 
+/** The checked-out branch comes first, next to the HEAD sprout; the others keep their order. */
+export function orderRefs(refs, headBranch) {
+  const current = refs.findIndex(ref => ref.type === 'local' && ref.name === headBranch);
+  return current > 0 ? [refs[current], ...refs.slice(0, current), ...refs.slice(current + 1)] : refs;
+}
+
 /** Width of one badge; `measure` returns the pixel width of the name. */
 export function badgeWidth(name, measure) {
   return BADGE_CHROME + Math.ceil(measure(String(name ?? '')));

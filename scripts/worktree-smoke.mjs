@@ -246,13 +246,14 @@ try {
   const push = page.getByRole('button', { name: /^Push/ });
   await push.locator('.badge').getByText('1', { exact: true }).waitFor();
   await push.click();
-  await expect('push finished.', 'pushing');
+  await expect('Push finished.', 'pushing');
   assert.equal(await git(['rev-parse', 'HEAD']), await git(['rev-parse', 'origin/main']), 'the commit reached the remote');
-  // The note rises right above the console instead of pushing the screen down,
-  // its cross is big enough to hit, and it leaves by itself.
-  const pushNote = page.locator('.note-stack .operation-note').filter({ hasText: 'push finished.' });
-  const [noteBox, consoleBox] = await Promise.all([pushNote.boundingBox(), page.locator('.console').boundingBox()]);
-  assert.ok(noteBox.y + noteBox.height <= consoleBox.y && consoleBox.y - (noteBox.y + noteBox.height) < 24, 'the note sits right above the console');
+  // The note rises from the bottom instead of pushing the screen down (here, with
+  // the commit form on screen, from above the form), its cross is big enough to hit,
+  // and it leaves by itself.
+  const pushNote = page.locator('.note-stack .operation-note').filter({ hasText: 'Push finished.' });
+  const [noteBox, floorBox] = await Promise.all([pushNote.boundingBox(), page.locator('.commit-box').boundingBox()]);
+  assert.ok(noteBox.y + noteBox.height <= floorBox.y && floorBox.y - (noteBox.y + noteBox.height) < 24, 'the note sits right above the form');
   const dismissBox = await pushNote.getByRole('button', { name: 'Dismiss', exact: true }).boundingBox();
   assert.ok(dismissBox.width >= 32 && dismissBox.height >= 32, `the cross is at least 32 px: ${dismissBox.width}×${dismissBox.height}`);
   await pushNote.waitFor({ state: 'detached', timeout: 10_000 });
@@ -308,6 +309,7 @@ try {
   await confirmDialog.getByText('$ git clean -f -- :(literal)junk.txt', { exact: true }).waitFor();
   await confirmDialog.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect('Deleted junk.txt. Undo brings it back.', 'deleting an untracked file');
+  await page.waitForFunction(() => document.querySelector('button[title="Undo the discard of 1 file"]'));
   assert.equal(await git(['status', '--porcelain', '--', 'junk.txt']), '', 'the file is gone');
   assert.match(await git(['log', '-1', '--format=%s', 'refs/twig/discard']), /state after discarding junk\.txt/, 'the backup sits under the hidden ref');
   assert.equal((await git(['log', '--exclude=refs/twig/*', '--all', '--format=%s'])).includes('Twig'), false, 'and never in history');
@@ -336,6 +338,40 @@ try {
   await undoButton.click();
   for (let i = 0; i < 50 && await readFile(gridPath, 'utf8') !== dirty; i++) await page.waitForTimeout(100);
   assert.equal(await readFile(gridPath, 'utf8'), dirty, 'Undo restored the selected lines');
+  // On this screen a note rises above the commit form: Commit sits where notes usually do.
+  const undoNote = page.locator('.note-stack .operation-note').filter({ hasText: 'Undo completed.' });
+  await undoNote.waitFor();
+  await page.waitForTimeout(300); // the note has finished rising
+  const [undoNoteBox, formBox] = await Promise.all([undoNote.boundingBox(), page.locator('.commit-box').boundingBox()]);
+  assert.ok(undoNoteBox.y + undoNoteBox.height <= formBox.y, `the note clears the form: ${undoNoteBox.y + undoNoteBox.height} above ${formBox.y}`);
+  assert.ok(formBox.y - (undoNoteBox.y + undoNoteBox.height) < 24, 'and sits right above it');
+  assert.ok(await page.evaluate(() => {
+    const button = document.querySelector('.commit-box button[type="submit"]');
+    const box = button.getBoundingClientRect();
+    return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest('button') === button;
+  }), 'Commit takes the click, not the note');
+  // At 640 px the form stays one line until it is written in, and all three lists fit above it.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1000, 640));
+  await page.waitForFunction(() => innerHeight <= 660);
+  const commitField = page.locator('#commit-message');
+  const fieldHeight = () => commitField.evaluate(node => node.getBoundingClientRect().height);
+  assert.ok(await fieldHeight() <= 36, 'one line while empty and unfocused');
+  assert.ok((await page.locator('.commit-box').boundingBox()).height <= 110, 'the form takes a strip, not half the window');
+  const lists = await page.locator('.worktree-lists').evaluate(node => ({ scroll: node.scrollHeight, client: node.clientHeight, section: [...node.querySelectorAll('section')].at(-1).getBoundingClientRect().top, bottom: node.getBoundingClientRect().bottom }));
+  assert.ok(lists.section < lists.bottom, 'Untracked is on screen without scrolling');
+  await commitField.focus();
+  await page.waitForFunction(() => document.querySelector('#commit-message').getBoundingClientRect().height >= 70);
+  await commitField.blur();
+  // The row of a diff is the target, not only its 12 px checkbox; selecting text is not a click.
+  const lineBox = stageDiffRow => stageDiffRow.boundingBox();
+  await page.getByRole('region', { name: 'Unstaged changes' }).locator('.worktree-open').filter({ hasText: 'grid.txt' }).click();
+  const pickRow = page.locator('.stage-line.pickable').first();
+  await pickRow.waitFor();
+  const pickBox = await lineBox(pickRow);
+  await page.mouse.click(pickBox.x + pickBox.width - 40, pickBox.y + pickBox.height / 2);
+  assert.equal(await pickRow.locator('input').isChecked(), true, 'a click on the row ticks it');
+  await pickRow.locator('.line-text').click();
+  assert.equal(await pickRow.locator('input').isChecked(), false, 'and unticks it');
   // Both sections at once, leaving the tree clean for the rest of the run.
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   await page.getByRole('button', { name: /Uncommitted changes, 2 files/ }).click();
@@ -348,6 +384,27 @@ try {
   await confirmDialog.getByRole('button', { name: 'Delete 1 path', exact: true }).click();
   await expect('Working tree · 0 staged, 0 not staged', 'the tree is clean after both discards');
   assert.equal(await readFile(gridPath, 'utf8'), clean);
+
+  // A long list draws its first files and offers the rest; a filter finds any of them.
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
+  const bulk = Array.from({ length: 505 }, (_, index) => `bulk-${String(index).padStart(3, '0')}.txt`);
+  await Promise.all(bulk.map(file => writeFile(path.join(cwd, file), 'x\n')));
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.getByRole('button', { name: /Uncommitted changes, 505 files/ }).click();
+  await uncommitted.waitFor();
+  const rows = panelList('Untracked files').locator('.worktree-panel-file');
+  await rows.first().waitFor();
+  assert.equal(await rows.count(), 500, 'the first files are drawn');
+  const filterBox = uncommitted.getByRole('textbox', { name: 'Filter uncommitted files' });
+  await filterBox.fill('bulk-504');
+  await panelList('Untracked files').getByRole('button', { name: 'Stage bulk-504.txt', exact: true }).waitFor();
+  await filterBox.fill('');
+  await panelList('Untracked files').getByRole('button', { name: 'Show all 505 files', exact: true }).click();
+  await panelList('Untracked files').getByRole('button', { name: 'Stage bulk-504.txt', exact: true }).waitFor();
+  assert.equal(await rows.count(), 505, 'and Show all draws the rest');
+  await Promise.all(bulk.map(file => rm(path.join(cwd, file))));
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.getByRole('button', { name: /Uncommitted changes/ }).waitFor({ state: 'detached' });
 
   // Rejected IPC input: a stale digest and a traversal path must both fail.
   const rejected = await page.evaluate(async () => {

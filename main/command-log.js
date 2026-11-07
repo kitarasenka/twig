@@ -3,7 +3,7 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { redactCredentials } from './git/redact.js';
-import { removeStaleTemporaries, writeFileAtomic } from './json-file.js';
+import { PRIVATE_MODE, makePrivate, removeStaleTemporaries, writeFileAtomic } from './json-file.js';
 import { isUserCommand } from './command-source.js';
 
 const MAX_ENTRIES = 2000;
@@ -16,7 +16,15 @@ const MAX_STREAM = 256 * 1024;
 // 🌱 Twig's own reads — history pages, status, refs, the Undo checks — are
 // most of the journal and are read back only when one failed. Their output is
 // kept shorter, and it reaches the window only when someone opens the entry.
+// What they print is the person's own code — a diff, a file, a commit — so it
+// stays in memory for this session and never goes to the file: one look at a
+// .env must not leave it in a profile folder for months. A person's own
+// commands are written whole, and every entry keeps its argv, code and stderr.
 const BACKGROUND_STREAM = 32 * 1024;
+// A person's blame, history search and patch export are code on stdout too: they
+// show in the console as ever, and are not written either.
+const PRINTS_CODE = /^(?:Blame |Reverse blame |Search history$|Export )/;
+const memoryOnly = entry => entry.background || PRINTS_CODE.test(entry.operation ?? '');
 const notice = cap => `\n… output truncated by 🌱 Twig at ${cap / 1024} KB.\n`;
 // The journal is append-only during a session; past this much appended it is
 // rewritten from the entries that are still kept, so the file cannot outgrow
@@ -79,6 +87,7 @@ export class CommandLog {
   async load() {
     await mkdir(path.dirname(this.#file), { recursive: true });
     await removeStaleTemporaries(this.#file);
+    await makePrivate(this.#file);
     // Read line by line rather than in one string: a journal grown past V8's
     // 512 MB string limit would make `readFile` throw and the app never start.
     await new Promise((resolve, reject) => {
@@ -109,6 +118,16 @@ export class CommandLog {
   settled() { return this.#pending; }
 
   list() { return [...this.#entries.values()].slice(-MAX_ENTRIES).map(publicEntry); }
+
+  /**
+   * Forgets every finished command, in memory and in the file. A command still
+   * running stays: it has yet to report how it ended.
+   */
+  clear() {
+    for (const [id, entry] of this.#entries) if (entry.state !== 'running') this.#entries.delete(id);
+    for (const listener of this.#listeners) listener({ type: 'clear' });
+    return this.#queue(() => this.#compact());
+  }
 
   /** The kept output of one entry, for the window to show when it is opened. */
   outputOf(id) {
@@ -157,7 +176,7 @@ export class CommandLog {
       if (!this.#lines.length) return;
       const text = `${this.#lines.join('\n')}\n`;
       this.#lines = [];
-      await appendFile(this.#file, text, 'utf8');
+      await appendFile(this.#file, text, { encoding: 'utf8', mode: PRIVATE_MODE });
       this.#appended += Buffer.byteLength(text);
       if (this.#appended > COMPACT_BYTES || this.#scrub) await this.#compact();
     });
@@ -186,6 +205,7 @@ export class CommandLog {
       entry[event.stream] += chunk;
       written = chunk === event.chunk ? event : { ...event, chunk };
       published = entry.background ? null : written;
+      if (memoryOnly(entry) && event.stream === 'stdout') written = null;
     }
     if (event.type === 'finish') {
       if (!entry) return null;
@@ -201,7 +221,7 @@ export class CommandLog {
         if (kept !== entry[stream]) changed[stream] = kept;
       }
       Object.assign(entry, rest, changed, { state: 'finished' });
-      if (publish && Object.keys(changed).length) this.#scrub = true;
+      if (publish && Object.keys(changed).some(stream => !memoryOnly(entry) || stream !== 'stdout')) this.#scrub = true;
       // `cancelled`: 🌱 Twig stopped it (a newer search, a history read no longer
       // needed) — not a failure, and "Show output" must not point at it.
       const stoppedByTwig = entry.cancelled ? { cancelled: true } : {};
@@ -209,6 +229,10 @@ export class CommandLog {
       published = entry.background
         ? { type: 'finish', id: event.id, result: { code: entry.code, ms: entry.ms, ...stoppedByTwig, lazy: Boolean(entry.stdout || entry.stderr) } }
         : written;
+      if (memoryOnly(entry)) {
+        written = { ...written, result: { ...written.result } };
+        delete written.result.stdout;
+      }
     }
     this.#trim();
     if (publish && published) for (const listener of this.#listeners) listener(published);
@@ -232,7 +256,7 @@ export class CommandLog {
     const lines = [];
     for (const entry of [...this.#entries.values()].slice(-MAX_ENTRIES)) {
       lines.push(JSON.stringify(startEvent(entry)));
-      for (const stream of ['stdout', 'stderr']) {
+      for (const stream of memoryOnly(entry) ? ['stderr'] : ['stdout', 'stderr']) {
         if (entry[stream]) lines.push(JSON.stringify({ type: 'output', id: entry.id, stream, chunk: entry[stream] }));
       }
       if (entry.state === 'finished') lines.push(JSON.stringify({ type: 'finish', id: entry.id, result: { code: entry.code, ms: entry.ms, ...(entry.cancelled ? { cancelled: true } : {}) } }));

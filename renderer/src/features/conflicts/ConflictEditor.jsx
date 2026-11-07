@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Check, Info, Redo2, Save, Undo2 } from 'lucide-react';
+import { ArrowLeft, Check, FileX2, Info, Redo2, Save, Undo2 } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import { hasConflictMarkers, parseConflictFile, resolveRegion } from './conflict-parser.js';
+import { dropConflictDraft, readConflictDraft, writeConflictDraft } from './conflict-drafts.js';
 import { matchesShortcut } from '../../app/shortcuts.js';
 import { failureText, mark, t, tn, tr } from '../../i18n/i18n.js';
 
@@ -50,8 +51,12 @@ function SideColumn({ name, title, lines, picked, onToggle }) {
  * text is re-parsed, and whatever regions remain are what is still conflicted.
  * Undo and redo are local to this editor, as the brief requires — they are not
  * the application-wide history.
+ *
+ * It is mounted per file. Edits live in a draft outside it (conflict-drafts.js),
+ * so going to another file, back to the history or to any other screen keeps
+ * them; `onDraft` tells the workspace which files have one.
  */
-export default function ConflictEditor({ repositoryId, file, onBack, onResolved, onConsole }) {
+export default function ConflictEditor({ repositoryId, file, onBack, onResolved, onConsole, onDraft }) {
   const [data, setData] = useState(null);
   const [text, setText] = useState('');
   const [picks, setPicks] = useState([]);
@@ -60,20 +65,38 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmMarkers, setConfirmMarkers] = useState(false);
+  // The file on disk moved on while a draft of it was waiting.
+  const [diskChanged, setDiskChanged] = useState(false);
   const request = useRef(0);
 
   useEffect(() => {
     const epoch = ++request.current;
-    setData(null); setError(''); setPast([]); setFuture([]); setConfirmMarkers(false);
     window.twig.readConflict(repositoryId, file)
       .then(result => {
         if (epoch !== request.current) return;
+        const draft = readConflictDraft(repositoryId, file);
+        const content = draft ? draft.text : result.merged || '';
         setData(result);
-        setText(result.merged || '');
-        setPicks(emptyPicks(result.merged ? parseConflictFile(result.merged).conflicts : 0));
+        setText(content);
+        if (draft) { setPast(draft.past); setFuture(draft.future); }
+        setDiskChanged(Boolean(draft) && (draft.mtimeMs !== result.mtimeMs || draft.size !== result.size));
+        let conflicts = 0;
+        try { conflicts = parseConflictFile(content).conflicts; } catch { /* A half-written marker in a draft: the controls stand down. */ }
+        setPicks(emptyPicks(conflicts));
       })
       .catch(failure => { if (epoch === request.current) setError(failureText(failure, t('Could not read this conflict.'))); });
   }, [repositoryId, file]);
+
+  // What is typed here is kept the moment it differs from the file; going back to it drops the draft.
+  useEffect(() => {
+    if (!data || data.binary || data.deleted) return;
+    if (text === data.merged && !past.length) dropConflictDraft(repositoryId, file);
+    else writeConflictDraft(repositoryId, file, { text, past, future, mtimeMs: data.mtimeMs, size: data.size });
+    onDraft?.();
+  }, [repositoryId, file, data, text, past, future, onDraft]);
+  function discardDraft() {
+    setText(data.merged || ''); setPast([]); setFuture([]); setDiskChanged(false);
+  }
 
   const parsed = useMemo(() => {
     if (!data || data.binary) return { regions: [], conflicts: 0 };
@@ -136,6 +159,7 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
     try {
       const result = await window.twig.saveConflict(repositoryId, file, text, data.mtimeMs, data.size);
       if (!result.ok) { setError(result.message ? tr(result.message) : t('Could not save this file.')); return; }
+      dropConflictDraft(repositoryId, file);
       onResolved(result.state);
     } catch (failure) {
       setError(failureText(failure, t('Could not save this file.')));
@@ -146,9 +170,20 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
     try {
       const result = await window.twig.takeConflictSide(repositoryId, file, side);
       if (!result.ok) { setError(result.message ? tr(result.message) : t('Could not take that side.')); return; }
+      dropConflictDraft(repositoryId, file);
       onResolved(result.state);
     } catch (failure) {
       setError(failureText(failure, t('Could not take that side.')));
+    } finally { setBusy(false); }
+  }
+  async function settle(keep) {
+    setBusy(true); setError('');
+    try {
+      const result = await window.twig.settleConflictDeletion(repositoryId, file, keep);
+      if (!result.ok) { setError(result.message ? tr(result.message) : t('Could not settle this conflict.')); return; }
+      onResolved(result.state);
+    } catch (failure) {
+      setError(failureText(failure, t('Could not settle this conflict.')));
     } finally { setBusy(false); }
   }
 
@@ -165,13 +200,15 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
     <header className="panel-heading">
       <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
       <code>{file}</code>
-      <span className="pill">{parsed.broken ? t('markers are incomplete') : tn(parsed.conflicts, '{n} conflict left', '{n} conflicts left')}</span>
+      {!data?.deleted && <span className="pill">{parsed.broken ? t('markers are incomplete') : tn(parsed.conflicts, '{n} conflict left', '{n} conflicts left')}</span>}
       <div className="diff-actions">
-        <Button icon={Undo2} aria-label={t('Undo in the conflict editor')} reason={past.length === 0 ? t('Nothing to undo here') : undefined} onClick={undo} />
-        <Button icon={Redo2} aria-label={t('Redo in the conflict editor')} reason={future.length === 0 ? t('Nothing to redo here') : undefined} onClick={redo} />
-        <Button onClick={() => whole('ours')} reason={busy ? t('Working') : undefined} title={t('Take our side in every conflict of this file')}>{t('Take all ours')}</Button>
-        <Button onClick={() => whole('theirs')} reason={busy ? t('Working') : undefined} title={t('Take their side in every conflict of this file')}>{t('Take all theirs')}</Button>
-        <Button icon={Save} className="primary" onClick={() => save()} reason={busy || !data || data.binary ? busy ? t('Saving') : t('This file has no text to save') : undefined}>{t('Save and mark resolved')}</Button>
+        {!data?.deleted && <>
+          <Button icon={Undo2} aria-label={t('Undo in the conflict editor')} reason={past.length === 0 ? t('Nothing to undo here') : undefined} onClick={undo} />
+          <Button icon={Redo2} aria-label={t('Redo in the conflict editor')} reason={future.length === 0 ? t('Nothing to redo here') : undefined} onClick={redo} />
+          <Button onClick={() => whole('ours')} reason={busy ? t('Working') : undefined} title={t('Take our side in every conflict of this file')}>{t('Take all ours')}</Button>
+          <Button onClick={() => whole('theirs')} reason={busy ? t('Working') : undefined} title={t('Take their side in every conflict of this file')}>{t('Take all theirs')}</Button>
+          <Button icon={Save} className="primary" onClick={() => save()} reason={busy || !data || data.binary ? busy ? t('Saving') : t('This file has no text to save') : undefined}>{t('Save and mark resolved')}</Button>
+        </>}
       </div>
     </header>
     {error && <p role="alert" className="empty-inline">{error}<button onClick={onConsole}>{t('Show output')}</button></p>}
@@ -180,9 +217,27 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
       <Button onClick={() => save({ force: true })}>{t('Save anyway')}</Button>
       <Button onClick={() => setConfirmMarkers(false)}>{t('Keep editing')}</Button>
     </p>}
+    {diskChanged && <p role="alert" className="conflict-warning">
+      {t('The file changed on disk after you started editing it. Your edits are kept; saving replaces what is on disk.')}
+      <Button onClick={() => setDiskChanged(false)}>{t('Keep my edits')}</Button>
+      <Button onClick={discardDraft}>{t('Use the file on disk')}</Button>
+    </p>}
     {!data && !error && <div className="loading-shell" aria-label={t('Loading conflict')}><div className="skeleton" /><div className="skeleton" /></div>}
-    {data?.binary && <p className="stage-empty">{t('This is a binary file. Choose one side whole — there is no meaningful line-by-line merge for it.')}</p>}
-    {data && !data.binary && <div className="conflict-body">
+    {data?.deleted && <div className="conflict-deleted" role="status">
+      <p>{data.deleted === 'both' ? t('Both sides removed or renamed this file. Nothing is left to merge.')
+        : data.deleted === 'ours' ? t('Ours deleted this file and theirs changed it. There is nothing to merge: keep the file or delete it.')
+          : t('Theirs deleted this file and ours changed it. There is nothing to merge: keep the file or delete it.')}</p>
+      <div className="conflict-quick">
+        <Button icon={Check} className="primary" onClick={() => void settle(true)} reason={busy ? t('Working') : !data.onDisk ? t('The file is not in the working tree') : undefined}>{t('Keep the file')}</Button>
+        <Button icon={FileX2} onClick={() => void settle(false)} reason={busy ? t('Working') : undefined}>{t('Delete the file')}</Button>
+      </div>
+      {SIDES.map(([name, , sideTitle]) => data[name] !== null && <details key={name} className="conflict-full">
+        <summary>{t(sideTitle)}</summary>
+        <pre>{data[name]}</pre>
+      </details>)}
+    </div>}
+    {data?.binary && !data.deleted && <p className="stage-empty">{t('This is a binary file. Choose one side whole — there is no meaningful line-by-line merge for it.')}</p>}
+    {data && !data.binary && !data.deleted && <div className="conflict-body">
       <div className="conflict-regions">
         {parsed.regions.filter(region => region.kind === 'conflict').map(region => {
           const pick = picks[region.index] || { ours: new Set(), base: new Set(), theirs: new Set(), order: 'ours' };

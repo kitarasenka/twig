@@ -3,15 +3,26 @@
    Only tokens from design/TOKENS.md; no colour is written literally here. */
 
 .menu-layer { position: fixed; z-index: var(--z-menu); }
-.menu { min-width: 260px; max-width: 380px; max-height: 70vh; overflow: auto; padding: var(--space-1);
-  background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow); }
-.menu button { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-2) var(--space-3);
+.submenu-layer { position: fixed; }
+/* A list longer than the window scrolls inside it, and a shade at the edge says there is more:
+   the two `local` layers travel with the items and cover the two `scroll` shades at either end. */
+.menu { min-width: 260px; max-width: 380px; max-height: calc(100vh - 8px); overflow: auto; padding: var(--space-1);
+  background:
+    linear-gradient(var(--surface-raised) 40%, transparent) top / 100% 28px no-repeat local,
+    linear-gradient(transparent, var(--surface-raised) 60%) bottom / 100% 28px no-repeat local,
+    linear-gradient(color-mix(in srgb, var(--overlay) 70%, transparent), transparent) top / 100% 10px no-repeat scroll,
+    linear-gradient(transparent, color-mix(in srgb, var(--overlay) 70%, transparent)) bottom / 100% 10px no-repeat scroll,
+    var(--surface-raised);
+  border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow); }
+.menu button { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 26px; padding: var(--space-1) var(--space-3);
   background: none; border: 0; border-radius: var(--radius-sm); color: var(--text); font: inherit; font-size: var(--text-sm);
   text-align: left; cursor: pointer; }
 .menu button svg { width: var(--icon-size); height: var(--icon-size); flex: none; color: var(--muted); }
 /* A checkbox item reserves its check column whether checked or not, so
  * unchecked items don't jump left when the mark disappears. */
 .menu button svg.menu-check-empty { visibility: hidden; }
+.menu button svg.menu-chevron { margin-right: calc(-1 * var(--space-1)); }
+.menu button[aria-expanded='true'] { background: var(--surface-hover); }
 .menu button span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .menu button small { color: var(--muted); font-size: var(--text-xs); }
 .menu button:hover:not(:disabled) { background: var(--surface-hover); }
@@ -28,6 +39,7 @@
    delete or an escape hatch is danger-coloured but never the loudest control. */
 .danger.quiet { border-color: transparent; }
 .danger:disabled { border-color: var(--border); color: var(--muted); }
+.danger.quiet:disabled { border-color: transparent; }
 .warn { color: var(--danger); }
 .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
 .dialog-actions .muted { margin-right: auto; font-size: var(--text-xs); }
@@ -45,6 +57,8 @@
 .message-dialog p { margin: 0; }
 .name-dialog .checkbox-row { text-transform: none; letter-spacing: 0; color: var(--text); }
 
+.conflict-deleted { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); overflow: auto; }
+.conflict-deleted p { margin: 0; }
 .operation-note { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-4);
   background: var(--accent-bg); color: var(--text); font-size: var(--text-xs); }
 .operation-note button { margin-left: auto; background: none; border: 0; color: var(--text); cursor: pointer; }
@@ -55,14 +69,22 @@
 .operation-note .note-output { gap: var(--space-1); min-height: 26px; padding: 2px var(--space-2); border: 1px solid var(--danger);
   background: var(--surface-raised); font-weight: 500; }
 .operation-note .note-output:hover { background: var(--surface-hover); }
+.operation-note.has-actions { flex-wrap: wrap; }
+.operation-note .note-actions { flex-basis: 100%; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); padding-right: var(--space-2); }
+.operation-note .note-actions button { margin-left: 0; }
+.operation-note .note-action { flex: none; margin-left: 0; min-height: 26px; padding: 2px var(--space-2); border: 1px solid var(--accent); border-radius: var(--radius-sm); color: var(--text); background: transparent; }
+.operation-note .note-action:hover { background: var(--surface-hover); }
+.operation-note .note-detail { display: block; max-height: 4.5em; margin-top: 2px; overflow: auto; color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; }
 .operation-note .note-dismiss { flex: none; width: 32px; height: 32px; padding: 0; color: var(--muted); }
 .operation-note .note-dismiss:hover { background: var(--surface-hover); color: var(--text); }
 .operation-note .note-dismiss svg { width: 18px; height: 18px; }
 /* Notes after an action rise from the bottom of the window, right above the console,
    and float over the workspace instead of pushing the screen down. The dock has no
    height; the stack grows upwards from it. Under menus, over everything else. */
-.note-dock { position: relative; flex: none; height: 0; z-index: calc(var(--z-menu) - 1); }
-.note-stack { position: absolute; right: var(--space-4); bottom: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2);
+.note-dock { flex: none; height: 0; }
+/* With a commit form on screen they rise above it: the form's Commit button sits where notes do.
+   Fixed, because an anchor outside the containing block of a positioned element is not one. */
+.note-stack { position: fixed; z-index: calc(var(--z-menu) - 1); right: var(--space-4); bottom: calc(anchor(--commit-box top, anchor(--console top)) + var(--space-3)); display: flex; flex-direction: column; gap: var(--space-2);
   width: min(460px, calc(100% - 2 * var(--space-4))); pointer-events: none; }
 .note-stack .operation-note { pointer-events: auto; min-height: 48px; padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-md);
@@ -181,6 +203,17 @@ dialog.wide { width: min(920px, calc(100vw - var(--space-8))); }
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .proposal-files li { white-space: pre; font-size: var(--text-sm); line-height: 1.6; }
 .proposal-files code { font-family: var(--font-mono); }
+.proposal-file { display: block; width: 100%; padding: 0 var(--space-1); border: 0; border-radius: var(--radius-sm); background: none; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.proposal-file:hover { background: var(--surface-hover); }
+.proposal-file[aria-expanded="true"] { background: var(--accent-bg); }
+.proposal-diff { border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.proposal-diff > p { margin: 0; padding: var(--space-2) var(--space-3); font-size: var(--text-sm); }
+.proposal-diff .diff-lines { max-height: 36vh; overflow: auto; }
+.proposal-url { color: var(--text); font-family: var(--font-mono); overflow-wrap: anywhere; }
+.proposal-push-note { color: var(--danger) !important; }
+.proposal-replaced { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+.proposal-replaced p { margin: 0; }
+.proposal-stop { margin-right: auto; }
 .proposal-dialog > label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .proposal-dialog > label .muted { text-transform: none; letter-spacing: 0; }
 .proposal-dialog textarea { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -202,5 +235,8 @@ dialog.wide { width: min(920px, calc(100vw - var(--space-8))); }
 .proposal-tag-problem { margin: 0; color: var(--danger); font-size: var(--text-xs); }
 .proposal-commands span { display: block; }
 .proposal-progress { color: var(--muted); font-size: var(--text-sm); }
+.proposal-leaving { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--danger-bg); }
+.proposal-leaving span:first-child { flex: 1; min-width: 200px; }
+.proposal-heading:focus { outline: none; }
 .proposal-failure { margin: 0; padding: var(--space-2) var(--space-3); background: var(--danger-bg); color: var(--text); border-radius: var(--radius-sm);
   font-family: var(--font-mono); font-size: var(--text-sm); white-space: pre-wrap; max-height: 160px; overflow: auto; }

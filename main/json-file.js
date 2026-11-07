@@ -1,5 +1,7 @@
-import { open, readdir, readFile, rename, unlink } from 'node:fs/promises';
+import { chmod, open, readdir, readFile, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
+
+export const PRIVATE_MODE = 0o600;
 
 /**
  * 🌱 Twig's own JSON files in userData: the connected repositories, marks,
@@ -12,6 +14,9 @@ import path from 'node:path';
  * recover, and the next save does not overwrite it. Before this, one torn
  * `marks.json` made 🌱 Twig exit at launch with no window and no message.
  * Any other read error (permissions, a folder in the way) still throws.
+ *
+ * Everything here stays between this account and 🌱 Twig, so a file written
+ * before writes became private is made so the first time it is read.
  */
 export async function readJsonFile(file) {
   await removeStaleTemporaries(file);
@@ -21,11 +26,17 @@ export async function readJsonFile(file) {
     if (error.code === 'ENOENT') return undefined;
     throw error;
   }
+  await makePrivate(file);
   try { return JSON.parse(text); }
   catch {
     await rename(file, `${file}.broken-${Date.now()}`).catch(() => {});
     return undefined;
   }
+}
+
+/** Only this account may read it. Best effort: some file systems have no such thing. */
+export function makePrivate(file) {
+  return chmod(file, PRIVATE_MODE).catch(() => {});
 }
 
 let sequence = 0;
@@ -39,7 +50,7 @@ let sequence = 0;
  * @param {string} data
  * @param {{ mode?: number }} [options]
  */
-export async function writeFileAtomic(file, data, { mode = 0o666 } = {}) {
+export async function writeFileAtomic(file, data, { mode = PRIVATE_MODE } = {}) {
   const temporary = `${file}.${process.pid}-${++sequence}.tmp`;
   // `wx`: created here or not at all — never written through a link or an
   // existing file that happens to have the name.

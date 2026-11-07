@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Clipboard, CornerDownLeft, Search, Terminal } from 'lucide-react';
 import Button from '../ui/Button.jsx';
+import ConsoleSplitter from './ConsoleSplitter.jsx';
+import { readConsoleHeight } from '../ui/panel-width.js';
 import { isUserCommand } from './command-source.js';
 import { plainText } from './console-entries.js';
 import { commandLine, commandWords, readCommandView, readPathView, writeCommandView, writePathView } from './short-command.js';
@@ -11,6 +13,24 @@ import { failureText, t, tr } from '../i18n/i18n.js';
 function commandText(entry) { return commandLine(entry, false); }
 function elapsed(entry) { return entry.ms === null ? t('running') : t`${entry.ms}ms`; }
 function startedText(entry) { return entry.startedAt.replace('T', ' ').replace(/\.\d+/, '').replace('Z', ''); }
+
+const failed = entry => entry.code !== null && entry.code !== 0 && !entry.cancelled;
+async function copy(value) { try { await navigator.clipboard.writeText(value); } catch { /* Clipboard access may be unavailable in a locked-down desktop session. */ } }
+
+// Newest entries drawn at first: the rest of a 2000-entry journal is 30 000
+// nodes to lay out on every open of Full History.
+const CONSOLE_PAGE = 300;
+
+/** One journal entry. Entries keep their identity until they change, so a batch of events draws only the new ones. */
+const ConsoleEntry = memo(function ConsoleEntry({ entry, open, focused, short, showPath, output, onToggle, register }) {
+  const mine = isUserCommand(entry.operation);
+  const stdout = open ? plainText((entry.lazy ? output : entry)?.stdout || '') : '';
+  const stderr = open ? plainText((entry.lazy ? output : entry)?.stderr || '') : '';
+  return <article ref={node => register(entry.id, node)} className={`console-entry ${failed(entry) ? 'failed' : ''} ${focused ? 'focused' : ''}`}>
+    <button className="console-entry-summary" onClick={() => onToggle(entry.id)} aria-expanded={open}><ChevronRight className={open ? 'expanded-arrow' : ''} />{entry.operation?.startsWith('MCP:') && <b className="console-tag" title={t`${entry.operation} — asked by an AI agent through the MCP server`}>MCP</b>}<code title={short || !showPath ? `${commandText(entry)}\n(cwd: ${entry.cwd})` : undefined}><span className={`console-prompt-mark ${mine ? '' : 'twig'}`} title={mine ? t('You ran this') : t('🌱 Twig ran this on its own')}>{isUserCommand(entry.operation) ? '$' : '🌱 :'}</span> {commandWords(entry, short)}</code>{showPath && <span>(cwd: {entry.cwd})</span>}<small>{startedText(entry)} · {entry.cancelled ? t('stopped') : entry.code ?? '…'} · {elapsed(entry)}</small></button>
+    {open && <div className="console-output"><div className="console-copy"><Button icon={Clipboard} onClick={() => copy(`${commandText(entry)}\n(cwd: ${entry.cwd})\n${stdout}${stderr}`)}>{t('Copy entry')}</Button></div>{stdout && <pre>{stdout}</pre>}{stderr && <pre className="stderr">{stderr}</pre>}{!stdout && !stderr && <p className="muted">{entry.lazy && !output ? t('Loading output…') : t('Waiting for output…')}</p>}</div>}
+  </article>;
+});
 
 export function Console({ expanded, onToggle, entries, repositoryId = null, focus = null }) {
   const [query, setQuery] = useState('');
@@ -34,7 +54,11 @@ export function Console({ expanded, onToggle, entries, repositoryId = null, focu
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [focusedId, setFocusedId] = useState(null);
+  const [height, setHeight] = useState(() => readConsoleHeight(globalThis.localStorage));
+  const [limit, setLimit] = useState(CONSOLE_PAGE);
   const entryNodes = useRef(new Map());
+  const register = useCallback((id, node) => { if (node) entryNodes.current.set(id, node); else entryNodes.current.delete(id); }, []);
+  const toggleEntry = useCallback(id => { setFocusedId(null); setExpandedId(value => (value === id ? null : id)); }, []);
   // The output of the app's own reads is not sent with the journal: it arrives
   // when its entry is opened (again once a running one finishes).
   const [outputs, setOutputs] = useState(() => new Map());
@@ -49,23 +73,20 @@ export function Console({ expanded, onToggle, entries, repositoryId = null, focu
       .catch(() => {});
     return () => { alive = false; };
   }, [lazyId, lazyState]);
-  const outputOf = entry => {
-    const output = entry.lazy ? outputs.get(entry.id) : entry;
-    return { stdout: plainText(output?.stdout || ''), stderr: plainText(output?.stderr || ''), loading: Boolean(entry.lazy && !output) };
-  };
 
   // Expand the output of the last command the user typed, so it is readable
   // the moment it finishes rather than after a manual click.
   const lastTypedId = entries.filter(entry => entry.operation === 'Console command').at(-1)?.id;
   useEffect(() => { if (lastTypedId) setExpandedId(lastTypedId); }, [lastTypedId]);
   useEffect(() => { setError(''); }, [repositoryId]);
+  useEffect(() => { if (!expanded) setLimit(CONSOLE_PAGE); }, [expanded]);
 
   // "Show output" next to an error hands us the entry that failed: reveal it
   // instead of dropping the reader at the top of a 2000-line journal. The
   // filter is cleared first, otherwise the entry could be filtered out of view.
   useEffect(() => {
     if (!focus) return undefined;
-    setMode('all'); setQuery(''); setExpandedId(focus.id); setFocusedId(focus.id);
+    setMode('all'); setQuery(''); setExpandedId(focus.id); setFocusedId(focus.id); setLimit(Infinity);
     const frame = requestAnimationFrame(() => {
       const node = entryNodes.current.get(focus.id);
       if (!node) return;
@@ -111,10 +132,10 @@ export function Console({ expanded, onToggle, entries, repositoryId = null, focu
     }
   }
 
-  const visible = entries.filter(entry => {
+  const visible = useMemo(() => entries.filter(entry => {
     const source = `${entry.operation} ${entry.argv.join(' ')} ${entry.cwd}`.toLowerCase();
     return (mode === 'all' || isUserCommand(entry.operation)) && source.includes(query.toLowerCase());
-  }).slice().reverse();
+  }).reverse(), [entries, mode, query]);
   const latest = entries.at(-1);
   // The status bar speaks for the person, like the "My" filter: the last thing
   // they asked for, by name. The app's own reads (and their long argv) stay in
@@ -122,14 +143,13 @@ export function Console({ expanded, onToggle, entries, repositoryId = null, focu
   const mine = entries.findLast(entry => isUserCommand(entry.operation));
   const outcome = entry => (entry.code === null ? t('running') : entry.code === 0 ? t`done · ${elapsed(entry)}`
     : entry.cancelled ? t`stopped by 🌱 Twig · ${elapsed(entry)}` : t`failed with exit code ${entry.code} · ${elapsed(entry)}`);
-  const failed = entry => entry.code !== null && entry.code !== 0 && !entry.cancelled;
-  async function copy(value) { try { await navigator.clipboard.writeText(value); } catch { /* Clipboard access may be unavailable in a locked-down desktop session. */ } }
-  return <section className={`console ${expanded ? 'expanded' : ''}`} aria-label={t('Command console')}>
+  return <section className={`console ${expanded ? 'expanded' : ''}`} aria-label={t('Command console')} style={height === null ? undefined : { '--console-height': `${height}px` }}>
+    {expanded && <ConsoleSplitter height={height} onHeight={setHeight} />}
     <button className="console-status" onClick={onToggle} aria-expanded={expanded} title={t('Show or hide the console')}>
       <Terminal /><strong>{t('CONSOLE')}</strong><ChevronDown className={expanded ? '' : 'rotate'} />
       <span className={`console-last ${mine && failed(mine) ? 'failed' : ''}`} title={mine ? commandText(mine) : undefined}>
         {mine ? <>{mine.operation || commandText(mine)} <small>{outcome(mine)}</small></> : t('Nothing you ran yet')}</span>
-      <span className="console-tail">{latest?.state === 'running' ? t`Running: ${latest.operation || 'git'}` : '🌱 Twig'}</span>
+      {latest?.state === 'running' && <span className="console-tail">{t`Running: ${latest.operation || 'git'}`}</span>}
     </button>
     {expanded && <div className="console-body">
       <div className="console-tools"><div className="segmented" aria-label={t('Command filter')}><button aria-pressed={mode === 'all'} onClick={() => setMode('all')} title={t('Every git command, including the ones 🌱 Twig runs on its own')}>{t('Full History')}</button><button aria-pressed={mode === 'mine'} onClick={() => setMode('mine')} title={t('Only the commands you asked for')}>{t('My')}</button></div><label className="console-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('Search commands')} aria-label={t('Search command log')} /></label><label className="switch console-short" title={t('Short: commands as you would type them. Off: the exact command, with the flags 🌱 Twig adds to every git call')}><input type="checkbox" checked={short} onChange={event => toggleShort(event.target.checked)} /><span className="track" />{t('Short')}</label><label className="switch console-path" title={t('Show the folder each command ran in')}><input type="checkbox" checked={showPath} onChange={event => togglePath(event.target.checked)} /><span className="track" />{t('Path')}</label></div>
@@ -137,11 +157,9 @@ export function Console({ expanded, onToggle, entries, repositoryId = null, focu
         : query ? t('No commands match this search.')
           : mode === 'mine' ? t('Nothing you ran yet. Full History also shows what 🌱 Twig runs on its own.')
             : t('No commands match this filter.')}</p></div></div>}
-      {visible.map(entry => <article key={entry.id} ref={node => { if (node) entryNodes.current.set(entry.id, node); else entryNodes.current.delete(entry.id); }}
-        className={`console-entry ${failed(entry) ? 'failed' : ''} ${focusedId === entry.id ? 'focused' : ''}`}>
-        <button className="console-entry-summary" onClick={() => { setFocusedId(null); setExpandedId(value => value === entry.id ? null : entry.id); }} aria-expanded={expandedId === entry.id}><ChevronRight className={expandedId === entry.id ? 'expanded-arrow' : ''} />{entry.operation?.startsWith('MCP:') && <b className="console-tag" title={t`${entry.operation} — asked by an AI agent through the MCP server`}>MCP</b>}<code title={short || !showPath ? `${commandText(entry)}\n(cwd: ${entry.cwd})` : undefined}><span className={`console-prompt-mark ${isUserCommand(entry.operation) ? '' : 'twig'}`} title={isUserCommand(entry.operation) ? t('You ran this') : t('🌱 Twig ran this on its own')}>{isUserCommand(entry.operation) ? '$' : '🌱 :'}</span> {commandWords(entry, short)}</code>{showPath && <span>(cwd: {entry.cwd})</span>}<small>{startedText(entry)} · {entry.cancelled ? t('stopped') : entry.code ?? '…'} · {elapsed(entry)}</small></button>
-        {expandedId === entry.id && (({ stdout, stderr, loading }) => <div className="console-output"><div className="console-copy"><Button icon={Clipboard} onClick={() => copy(`${commandText(entry)}\n(cwd: ${entry.cwd})\n${stdout}${stderr}`)}>{t('Copy entry')}</Button></div>{stdout && <pre>{stdout}</pre>}{stderr && <pre className="stderr">{stderr}</pre>}{!stdout && !stderr && <p className="muted">{loading ? t('Loading output…') : t('Waiting for output…')}</p>}</div>)(outputOf(entry))}
-      </article>)}
+      {visible.slice(0, limit).map(entry => <ConsoleEntry key={entry.id} entry={entry} open={expandedId === entry.id} focused={focusedId === entry.id}
+        short={short} showPath={showPath} output={outputs.get(entry.id)} onToggle={toggleEntry} register={register} />)}
+      {visible.length > limit && <button type="button" className="text-button list-show-all" onClick={() => setLimit(value => value + CONSOLE_PAGE * 2)}>{t('Show older commands')}</button>}
       <div className="console-dock">
         {error && <p className="console-input-error" role="alert">{error}</p>}
         <form className="console-input" onSubmit={runCommand}>

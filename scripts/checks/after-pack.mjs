@@ -128,5 +128,15 @@ const { sanitizeFileName } = require('builder-util/out/filename');
 assert.equal(pkg.build.linux.executableName, 'twig', 'the launcher and twig.bin keep their names');
 assert.doesNotThrow(() => validateCriticalPathString(sanitizeFileName(pkg.build.linux.executableName), 'productFilename'));
 
+// What goes into the installer. The renderer's packages are bundled into dist,
+// so none of them belongs in app.asar; the one dependency left is the font the
+// site's `npm ci --omit=dev` copies, and the asar leaves it out.
+assert.deepEqual(Object.keys(pkg.dependencies), ['@fontsource/fira-sans']);
+assert.ok(pkg.build.files.includes('!**/node_modules/@fontsource/**'));
+for (const name of ['react', 'react-dom', 'lucide-react', 'prismjs', '@fontsource/fira-code']) assert.ok(pkg.devDependencies[name], `${name} is bundled, so it is a dev dependency`);
+// Electron's own strings in every language of the interface but Belarusian, which Chromium does not ship.
+const { LANGUAGE_CODES } = await import('../../renderer/src/i18n/i18n.js');
+assert.deepEqual([...pkg.build.electronLanguages].sort(), LANGUAGE_CODES.filter(code => code !== 'be').sort());
+
 await rm(tmp, { recursive: true, force: true });
 console.log('after-pack check passed');

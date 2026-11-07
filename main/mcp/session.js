@@ -2,6 +2,7 @@ import path from 'node:path';
 import { CWD_META, INSTRUCTIONS, SERVER_NAME, SERVER_TITLE, TOOLS, errorResult, negotiateVersion, toolResult } from './protocol.mjs';
 import { validateArguments } from './arguments.js';
 import { McpError } from './errors.js';
+import { escapeInvisible } from './serialize.js';
 
 /** The largest tool result text sent to a client. Tools cap themselves well below this; it is the backstop. */
 export const MAX_RESULT_CHARS = 120_000;
@@ -10,11 +11,42 @@ const PARSE_ERROR = -32700;
 const INVALID_REQUEST = -32600;
 const METHOD_NOT_FOUND = -32601;
 const INVALID_PARAMS = -32602;
+const SERVER_BUSY = -32000;
 // Messages in one JSON-RPC batch; MCP clients send one request at a time.
 const MAX_BATCH = 32;
+/** Calls one connection may have waiting for their turn; past it they are answered "busy" at once. */
+export const MAX_QUEUED_CALLS = 32;
+/** A call still running after this gets an answer and gives its turn away; search and blame stop on their own at 45 s. */
+export const CALL_TIMEOUT_MS = 60_000;
+// These wait for a person, for minutes, and hold no Git process meanwhile. In
+// the queue they would stop every read of the same agent until the person answers.
+const WAITS_FOR_PERSON = new Set(['propose_commit', 'new_version', 'await_commit']);
+
+/**
+ * At most `slots` calls at a time, across every connection that shares it,
+ * first come first served. Each tool call can start several Git processes.
+ * @param {number} slots
+ * @returns {{ acquire: () => Promise<() => void> }} `acquire` resolves with the release
+ */
+export function createLimiter(slots) {
+  const waiting = [];
+  let free = slots;
+  const release = () => {
+    const next = waiting.shift();
+    if (next) next(release);
+    else free++;
+  };
+  return {
+    acquire() {
+      if (free > 0) { free--; return Promise.resolve(release); }
+      return new Promise(resolve => waiting.push(resolve));
+    }
+  };
+}
 
 const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
 const rpcResult = (id, result) => ({ jsonrpc: '2.0', id, result });
+const spelled = result => ({ ...result, content: result.content.map(item => ({ ...item, text: escapeInvisible(item.text) })) });
 const validId = id => typeof id === 'string' || (typeof id === 'number' && Number.isFinite(id));
 
 /** The client's working directory from `initialize`, or null when it is missing or not a plain absolute path. */
@@ -34,12 +66,20 @@ export function clientCwd(params) {
  * the bridge replays the client's `initialize` first — this is the fallback if
  * that replay did not happen.
  *
+ * Tool calls of one connection run one at a time, in the order they came, and
+ * `limiter` bounds how many run across all connections. A line that is not a
+ * tool call — a notification, ping, tools/list — never waits behind them.
+ *
  * `onInitialize` hears when the client said hello, its folder known from then on.
  * @param {{ version: string, tools: Record<string, (args: object, client: { cwd: ?string }) => Promise<object | string>>, onCall?: (name: string) => void,
- *   onInitialize?: () => void }} options
+ *   onInitialize?: () => void, limiter?: ?{ acquire: () => Promise<() => void> }, callTimeoutMs?: number }} options
  */
-export function createMcpSession({ version, tools, onCall = () => {}, onInitialize = () => {} }) {
+export function createMcpSession({ version, tools, onCall = () => {}, onInitialize = () => {}, limiter = null, callTimeoutMs = CALL_TIMEOUT_MS }) {
   let protocolVersion = negotiateVersion(null);
+  let initialized = false;
+  let closed = false;
+  let turn = Promise.resolve();
+  let queued = 0;
   const client = { cwd: null };
   const catalog = new Map(TOOLS.map(definition => [definition.name, definition]));
 
@@ -50,17 +90,40 @@ export function createMcpSession({ version, tools, onCall = () => {}, onInitiali
     onCall(definition.name);
     try {
       const payload = await run(validateArguments(definition.inputSchema, params.arguments), client);
-      const result = toolResult(payload);
+      const result = spelled(toolResult(payload));
       if (result.content[0].text.length > MAX_RESULT_CHARS) {
         return { result: errorResult('OUTPUT_TOO_LARGE', 'The result is larger than 🌱 Twig sends in one answer.',
           { hint: 'Request a specific file, hunk or a smaller page.' }) };
       }
       return { result };
     } catch (error) {
-      if (error instanceof McpError) return { result: errorResult(error.code, error.message, error.extra) };
-      return { result: errorResult('GIT_OPERATION_FAILED', error?.message || 'Git could not answer.',
-        { hint: 'The exact Git command and its output are in 🌱 Twig’s console (Full History).' }) };
+      if (error instanceof McpError) return { result: spelled(errorResult(error.code, error.message, error.extra)) };
+      return { result: spelled(errorResult('GIT_OPERATION_FAILED', error?.message || 'Git could not answer.',
+        { hint: 'The exact Git command and its output are in 🌱 Twig’s console (Full History).' })) };
     }
+  }
+
+  /** The call with a deadline: a stuck Git keeps its process, not its place in line. */
+  function deadline(params) {
+    let timer;
+    const expired = new Promise(resolve => {
+      timer = setTimeout(() => resolve({ result: spelled(errorResult('GIT_OPERATION_FAILED', `The call took longer than ${Math.round(callTimeoutMs / 1000)} s.`,
+        { hint: 'Narrow it, or read it with git directly.' })) }), callTimeoutMs);
+    });
+    return Promise.race([callTool(params), expired]).finally(() => clearTimeout(timer));
+  }
+
+  /** A tool call in this connection's line, then in the shared limit. A closed connection's calls do not start. */
+  function inTurn(params) {
+    queued++;
+    const mine = turn.then(async () => {
+      if (closed) return { error: [SERVER_BUSY, 'The connection closed.'] };
+      const release = await limiter?.acquire();
+      try { return await deadline(params); }
+      finally { release?.(); }
+    }).finally(() => { queued--; });
+    turn = mine.catch(() => {});
+    return mine;
   }
 
   async function dispatch(message) {
@@ -77,6 +140,7 @@ export function createMcpSession({ version, tools, onCall = () => {}, onInitiali
       case 'initialize':
         protocolVersion = negotiateVersion(params?.protocolVersion);
         client.cwd = clientCwd(params);
+        initialized = true;
         onInitialize();
         return rpcResult(id, {
           protocolVersion,
@@ -89,7 +153,10 @@ export function createMcpSession({ version, tools, onCall = () => {}, onInitiali
       case 'tools/list':
         return rpcResult(id, { tools: TOOLS });
       case 'tools/call': {
-        const outcome = await callTool(params);
+        if (!WAITS_FOR_PERSON.has(params?.name) && queued >= MAX_QUEUED_CALLS) {
+          return rpcError(id, SERVER_BUSY, `${MAX_QUEUED_CALLS} calls are already waiting on this connection. Wait for their answers.`);
+        }
+        const outcome = await (WAITS_FOR_PERSON.has(params?.name) ? callTool(params) : inTurn(params));
         return outcome.error ? rpcError(id, ...outcome.error) : rpcResult(id, outcome.result);
       }
       default:
@@ -120,7 +187,10 @@ export function createMcpSession({ version, tools, onCall = () => {}, onInitiali
       try { message = JSON.parse(line); } catch { return rpcError(null, PARSE_ERROR, 'Parse error'); }
       return this.handle(message);
     },
+    /** The connection is gone: calls still waiting for their turn do not start. */
+    close() { closed = true; },
     get protocolVersion() { return protocolVersion; },
+    get initialized() { return initialized; },
     /** The folder the client's bridge was started in, once it said hello. */
     get cwd() { return client.cwd; }
   };

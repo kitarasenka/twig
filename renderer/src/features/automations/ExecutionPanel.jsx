@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Check, X, Loader, Minus, ShieldAlert, ScrollText } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, X, Loader, Minus, ShieldAlert } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import Dialog from '../../ui/Dialog.jsx';
 import { mark, t, tn, tr } from '../../i18n/i18n.js';
 
 function StepIcon({ status }) {
@@ -45,9 +46,20 @@ const BLOCKED = {
   'pre-merge-commit': { blocked: mark('Merge blocked'), bypassed: mark('Checks skipped for this merge') }
 };
 
+/** Most Git actions have no pipeline: a dialog that would flash and take the focus for nothing waits a moment. */
+const SHOW_AFTER_MS = 150;
+
 export default function ExecutionPanel({ event, label, steps, phase, result, blocked, bypassed,
   onRetry, onRunAgain, onBypass, onClose, embedded = false }) {
   const [openStep, setOpenStep] = useState(null);
+  const [waited, setWaited] = useState(false);
+  const actions = useRef(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setWaited(true), SHOW_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  // A block is what the person has to answer, so that is where the focus goes.
+  useEffect(() => { if (blocked) actions.current?.querySelector('button.primary')?.focus(); }, [blocked, waited]);
   const words = BLOCKED[event];
   const passed = steps.filter(step => step.status === 'passed').length;
   const failed = steps.filter(step => step.status === 'failed').length;
@@ -55,11 +67,11 @@ export default function ExecutionPanel({ event, label, steps, phase, result, blo
   const verdict = bypassed ? 'bypassed' : blocked ? 'blocked' : failed ? 'failed' : done ? 'passed' : 'running';
 
   const body = <>
-    <div className={`execution-verdict ${verdict}`}>
+    <div className={`execution-verdict ${verdict}`} role={embedded ? undefined : 'status'}>
       {verdict === 'passed' && <><Check aria-hidden="true" /> {t('All checks passed')}</>}
       {verdict === 'failed' && <><X aria-hidden="true" /> {tn(failed, '{n} check failed', '{n} checks failed')}</>}
       {verdict === 'blocked' && <><ShieldAlert aria-hidden="true" /> {words ? t(words.blocked) : t`${label} blocked`}</>}
-      {verdict === 'bypassed' && <><ShieldAlert aria-hidden="true" /> {words ? t(words.bypassed) : t`Checks skipped for this ${label.toLowerCase()}`}</>}
+      {verdict === 'bypassed' && <><ShieldAlert aria-hidden="true" /> {words ? t(words.bypassed) : t`Checks skipped: ${label}`}</>}
       {verdict === 'running' && <><Loader className="spin" aria-hidden="true" /> {t('Running checks…')}</>}
       {steps.length > 0 && <span className="count">{t`${passed} passed · ${failed} failed`}</span>}
     </div>
@@ -73,20 +85,19 @@ export default function ExecutionPanel({ event, label, steps, phase, result, blo
 
   if (embedded) return <div className="execution-inline">{body}</div>;
 
-  return <div className="execution-overlay" role="dialog" aria-modal="true" aria-label={t`${label} checks`}>
+  if (!waited && !done) return null;
+  return <Dialog title={t`${label} checks`} onClose={blocked ? onRetry : onClose}>
     <div className="execution-panel">
-      <header><ScrollText aria-hidden="true" /><h3>{t`${label} checks`}</h3>
-        {done && <Button icon={X} aria-label={t('Close')} onClick={onClose} />}</header>
       {body}
-      <div className="dialog-actions">
-        {!done && <Button onClick={onClose}>{t('Run in background')}</Button>}
+      <div className="dialog-actions" ref={actions}>
+        {!done && <Button onClick={onClose}>{t('Cancel')}</Button>}
         {done && blocked && <>
-          <Button className="primary" onClick={onRetry}>{t('Fix and retry')}</Button>
+          <Button className="primary" onClick={onRetry}>{t('Back to fix it')}</Button>
           <Button className="secondary" onClick={onRunAgain}>{t('Run again')}</Button>
           <Button className={phase === 'pre' ? 'danger quiet' : ''} onClick={onBypass}>{phase === 'pre' ? t('Bypass once') : t('Dismiss')}</Button>
         </>}
         {done && !blocked && <Button className="primary" onClick={onClose}>{t('Close')}</Button>}
       </div>
     </div>
-  </div>;
+  </Dialog>;
 }

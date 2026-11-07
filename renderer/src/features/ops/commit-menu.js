@@ -1,6 +1,15 @@
-import { Bookmark, BookmarkX, ClipboardCopy, Combine, FileOutput, GitBranch, GitCommitHorizontal, GitMerge, Link2, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Trash2, Undo2, Upload } from 'lucide-react';
+import { Bookmark, BookmarkX, ClipboardCopy, Combine, FileOutput, GitBranch, GitCommitHorizontal, GitMerge, Globe, Link2, ListOrdered, PenLine, Redo2, RotateCcw, Scissors, Tag, Target, Trash2, Undo2, Upload } from 'lucide-react';
 import { squashable } from './squash-plan.js';
-import { t, tn } from '../../i18n/i18n.js';
+import { finishFirst } from '../../../../main/git/operation-words.js';
+import { t, tn, tr } from '../../i18n/i18n.js';
+
+/** A ref named like an option can only come from a server (see `validateRefName`): why it is not offered. */
+export const optionLikeReason = ref => (ref.name.startsWith('-') ? t('This name looks like a command-line option') : undefined);
+
+/** Every item of a menu, with those inside its submenus. */
+export function flatMenuItems(items) {
+  return items.flatMap(item => (item.submenu ? [item, ...flatMenuItems(item.submenu)] : [item]));
+}
 
 /**
  * What can be done to one ref itself — rename, upstream, publish, delete — the
@@ -10,7 +19,9 @@ import { t, tn } from '../../i18n/i18n.js';
  * so each item that mutates goes through the §6.5 confirmation the handlers
  * open, not straight to the command.
  */
-export function refActionItems({ ref, remotes = [], head = {}, reason, handlers }) {
+export function refActionItems({ ref, remotes = [], head = {}, reason: busy, handlers }) {
+  // Everything but deleting it is refused for such a name, and says so.
+  const reason = busy || optionLikeReason(ref);
   const remoteNames = (Array.isArray(remotes) ? remotes : []).filter(name => typeof name === 'string' && name);
   const perRemote = (make) => remoteNames.map(make);
   if (ref.type === 'local') {
@@ -24,7 +35,7 @@ export function refActionItems({ ref, remotes = [], head = {}, reason, handlers 
         reason, run: () => handlers.publishBranch(ref.name, name)
       })),
       { key: `ref-delete-${ref.fullName}`, icon: Trash2, danger: true, text: t`Delete ${ref.name}`,
-        reason: reason || (current ? t('A checked-out branch cannot be deleted') : undefined),
+        reason: busy || (current ? t('A checked-out branch cannot be deleted') : undefined),
         run: () => handlers.deleteBranch(ref.name) }
     ];
   }
@@ -41,7 +52,7 @@ export function refActionItems({ ref, remotes = [], head = {}, reason, handlers 
         text: remoteNames.length > 1 ? t`Publish ${ref.name} to ${name}` : t`Publish ${ref.name}`,
         reason, run: () => handlers.publishTag(ref, name)
       })),
-      { key: `ref-tag-delete-${ref.fullName}`, icon: Trash2, danger: true, text: t`Delete tag ${ref.name}`, reason, run: () => handlers.deleteTag(ref) },
+      { key: `ref-tag-delete-${ref.fullName}`, icon: Trash2, danger: true, text: t`Delete tag ${ref.name}`, reason: busy, run: () => handlers.deleteTag(ref) },
       ...perRemote(name => ({
         key: `ref-tag-delete-remote-${ref.fullName}-${name}`, icon: Trash2, danger: true,
         text: remoteNames.length > 1 ? t`Delete ${ref.name} on ${name}` : t`Delete ${ref.name} on its remote`,
@@ -52,8 +63,16 @@ export function refActionItems({ ref, remotes = [], head = {}, reason, handlers 
   return [];
 }
 
+const REF_ICONS = { local: GitBranch, remote: Globe, tag: Tag };
+
 /**
  * The items of the commit context menu (§8.2), as data.
+ *
+ * What is done to the commit comes first; what is done to the refs on its row
+ * lives in one submenu per ref, named after it. A row with three branches used
+ * to repeat Rename, Set upstream and Delete for each of them above Merge, Rebase
+ * and Reset, 31 items in a window that showed 14. When only one branch can be
+ * merged or checked out from the row, those two stay in the main list.
  *
  * The brief asks for only what applies to be shown, so this is a pure function
  * of the commit, the refs pointing at it and what the repository is currently
@@ -69,37 +88,27 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
   bisect = { active: false, done: false, terms: { bad: 'bad', good: 'good' } }, dirty = false, mark = null, handlers }) {
   const short = commit.oid.slice(0, 7);
   const busy = operation.kind !== 'none';
-  const reason = busy ? t`Finish or abort the ${operation.kind} first` : undefined;
+  const reason = busy ? tr(finishFirst(operation.kind)) : undefined;
   const branches = refs.filter(ref => ref.type === 'local' || ref.type === 'remote');
   const isHead = head.oid === commit.oid;
   const target = head.branch ? head.branch : 'HEAD';
+  const other = branches.filter(ref => !(ref.type === 'local' && ref.name === head.branch));
+  const inMainList = other.length <= 1;
+  const checkoutItem = ref => ({ key: `checkout-${ref.fullName}`, icon: GitCommitHorizontal, text: t`Check out ${ref.name}`, reason: reason || optionLikeReason(ref), run: () => handlers.checkoutBranch(ref.name) });
+  const mergeItems = ref => [
+    { key: `merge-${ref.fullName}`, icon: GitMerge, text: t`Merge ${ref.name} into ${target}`, reason: reason || optionLikeReason(ref), run: () => handlers.merge(ref.name, false) },
+    { key: `merge-noff-${ref.fullName}`, icon: GitMerge, text: t`Merge ${ref.name} into ${target} without fast-forward`, reason: reason || optionLikeReason(ref), run: () => handlers.merge(ref.name, true) }
+  ];
 
   const items = [
     { key: 'branch', icon: GitBranch, text: t('Create branch here…'), reason, run: handlers.createBranch },
     { key: 'tag', icon: Tag, text: t('Create tag here…'), reason, run: handlers.createTag },
-    ...branches
-      .filter(ref => ref.type === 'local' && ref.name !== head.branch)
-      .map(ref => ({ key: `checkout-${ref.fullName}`, icon: GitCommitHorizontal, text: t`Check out ${ref.name}`, reason, run: () => handlers.checkoutBranch(ref.name) })),
+    ...(inMainList ? other.filter(ref => ref.type === 'local').map(checkoutItem) : []),
     { key: 'detach', icon: GitCommitHorizontal, text: t`Check out ${short} (detached)`, reason: reason || (isHead && head.detached ? t('Already checked out') : undefined), run: handlers.checkoutCommit },
     { separator: true }
   ];
 
-  // Everything the "Branches and tags" screen does to a ref, offered on the
-  // commit the ref sits on — but only for the refs that actually point here.
-  const refItems = refs.flatMap(ref => refActionItems({ ref, remotes, head, reason, handlers }));
-  if (refItems.length) items.push(...refItems, { separator: true });
-
-  for (const ref of branches) {
-    if (ref.type === 'local' && ref.name === head.branch) continue;
-    items.push({
-      key: `merge-${ref.fullName}`, icon: GitMerge, text: t`Merge ${ref.name} into ${target}`,
-      reason, run: () => handlers.merge(ref.name, false)
-    });
-    items.push({
-      key: `merge-noff-${ref.fullName}`, icon: GitMerge, text: t`Merge ${ref.name} into ${target} without fast-forward`,
-      reason, run: () => handlers.merge(ref.name, true)
-    });
-  }
+  if (inMainList) items.push(...other.flatMap(mergeItems));
   if (branches.length === 0) {
     items.push({ key: 'merge-none', icon: GitMerge, text: t`Merge into ${target}`, reason: t('No branch points at this commit'), run: () => {} });
   }
@@ -128,6 +137,19 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
       key: `reset-${mode}`, icon: RotateCcw, text: t`Reset ${target} to ${short} — ${mode}`, hint: note,
       danger: mode === 'hard', reason, run: () => handlers.reset(mode)
     });
+  }
+
+  // Everything the "Branches and tags" screen does to a ref, offered on the
+  // commit the ref sits on — but only for the refs that actually point here.
+  if (refs.length) {
+    items.push({ separator: true }, ...refs.map(ref => ({
+      key: `ref-${ref.fullName}`, icon: REF_ICONS[ref.type], text: ref.name, title: ref.fullName,
+      submenu: [
+        ...(!inMainList && ref.type === 'local' && ref.name !== head.branch ? [checkoutItem(ref)] : []),
+        ...(!inMainList && other.includes(ref) ? [...mergeItems(ref), { separator: true }] : []),
+        ...refActionItems({ ref, remotes, head, reason, handlers })
+      ]
+    })));
   }
 
   // Bisect checks commits out one after another, so it needs the same clean
@@ -166,8 +188,8 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
   }
   items.push(
     { separator: true },
-    { key: 'copy-sha', icon: ClipboardCopy, text: t('Copy full SHA'), run: () => handlers.copy(commit.oid, 'SHA') },
-    { key: 'copy-message', icon: ClipboardCopy, text: t('Copy message'), run: () => handlers.copy([commit.subject, commit.body].filter(Boolean).join('\n\n'), t('Message')) }
+    { key: 'copy-sha', icon: ClipboardCopy, text: t('Copy full SHA'), run: () => handlers.copy(commit.oid, t('SHA copied.')) },
+    { key: 'copy-message', icon: ClipboardCopy, text: t('Copy message'), run: () => handlers.copy([commit.subject, commit.body].filter(Boolean).join('\n\n'), t('Message copied.')) }
   );
   return items;
 }
@@ -187,7 +209,7 @@ export function buildCommitMenu({ commit, refs = [], remotes = [], head = {}, op
 export function buildMultiCommitMenu({ commits, operation = { kind: 'none' }, dirty = false, onCurrentBranch = true,
   someOnCurrentBranch = onCurrentBranch, head = {}, handlers }) {
   const busy = operation.kind !== 'none';
-  const busyReason = busy ? t`Finish or abort the ${operation.kind} first` : undefined;
+  const busyReason = busy ? tr(finishFirst(operation.kind)) : undefined;
   const check = squashable(commits);
   const items = [];
   if (check.ok && onCurrentBranch) {

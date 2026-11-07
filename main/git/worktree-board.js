@@ -4,6 +4,7 @@ import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { runGit } from './exec.js';
+import { limited } from './limited.js';
 import { parseStatusV2 } from './status-parser.js';
 import { buildStatusArgv, loadUntrackedDiff } from './worktree.js';
 import { parseNumstat } from './numstat.js';
@@ -11,7 +12,8 @@ import { parseChangedFiles, validateFile, validateOid } from './commit.js';
 import { buildDeleteBranchArgv, validateRefName } from './refs-ops.js';
 import { buildCommitArgv, createCommit, gitReason, validateCommitMessage } from './commit-ops.js';
 import { loadOperationState } from './operation-state.js';
-import { AGENT_FOLDER, findWorktree, loadWorktrees, removeWorktree } from './worktrees.js';
+import { finishFirst } from './operation-words.js';
+import { AGENT_FOLDER, canonicalFolder, linkedCheckouts, loadWorktrees, pickWorktree, removeWorktree } from './worktrees.js';
 import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
 
 /**
@@ -35,10 +37,20 @@ const STAT_LIMIT = 200;
 
 const heads = name => `refs/heads/${validateRefName(name)}`;
 
-async function read(cwd, log, argv, operation) {
-  const result = await runGit({ cwd, log, argv, operation });
+// `where`: a folder, or a checkout with the options that go before the command
+// (see `linkedCheckouts`: Git in an agent's worktree never reads its `.git` file).
+async function read(where, log, argv, operation) {
+  const [cwd, prefix] = typeof where === 'string' ? [where, []] : [where.path, where.git];
+  const result = await runGit({ cwd, log, argv: [...prefix, ...argv], operation });
   if (result.code !== 0) throw new Error(ui`${operation} failed. See the command console.`);
   return result.stdout;
+}
+
+/** A listed worktree with how to run Git in it, `forged` when the `.git` file in its folder leads elsewhere. */
+function withGit(entry, links) {
+  if (entry.main) return { ...entry, git: [], forged: false };
+  const link = links.get(canonicalFolder(entry.path));
+  return { ...entry, git: link?.args ?? null, forged: !entry.prunable && !link?.intact };
 }
 
 /** `git status` of one worktree, counted: files, untracked, conflicts, and their paths. */
@@ -98,14 +110,49 @@ async function readSquashRecords(cwd, log) {
   return records;
 }
 
+/** `%(ahead-behind)` came in Git 2.41. */
+export function countsInOneRead(versionText) {
+  const [, major = 0, minor = 0] = /(\d+)\.(\d+)/.exec(versionText) ?? [];
+  return Number(major) > 2 || (Number(major) === 2 && Number(minor) >= 41);
+}
+
+let gitVersion = null;
+function readGitVersion(cwd, log) {
+  gitVersion ??= read(cwd, log, ['--version'], 'Read the Git version').catch(error => { gitVersion = null; throw error; });
+  return gitVersion;
+}
+
 /**
- * How far `branch` is from `base`, and whether its work is already in
- * `base`: merged (nothing ahead), or squashed by 🌱 Twig at the tip it still
- * has. A squash done elsewhere (a forge's squash merge) is not recognised.
+ * How far each branch is from `base`: one `for-each-ref` for all of them, or
+ * on an older Git one `rev-list` each. `together` overrides the version check.
+ * @returns {Promise<Map<string, { ahead: number, behind: number }>>}
  */
-async function integration({ cwd, log, base, branch, tip, records }) {
-  const counts = (await read(cwd, log, ['rev-list', '--left-right', '--count', `${heads(base)}...${heads(branch)}`, '--'], 'Read worktree branch divergence')).trim().split(/\s+/).map(Number);
-  const [behind, ahead] = counts;
+export async function readDivergence({ cwd, log, base, branches, together = null }) {
+  const counts = new Map();
+  if (!branches.length) return counts;
+  const operation = 'Read worktree branch divergence';
+  if (together ?? countsInOneRead(await readGitVersion(cwd, log))) {
+    const output = await read(cwd, log, ['for-each-ref', `--format=%(refname)%00%(ahead-behind:${heads(base)})`, ...branches.map(heads)], operation);
+    for (const line of output.split('\n').filter(Boolean)) {
+      const [ref, pair] = line.split('\0');
+      const [ahead, behind] = pair.split(' ').map(Number);
+      counts.set(ref.slice('refs/heads/'.length), { ahead, behind });
+    }
+    return counts;
+  }
+  await limited(branches, 3, async branch => {
+    const [behind, ahead] = (await read(cwd, log, ['rev-list', '--left-right', '--count', `${heads(base)}...${heads(branch)}`, '--'], operation)).trim().split(/\s+/).map(Number);
+    counts.set(branch, { ahead, behind });
+  });
+  return counts;
+}
+
+/**
+ * Whether `branch`'s work is already in `base`: merged (nothing ahead), or
+ * squashed by 🌱 Twig at the tip it still has. A squash done elsewhere (a
+ * forge's squash merge) is not recognised.
+ */
+async function integration({ cwd, log, base, branch, tip, records, counts: { ahead, behind } }) {
   if (ahead === 0) return { ahead, behind, integrated: 'merged' };
   const record = records.get(branch);
   if (record?.squash && record.tip === tip) {
@@ -113,16 +160,6 @@ async function integration({ cwd, log, base, branch, tip, records }) {
     if (missing === '0') return { ahead, behind, integrated: 'squashed', squash: record.squash };
   }
   return { ahead, behind, integrated: null };
-}
-
-/** At most `limit` of `items` at a time through `run`, results in order. */
-async function limited(items, limit, run) {
-  const results = new Array(items.length);
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) { const index = next++; results[index] = await run(items[index]); }
-  }));
-  return results;
 }
 
 /** True if `folder` is inside the main worktree's agent folder (`.claude/worktrees`). */
@@ -133,13 +170,27 @@ export function isAgentFolder(main, folder) {
 
 const real = folder => { try { return realpathSync.native(folder); } catch { return path.resolve(folder); } };
 
+/** A worktree's uncommitted work: what its card shows and the newest edit. */
+async function readWork(entry, log) {
+  const changes = await readChanges(entry, log);
+  // Untracked files have no line counts, and a clean worktree nothing to diff.
+  const lines = changes.files > changes.untracked ? await readLineTotals(entry, log, changes.unborn) : { insertions: 0, deletions: 0 };
+  return { changes: { files: changes.files, untracked: changes.untracked, conflicts: changes.conflicts, staged: changes.staged, ...lines },
+    edited: await lastEdit(entry.path, changes.paths) };
+}
+
 /**
  * Every worktree, described for the board. `pending` is the set of folders
  * with a commit proposal waiting, `agents` the agents connected over MCP with
  * the folder they work in — both from the MCP service — so a card can say so.
- * @param {{ cwd: string, log: object, pending?: Set<string>, agents?: Array<{ path: string, lastCallAt: ?string, connectedAt: string }> }} options
+ *
+ * A worktree's own status and diff are the costly part, so `known` keeps them
+ * between reads. With `fresh` off (a branch moved, an agent connected) only
+ * worktrees whose HEAD or branch moved are read again; with it on (the person
+ * came back, Refresh) all of them are: an agent's edits touch no ref.
+ * @param {{ cwd: string, log: object, pending?: Set<string>, agents?: Array<{ path: string, lastCallAt: ?string, connectedAt: string }>, known?: Map<string, object>, fresh?: boolean }} options
  */
-export async function loadWorktreeBoard({ cwd, log, pending = new Set(), agents = [] }) {
+export async function loadWorktreeBoard({ cwd, log, pending = new Set(), agents = [], known = new Map(), fresh = true }) {
   const waiting = new Set([...pending].map(real));
   const connected = new Map();
   for (const agent of agents) {
@@ -147,24 +198,28 @@ export async function loadWorktreeBoard({ cwd, log, pending = new Set(), agents 
     const known = connected.get(key);
     connected.set(key, { count: (known?.count ?? 0) + 1, lastCallAt: known?.lastCallAt ?? agent.lastCallAt ?? null, connectedAt: known?.connectedAt ?? agent.connectedAt });
   }
-  const list = await loadWorktrees({ cwd, log });
+  const links = await linkedCheckouts({ cwd, log });
+  const list = (await loadWorktrees({ cwd, log })).map(entry => withGit(entry, links));
   const main = list[0];
   const base = main && !main.bare && main.branch ? main.branch : null;
   const records = await readSquashRecords(cwd, log);
   const times = await commitTimes(cwd, log, list.filter(entry => !entry.prunable && !entry.bare).map(entry => entry.head));
+  const compared = entry => !entry.prunable && !entry.bare && !entry.main && base && entry.branch && entry.branch !== base;
+  const divergence = await readDivergence({ cwd, log, base, branches: list.filter(compared).map(entry => entry.branch) });
+  for (const folder of known.keys()) if (!list.some(entry => entry.path === folder)) known.delete(folder);
   const worktrees = await limited(list, 3, async entry => {
-    const card = { ...entry, agent: isAgentFolder(main.path, entry.path), proposal: waiting.has(real(entry.path)),
+    const { git, ...shown } = entry;
+    const card = { ...shown, agent: isAgentFolder(main.path, entry.path), proposal: waiting.has(real(entry.path)),
       connected: connected.get(real(entry.path)) ?? null,
       changes: null, ahead: null, behind: null, integrated: null, lastActivity: times.get(entry.head) ?? null };
-    if (entry.prunable || entry.bare) return card;
-    const changes = await readChanges(entry.path, log);
-    const lines = await readLineTotals(entry.path, log, changes.unborn);
-    const edited = await lastEdit(entry.path, changes.paths);
-    card.changes = { files: changes.files, untracked: changes.untracked, conflicts: changes.conflicts, staged: changes.staged, ...lines };
-    if (edited !== null && (card.lastActivity === null || edited > card.lastActivity)) card.lastActivity = edited;
-    if (!entry.main && base && entry.branch && entry.branch !== base) {
-      Object.assign(card, await integration({ cwd, log, base, branch: entry.branch, tip: entry.head, records }));
-    }
+    if (entry.prunable || entry.bare || !git) return card;
+    const seen = known.get(entry.path);
+    const work = !fresh && seen?.head === entry.head && seen.branch === entry.branch ? seen.work : await readWork(entry, log);
+    known.set(entry.path, { head: entry.head, branch: entry.branch, work });
+    card.changes = work.changes;
+    if (work.edited !== null && (card.lastActivity === null || work.edited > card.lastActivity)) card.lastActivity = work.edited;
+    const counts = compared(entry) ? divergence.get(entry.branch) : null;
+    if (counts) Object.assign(card, await integration({ cwd, log, base, branch: entry.branch, tip: entry.head, records, counts }));
     return card;
   });
   return { base, main: main?.path ?? null, worktrees };
@@ -172,17 +227,19 @@ export async function loadWorktreeBoard({ cwd, log, pending = new Set(), agents 
 
 /** The worktree the screen named, as Git lists it now, with the main one beside it. */
 async function agentWorktree({ cwd, log, folder }) {
-  const entry = await findWorktree({ cwd, log, path: folder });
-  if (entry.main) throw new Error(ui`The main worktree is the base; review a worktree next to it.`);
-  if (entry.bare || entry.prunable) throw new Error(ui`This worktree has no files to show.`);
   const list = await loadWorktrees({ cwd, log });
+  const listed = pickWorktree(list, folder);
+  if (listed.main) throw new Error(ui`The main worktree is the base; review a worktree next to it.`);
+  if (listed.bare || listed.prunable) throw new Error(ui`This worktree has no files to show.`);
+  const entry = withGit(listed, await linkedCheckouts({ cwd, log }));
+  if (!entry.git) throw new Error(ui`The .git file of this folder does not lead to its repository.`);
   return { entry, main: list[0], base: list[0].branch || null };
 }
 
 /** Where the worktree's branch left the base: the commit everything is compared with. */
-async function forkPoint(folder, log, base) {
+async function forkPoint(checkout, log, base) {
   if (!base) return null;
-  const result = await runGit({ cwd: folder, log, argv: ['merge-base', heads(base), 'HEAD'], operation: 'Read where the worktree branch started' });
+  const result = await runGit({ cwd: checkout.path, log, argv: [...checkout.git, 'merge-base', heads(base), 'HEAD'], operation: 'Read where the worktree branch started' });
   return result.code === 0 ? result.stdout.trim() : null;
 }
 
@@ -194,20 +251,21 @@ async function forkPoint(folder, log, base) {
  */
 export async function loadWorktreeReview({ cwd, log, folder }) {
   const { entry, base } = await agentWorktree({ cwd, log, folder });
-  const fork = await forkPoint(entry.path, log, base);
+  const fork = await forkPoint(entry, log, base);
   const against = fork || (entry.head ? 'HEAD' : null);
-  const status = parseStatusV2(await read(entry.path, log, buildStatusArgv({ allUntracked: true }), 'Read worktree changes'));
+  const status = parseStatusV2(await read(entry, log, buildStatusArgv({ allUntracked: true }), 'Read worktree changes'));
   const untracked = status.entries.filter(item => item.kind === 'untracked').map(item => item.path);
-  const files = against ? parseChangedFiles(await read(entry.path, log, ['diff', ...PLAIN, '--name-status', '-z', against, '--'], 'Read what the worktree changed')) : [];
-  const counts = against ? parseNumstat(await read(entry.path, log, ['diff', ...PLAIN, '--numstat', '-z', against, '--'], 'Read what the worktree changed, sizes')) : new Map();
-  const commits = fork ? await readCommits(entry.path, log, `${fork}..HEAD`) : [];
+  const files = against ? parseChangedFiles(await read(entry, log, ['diff', ...PLAIN, '--name-status', '-z', against, '--'], 'Read what the worktree changed')) : [];
+  const counts = against ? parseNumstat(await read(entry, log, ['diff', ...PLAIN, '--numstat', '-z', against, '--'], 'Read what the worktree changed, sizes')) : new Map();
+  const commits = fork ? await readCommits(entry, log, `${fork}..HEAD`) : [];
   const uncommitted = status.entries.filter(item => item.kind !== 'ignored').length;
+  const listed = new Set(files.map(item => item.path));
   return {
     folder: entry.path, branch: entry.branch, base, fork, commits, uncommitted,
     files: [
       ...files.map(file => ({ ...file, untracked: false, insertions: counts.get(file.path)?.insertions ?? null, deletions: counts.get(file.path)?.deletions ?? null, binary: Boolean(counts.get(file.path)?.binary) })),
       // An agent committing while this reads can leave a file in both answers; the diff is the later word.
-      ...untracked.filter(file => !files.some(item => item.path === file)).map(file => ({ path: file, status: 'A', untracked: true, insertions: null, deletions: null, binary: false }))
+      ...untracked.filter(file => !listed.has(file)).map(file => ({ path: file, status: 'A', untracked: true, insertions: null, deletions: null, binary: false }))
     ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
   };
 }
@@ -217,18 +275,18 @@ export async function loadWorktreeFileDiff({ cwd, log, folder, path: file, untra
   validateFile(file);
   const { entry, base } = await agentWorktree({ cwd, log, folder });
   if (untracked) {
-    const patch = await loadUntrackedDiff({ cwd: entry.path, log, path: file });
+    const patch = await loadUntrackedDiff({ cwd: entry.path, log, path: file, git: entry.git });
     if (patch.directory) return { patch: '', note: ui`A folder Git lists as one entry.` };
     if (patch.tooLarge) return { patch: '', note: ui`${patch.size} bytes, too large to show.` };
     return { patch: patch.text, note: null };
   }
-  const against = (await forkPoint(entry.path, log, base)) || 'HEAD';
-  const patch = await read(entry.path, log, ['diff', ...PLAIN, '--src-prefix=a/', '--dst-prefix=b/', against, '--', `:(literal)${file}`], 'Read a worktree file diff');
+  const against = (await forkPoint(entry, log, base)) || 'HEAD';
+  const patch = await read(entry, log, ['diff', ...PLAIN, '--src-prefix=a/', '--dst-prefix=b/', against, '--', `:(literal)${file}`], 'Read a worktree file diff');
   return { patch, note: null };
 }
 
-async function readCommits(cwd, log, range) {
-  const output = await read(cwd, log, ['log', `--max-count=${COMMIT_LIMIT}`, '-z', '--format=%H%x1f%B', range, '--'], 'Read the worktree branch commits');
+async function readCommits(where, log, range) {
+  const output = await read(where, log, ['log', `--max-count=${COMMIT_LIMIT}`, '-z', '--format=%H%x1f%B', range, '--'], 'Read the worktree branch commits');
   return output.split('\0').filter(Boolean).map(record => {
     const [oid, message = ''] = record.split('\x1f');
     const text = message.replace(/\n+$/, '');
@@ -269,12 +327,12 @@ export async function planSquash({ cwd, log, folder }) {
   plan.commits = await readCommits(cwd, log, `${heads(base)}..${heads(entry.branch)}`);
   plan.message = squashMessage(plan.commits);
   plan.commands = squashCommands(entry.head);
-  const own = await readChanges(entry.path, log);
+  const own = await readChanges(entry, log);
   if (own.files) plan.warnings.push(uiN(own.files, '{n} file in this worktree is not committed and will not be included. Commit it first to bring it along.',
     '{n} files in this worktree are not committed and will not be included. Commit them first to bring them along.'));
   if (!plan.commits.length) return { ...plan, problem: ui`${entry.branch} has no commits that ${base} does not have.` };
   const operation = await loadOperationState({ cwd: main.path, log });
-  if (operation.kind !== 'none') return { ...plan, problem: ui`A ${operation.kind} is in progress in ${base}. Finish or abort it first.` };
+  if (operation.kind !== 'none') return { ...plan, problem: `${ui`${base} is in the middle of an operation.`} ${finishFirst(operation.kind)}` };
   const there = await readChanges(main.path, log);
   if (there.conflicts) return { ...plan, problem: ui`${base} has unresolved conflicts. Resolve them first.` };
   if (there.staged) return { ...plan, problem: ui`${base} has staged changes; they would go into the squashed commit. Commit or unstage them first.` };
@@ -287,10 +345,12 @@ export async function planSquash({ cwd, log, folder }) {
  * `git commit` in the base worktree, with the person's message. The tips the
  * dialog showed must still be the tips. A conflict, a refusal or a failed
  * commit (a hook) puts the base back as it was with `git reset --merge`,
- * which keeps uncommitted work Git did not touch.
- * @param {{ cwd: string, log: object, folder: string, message: string, branchOid: string, baseOid: string }} options
+ * which keeps uncommitted work Git did not touch. `beforeCommit` is the pre-commit
+ * automations: they see the squash staged, and the reason they give stops it the same way.
+ * @param {{ cwd: string, log: object, folder: string, message: string, branchOid: string, baseOid: string,
+ *   beforeCommit?: ?(basePath: string) => Promise<?string> }} options
  */
-export async function squashWorktree({ cwd, log, folder, message, branchOid, baseOid }) {
+export async function squashWorktree({ cwd, log, folder, message, branchOid, baseOid, beforeCommit = null }) {
   validateOid(branchOid); validateOid(baseOid);
   const check = validateCommitMessage(message);
   if (!check.valid) throw new TypeError(check.error);
@@ -310,6 +370,11 @@ export async function squashWorktree({ cwd, log, folder, message, branchOid, bas
     return { ok: false, message: gitReason(merged) ? ui`Git refused the squash: ${gitReason(merged)}` : ui`Git refused the squash: see the command console.` };
   }
   try {
+    const blocked = await beforeCommit?.(target);
+    if (blocked) {
+      await restore();
+      return { ok: false, message: ui`Not committed, ${plan.base} is as it was: ${blocked}` };
+    }
     await createCommit({ cwd: target, log, message });
   } catch (error) {
     await restore();
@@ -331,7 +396,8 @@ export async function finishWorktree({ cwd, log, folder }) {
   const { entry, base } = await agentWorktree({ cwd, log, folder });
   if (!entry.branch || !base) return { ok: false, message: ui`This worktree is not on a branch next to a base branch.` };
   const records = await readSquashRecords(cwd, log);
-  const state = await integration({ cwd, log, base, branch: entry.branch, tip: entry.head, records });
+  const counts = (await readDivergence({ cwd, log, base, branches: [entry.branch] })).get(entry.branch);
+  const state = await integration({ cwd, log, base, branch: entry.branch, tip: entry.head, records, counts });
   if (!state.integrated) return { ok: false, message: ui`${entry.branch} has work that is not in ${base} yet. Squash it first, or remove only the worktree.` };
   const removed = await removeWorktree({ cwd, log, path: entry.path });
   if (!removed.ok) return removed;

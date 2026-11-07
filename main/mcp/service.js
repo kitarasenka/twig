@@ -2,10 +2,13 @@ import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/pr
 import path from 'node:path';
 import { BRIDGE_FILE, ENDPOINT_FILE, PROTOCOL_FILE, clientConfigs, launchCommand, resolveEndpoint } from './endpoint.js';
 import { createSocketTransport } from './socket-transport.js';
-import { createMcpSession } from './session.js';
+import { createLimiter, createMcpSession } from './session.js';
 import { createToolContext } from './context.js';
 import { bindTools } from './tools/index.js';
 import { normalizeUiContext } from './ui-context.js';
+
+/** Tool calls running at once across all agents: each can start several Git processes in the main process's care. */
+export const MCP_CALL_SLOTS = 4;
 
 const SOURCES = [BRIDGE_FILE, PROTOCOL_FILE].map(name => ({ name, url: new URL(`./${name}`, import.meta.url) }));
 
@@ -48,11 +51,12 @@ export function createMcpService({ userData, execPath, appImage = null, version,
 
   const context = createToolContext({ repositories, journal, getActiveId: () => activeId, getUiContext: () => uiContext, proposals, waitMs });
   const tools = bindTools(context);
+  const limiter = createLimiter(MCP_CALL_SLOTS);
   const transport = createSocketTransport({
     socket: endpoint.socket,
     createSession: () => {
       const meta = { connectedAt: new Date().toISOString(), lastCallAt: null };
-      const session = createMcpSession({ version, tools, onInitialize: onAgentsChange,
+      const session = createMcpSession({ version, tools, limiter, onInitialize: onAgentsChange,
         onCall: () => { calls++; lastCallAt = new Date().toISOString(); meta.lastCallAt = lastCallAt; } });
       return Object.assign(session, { meta });
     },

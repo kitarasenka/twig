@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   setMcpCommitsAllowed: allowed => ipcRenderer.invoke('mcp:allow-commits', allowed),
   getCommitProposal: () => ipcRenderer.invoke('mcp:proposal-current'),
   decideCommitProposal: (id, decision) => ipcRenderer.invoke('mcp:proposal-decide', id, decision),
+  getCommitProposalFile: (id, file) => ipcRenderer.invoke('mcp:proposal-file', id, file),
   onCommitProposal: listener => {
     if (typeof listener !== 'function') throw new TypeError('Invalid proposal listener');
     const callback = (_event, proposal) => listener(proposal);
@@ -79,7 +80,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   removeWorktree: (id, path, force = false) => ipcRenderer.invoke('worktrees:remove', id, path, force),
   pruneWorktrees: (id) => ipcRenderer.invoke('worktrees:prune', id),
   openWorktree: (id, path) => ipcRenderer.invoke('worktrees:open', id, path),
-  getWorktreeBoard: (id) => ipcRenderer.invoke('worktrees:board', id),
+  getWorktreeBoard: (id, fresh = true) => ipcRenderer.invoke('worktrees:board', id, fresh),
   getWorktreeReview: (id, path) => ipcRenderer.invoke('worktrees:review', id, path),
   getWorktreeFileDiff: (id, path, file, untracked = false) => ipcRenderer.invoke('worktrees:file-diff', id, path, file, untracked),
   planWorktreeSquash: (id, path) => ipcRenderer.invoke('worktrees:squash-plan', id, path),
@@ -98,7 +99,23 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   applyPatchCommits: (id, token) => ipcRenderer.invoke('patch:am', id, token),
   applyPatchFiles: (id, token, index = false) => ipcRenderer.invoke('patch:apply', id, token, index),
   getWorkspace: () => ipcRenderer.invoke('workspace:startup'),
+  checkGit: () => ipcRenderer.invoke('git:check'),
+  onWorkspaceUpdate: listener => {
+    if (typeof listener !== 'function') throw new TypeError('Invalid workspace listener');
+    const callback = (_event, workspace) => listener(workspace);
+    ipcRenderer.on('workspace:update', callback);
+    return () => ipcRenderer.removeListener('workspace:update', callback);
+  },
+  onRefreshKey: listener => {
+    if (typeof listener !== 'function') throw new TypeError('Invalid refresh listener');
+    const callback = () => listener();
+    ipcRenderer.on('app:refresh', callback);
+    return () => ipcRenderer.removeListener('app:refresh', callback);
+  },
   openRepository: () => ipcRenderer.invoke('repositories:open'),
+  initRepository: (token) => ipcRenderer.invoke('repositories:init', token),
+  chooseRepositoryLocation: (id) => ipcRenderer.invoke('repositories:choose-location', id),
+  locateRepository: (id, token) => ipcRenderer.invoke('repositories:locate', id, token),
   selectRepository: (id) => ipcRenderer.invoke('repositories:select', id),
   removeRepository: (id) => ipcRenderer.invoke('repositories:remove', id),
   resetDemoWorkspace: () => ipcRenderer.invoke('sandbox:reset'),
@@ -122,6 +139,8 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   getFileText: (id, file, source) => ipcRenderer.invoke('history:file-text', id, file, source),
   compareCommits: (id, base, oid) => ipcRenderer.invoke('history:compare', id, base, oid),
   getReflog: (id, branch = null, skip = 0) => ipcRenderer.invoke('reflog:read', id, branch, skip),
+  getDiscards: id => ipcRenderer.invoke('discard:list', id),
+  restoreDiscard: (id, backup) => ipcRenderer.invoke('discard:restore', id, backup),
   moveBranchTo: (id, branch, oid, expected) => ipcRenderer.invoke('reflog:move-branch', id, branch, oid, expected),
   getRebaseCandidates: (id, oid) => ipcRenderer.invoke('history:rebase-todo', id, oid),
   listMarks: (id) => ipcRenderer.invoke('marks:list', id),
@@ -142,7 +161,8 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   getWorktreeDiff: (id, path, staged = false) => ipcRenderer.invoke('worktree:diff', id, path, staged),
   stageFile: (id, path) => ipcRenderer.invoke('worktree:stage', id, path),
   unstageFile: (id, path, unborn = false) => ipcRenderer.invoke('worktree:unstage', id, path, unborn),
-  trackFile: (id, path) => ipcRenderer.invoke('worktree:track', id, path),
+  getUntrackedDiff: (id, path) => ipcRenderer.invoke('worktree:untracked-diff', id, path),
+  applyUntrackedSelection: (id, path, digest, selection) => ipcRenderer.invoke('worktree:apply-untracked', id, path, digest, selection),
   stageAll: (id, scope, only = null) => ipcRenderer.invoke('worktree:stage-all', id, scope, only),
   unstageAll: (id, only = null) => ipcRenderer.invoke('worktree:unstage-all', id, only),
   addIgnoreRule: (id, path, kind) => ipcRenderer.invoke('worktree:ignore', id, path, kind),
@@ -160,7 +180,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   stashDiff: (id, oid, path, untracked = false) => ipcRenderer.invoke('stash:diff', id, oid, path, untracked),
   stashAction: (id, action, index, expectedOid, name = null) => ipcRenderer.invoke('stash:action', id, action, index, expectedOid, name),
   getDivergence: (id, branch = null) => ipcRenderer.invoke('sync:divergence', id, branch),
-  runSync: (id, mode, branch = null) => ipcRenderer.invoke('sync:run', id, mode, branch),
+  runSync: (id, mode, branch = null, remote = null) => ipcRenderer.invoke('sync:run', id, mode, branch, remote),
   cancelSync: (id) => ipcRenderer.invoke('sync:cancel', id),
   runDrop: (id, request) => ipcRenderer.invoke('sync:drop', id, request),
   pushRef: (id, remote, ref, remove = false) => ipcRenderer.invoke('sync:push-ref', id, remote, ref, remove),
@@ -186,6 +206,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   readConflict: (id, path) => ipcRenderer.invoke('conflict:read', id, path),
   saveConflict: (id, path, content, mtimeMs, size) => ipcRenderer.invoke('conflict:save', id, path, content, mtimeMs, size),
   takeConflictSide: (id, path, side) => ipcRenderer.invoke('conflict:take', id, path, side),
+  settleConflictDeletion: (id, file, keep) => ipcRenderer.invoke('conflict:settle-deleted', id, file, keep),
   markConflictResolved: (id, path) => ipcRenderer.invoke('conflict:resolve', id, path),
   getAutomationConfig: (id) => ipcRenderer.invoke('automation:config', id),
   saveAutomationConfig: (id, config) => ipcRenderer.invoke('automation:save', id, config),
@@ -202,6 +223,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   },
   getConsoleEntries: () => ipcRenderer.invoke('console:entries'),
   getConsoleOutput: (id) => ipcRenderer.invoke('console:output', id),
+  clearConsole: () => ipcRenderer.invoke('console:clear'),
   runConsoleCommand: (id, input) => ipcRenderer.invoke('console:run-command', id, input),
   onConsoleUpdate: (listener) => {
     if (typeof listener !== 'function') throw new TypeError('Console listener must be a function');

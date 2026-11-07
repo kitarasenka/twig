@@ -2,6 +2,7 @@ import { runGit } from './exec.js';
 import { redactCredentials } from './redact.js';
 import { validateOid } from './commit.js';
 import { coAuthorArgv, missingCoAuthors } from './co-author-trailer.js';
+import { parseStatusV2 } from './status-parser.js';
 import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /** Commit creation and the stash, i.e. local writes that move HEAD or shelve work. */
@@ -123,12 +124,36 @@ export async function rewordHead({ cwd, log, message, expectedOid }) {
   return check.warnings;
 }
 
-/** @param {{ cwd: string, log: object, includeUntracked?: boolean, message?: string }} options */
-export function stashPush({ cwd, log, includeUntracked = false, message = '' }) {
-  return mutate({ cwd, log, argv: buildStashArgv({ includeUntracked, message }), operation: 'Stash changes', failed: ui`Stash changes failed. See the command console.` });
+async function stashTip({ cwd, log }) {
+  const result = await runGit({ argv: ['for-each-ref', '--format=%(objectname)', 'refs/stash'], cwd, log, operation: 'Read stashes' });
+  return result.code === 0 ? result.stdout.trim() : null;
 }
 
+/**
+ * With nothing to save Git says so and exits 0, so whether a stash was made is
+ * read from the stash ref itself. `saved` is false when the tree had nothing.
+ * @param {{ cwd: string, log: object, includeUntracked?: boolean, message?: string }} options
+ */
+export async function stashPush({ cwd, log, includeUntracked = false, message = '' }) {
+  const before = await stashTip({ cwd, log });
+  const result = await mutate({ cwd, log, argv: buildStashArgv({ includeUntracked, message }), operation: 'Stash changes', failed: ui`Stash changes failed. See the command console.` });
+  return { ...result, saved: await stashTip({ cwd, log }) !== before };
+}
+
+/** Whether the working tree holds a conflict: what a stash that did not apply cleanly leaves behind. */
+export async function hasConflicts({ cwd, log }) {
+  const result = await runGit({ argv: ['status', '--porcelain=v2', '-z'], cwd, log, operation: 'Background: read conflicted files' });
+  return result.code === 0 && parseStatusV2(result.stdout).entries.some(entry => entry.kind === 'unmerged');
+}
+
+export const STASH_CONFLICT = ui`The stash did not apply cleanly, so Git kept it in the list. Resolve the conflicted files, then drop the stash on the Stashes screen.`;
+
 /** @param {{ cwd: string, log: object }} options */
-export function stashPop({ cwd, log }) {
-  return mutate({ cwd, log, argv: buildStashPopArgv(), operation: 'Pop stash', failed: ui`Pop stash failed. See the command console.` });
+export async function stashPop({ cwd, log }) {
+  try {
+    return await mutate({ cwd, log, argv: buildStashPopArgv(), operation: 'Pop stash', failed: ui`Pop stash failed. See the command console.` });
+  } catch (error) {
+    if (await hasConflicts({ cwd, log })) throw new Error(STASH_CONFLICT);
+    throw error;
+  }
 }

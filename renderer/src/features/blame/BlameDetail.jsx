@@ -5,6 +5,7 @@ import DiffLines, { FileViewSwitch } from '../diff/DiffLines.jsx';
 import FileView from '../diff/FileView.jsx';
 import { formatDateTime, t, tn } from '../../i18n/i18n.js';
 import { tx } from '../../i18n/rich.js';
+import { revealInvisible } from '../../ui/invisible.js';
 
 /**
  * The right-hand panel for the blame screen: the commit a selected line (or
@@ -48,10 +49,10 @@ export default function BlameDetail({ repositoryId, sel, view, onJump, onConsole
       {sel.multiple > 1 && <p className="muted">{tn(sel.multiple, '{n} commit in the selected block; showing the active line’s commit.', '{n} commits in the selected block; showing the active line’s commit.')}</p>}
       {error && <p role="alert">{error} <button onClick={onConsole}>{t('Show output')}</button></p>}
       {commit && <>
-        <h2>{commit.subject || t('(no subject)')}</h2>
-        {commit.body && <pre className="commit-body">{commit.body}</pre>}
+        <h2>{revealInvisible(commit.subject) || t('(no subject)')}</h2>
+        {commit.body && <pre className="commit-body">{revealInvisible(commit.body)}</pre>}
         <div className="author-card"><span className="avatar">{commit.author.name.split(/\s+/).slice(0, 2).map(part => part[0]).join('')}</span><div>
-          <strong>{commit.author.name}</strong><span>{commit.author.email}</span></div></div>
+          <strong>{revealInvisible(commit.author.name)}</strong><span>{revealInvisible(commit.author.email)}</span></div></div>
         <dl className="metadata">
           <dt>{t('Authored')}</dt><dd>{formatDateTime(commit.author.date, { dateStyle: 'short', timeStyle: 'medium' })}</dd>
           <dt>{t('Line')}</dt><dd>{tx('{line} in {path}', { line: sel.line, path: <code>{sel.path}</code> })}</dd>

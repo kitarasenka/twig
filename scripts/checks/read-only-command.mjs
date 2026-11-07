@@ -25,7 +25,12 @@ const allowed = [
   'for-each-ref --format=%(refname)', 'show-ref', 'ls-files', 'ls-tree -r HEAD',
   'grep -n TODO', 'symbolic-ref HEAD', 'cat-file -p HEAD', 'grep -io todo -- src',
   'diff --text HEAD~1', 'log --no-ext-diff -p', 'rev-list --filter=blob:none --objects HEAD',
-  'grep --no-open-files-in-pager x', 'var GIT_EDITOR', 'log --exclude=refs/stash --all', 'log -- --output'
+  'grep --no-open-files-in-pager x', 'var GIT_EDITOR', 'log --exclude=refs/stash --all', 'log -- --output',
+  'branch -avv', 'branch --sort=-committerdate', 'branch --sort -committerdate', 'branch --show-current', 'branch --color=always',
+  'branch --merged main', 'branch -l x', 'branch --format=%(refname)', 'tag -n5', 'tag -n', "tag -l 'v*' --sort=-v:refname", 'tag --contains HEAD',
+  'reflog -5', 'reflog main', 'reflog exists main', 'symbolic-ref --short HEAD', 'symbolic-ref -q HEAD',
+  'ls-remote origin', 'ls-remote --heads origin', 'ls-remote -t origin', 'ls-remote --get-url origin',
+  'diff HEAD~1..HEAD', 'diff main...feature/x -- src', 'diff -S/api HEAD', 'diff -S /api HEAD'
 ];
 for (const command of allowed) {
   assert.deepEqual(checkReadOnly(tokenize(command)), { ok: true }, `must allow: ${command}`);
@@ -54,7 +59,19 @@ const rejected = [
   'grep -Otouch x', 'grep -iOtouch x', 'grep --open-files-in-pag=touch x', 'grep --open=touch x',
   'ls-remote --upload-pa=touch .', 'ls-remote --upload=touch .', 'log --outp=/tmp/x', 'log --ext-d',
   'cat-file --textconv HEAD:a', 'cat-file --filters HEAD:a', 'cat-file --filt HEAD:a', 'show --textc HEAD',
-  'blame --contents /etc/hosts -- a', 'blame --cont /etc/hosts -- a', 'diff --no-index /etc/hosts a', 'var -l'
+  'blame --contents /etc/hosts -- a', 'blame --cont /etc/hosts -- a', 'diff --no-index /etc/hosts a', 'var -l',
+  // Writes that passed the old list: prefixes, clusters, and options that only
+  // looked like they took the next word.
+  'branch --del --color victim', 'branch -qD --color victim', 'branch --mov --color a --color b', 'branch --color newb',
+  'branch --column newb', 'branch --sort=refname newb', 'branch --format x newb', 'branch --sort -l newb', 'branch --edit-d main',
+  'branch --unset-u --color main', 'branch --for --color v HEAD', 'branch -t newb main',
+  'tag --del --color vtag', 'tag --color newt', 'tag --ann --mess=hello --color newt', 'tag -fa --mess=x --color vtag', 'tag -v v1',
+  'reflog drop refs/heads/main', 'reflog write refs/heads/main 0 HEAD x', 'reflog --all expire',
+  'symbolic-ref --del refs/heads/x', 'symbolic-ref -qd refs/heads/x', 'symbolic-ref -m why HEAD refs/heads/x',
+  'stash -k list', 'stash -q list', 'stash -u show', 'stash --keep-index list', 'worktree -v list',
+  // `git diff` turns into --no-index by itself for a path outside the repository.
+  'diff /dev/null /etc/hosts', 'diff /etc/hosts /etc/shells', 'diff ../outside.txt a', 'diff a/../../outside.txt b', 'diff -- /etc/hosts a',
+  'grep --no-index -e x -- ../c/a.txt', 'ls-remote -u touch .', 'ls-remote -qutouch .'
 ];
 for (const command of rejected) {
   const argv = command === '' ? [] : tokenize(command);

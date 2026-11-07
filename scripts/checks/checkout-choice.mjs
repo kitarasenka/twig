@@ -43,8 +43,8 @@ assert.equal(checkoutChoice([local('main')], { headBranch: null }).kind, 'branch
 // and a checkout tells the reload which commit to show instead of the newest one.
 const workspace = readFileSync(new URL('../../renderer/src/features/graph/HistoryWorkspace.jsx', import.meta.url), 'utf8');
 const graph = readFileSync(new URL('../../renderer/src/features/graph/CommitGraph.jsx', import.meta.url), 'utf8');
-assert.match(workspace, /onDoubleClick=\{\(\) => onCheckout\(\[ref\]\)\}/, 'sidebar branch double-click');
-assert.equal((workspace.match(/onCheckout=\{checkoutOnDoubleClick\}/g) || []).length, 1, 'the sidebar');
+assert.match(workspace, /onDoubleClick=\{\(\) => handlers\.checkout\(\[item\]\)\}/, 'sidebar branch double-click');
+assert.equal((workspace.match(/checkout: refs => latest\.current\.checkoutOnDoubleClick\(refs\)/g) || []).length, 2, 'the sidebar and the rows');
 assert.equal((workspace.match(/onCheckout=\{rowHandlers\.checkout\}/g) || []).length, 2, 'the graph and the search results');
 assert.match(workspace, /checkout: refs => latest\.current\.checkoutOnDoubleClick\(refs\)/, 'one handler behind them all');
 assert.match(graph, /onDoubleClick=\{event => \{ event\.stopPropagation\(\); onCheckout\?\.\(\[ref\]\); \}\}/, 'badge double-click stops at the badge');

@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { Check, FilePenLine, FilePlus2, Minus, Plus, Trash2, Undo2, X } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import FileStatus from '../diff/FileStatus.jsx';
-import FileTree, { FileListControls } from '../diff/FileTree.jsx';
+import FileList from '../diff/FileList.jsx';
+import { FileListControls } from '../diff/FileTree.jsx';
 import { ALL_TYPES, baseName, matchesFile, readFileView, writeFileView } from '../diff/file-filter.js';
 import { SECTIONS, conflictCount, summaryLabel } from './worktree-summary.js';
 import { isMenuKey } from '../../app/shortcuts.js';
@@ -62,16 +63,17 @@ function fileMenuProps(file, section, onFileMenu) {
   };
 }
 
-export default function WorktreePanel({ summary, branch, open, actions, error, onConsole, onDismissError, onFile, onFileMenu, onStaging, onClose }) {
+export default function WorktreePanel({ summary, branch, unborn = false, open, actions, error, onConsole, onDismissError, onFile, onFileMenu, onStaging, onClose }) {
   const [filter, setFilter] = useState('');
   const [extension, setExtension] = useState(ALL_TYPES);
   const [view, setView] = useState(readFileView);
   const chooseView = next => { setView(next); writeFileView(next); };
   const query = Boolean(filter.trim()) || extension !== ALL_TYPES;
+  const typed = useDeferredValue(filter);
   const sections = useMemo(() => SECTIONS.map(section => ({
     ...section,
-    files: summary[section.key].filter(file => matchesFile(file.path, filter, extension))
-  })), [summary, filter, extension]);
+    files: summary[section.key].filter(file => matchesFile(file.path, typed, extension))
+  })), [summary, typed, extension]);
   const paths = useMemo(() => SECTIONS.flatMap(section => summary[section.key].map(file => file.path)), [summary]);
   const conflicts = conflictCount(summary);
   const matches = sections.reduce((count, section) => count + section.files.length, 0);
@@ -90,6 +92,7 @@ export default function WorktreePanel({ summary, branch, open, actions, error, o
       <Button icon={X} aria-label={t('Close uncommitted changes')} onClick={onClose} />
     </header>
     <div className="detail-content">
+      {unborn && !summary.paths && <p className="worktree-panel-conflicts">{t('No commits yet. Put your files in this folder, then open staging to make the first commit.')}</p>}
       <p className="worktree-panel-summary">{branch
         ? tx('{summary} on {branch}', { summary: summaryLabel(summary), branch: <strong>{branch}</strong> })
         : summaryLabel(summary)}</p>
@@ -113,10 +116,13 @@ export default function WorktreePanel({ summary, branch, open, actions, error, o
             onClick={() => onFile(file, section.key)} title={file.originalPath ? `${file.originalPath} → ${file.path}` : file.path}
             {...fileMenuProps(file, section.key, onFileMenu)}>
             <FileStatus status={file.status} /><span>{view === 'tree' ? baseName(file.path) : file.path}</span></button>
-          {discard && <Button className="discard" icon={discard.icon} aria-label={discard.file(file.path)}
-            reason={actions.reasons.discard(file, section.key)} onClick={() => actions.discard(file, section.key)} />}
+          {section.key === 'unstaged' && file.status === 'A'
+            ? <Button className="discard" icon={X} aria-label={t`Stop tracking ${file.path}`} title={t`Stop tracking ${file.path}`}
+              reason={actions.reasons.unstage} onClick={() => actions.unstage(file)} />
+            : discard && <Button className="discard" icon={discard.icon} aria-label={discard.file(file.path)}
+              reason={actions.reasons.discard(file, section.key)} onClick={() => actions.discard(file, section.key)} />}
           <Button className="move" icon={rule.icon} aria-label={rule.file(file.path)} title={rule.file(file.path)}
-            reason={section.key === 'staged' ? actions.reasons.unstage : actions.reasons.stage}
+            reason={file.status === 'U' ? t('Open it to resolve the conflict') : section.key === 'staged' ? actions.reasons.unstage : actions.reasons.stage}
             onClick={() => move(section.key, file)} /></div>;
         return <section className="worktree-panel-section" key={section.key} aria-label={t(SECTION_LABELS[section.key])}>
           <div className="files-heading"><Icon /><strong>{t(section.title)}</strong><span className="count">{total}</span>
@@ -126,7 +132,7 @@ export default function WorktreePanel({ summary, branch, open, actions, error, o
             {total > 0 && discard && <Button className="bulk discard" icon={discard.icon}
               reason={query ? t('Clear the filter first: this acts on the whole list') : actions.reasons.discardAll}
               aria-label={t(discard.bulkLabel)} title={t(discard.bulkLabel)} onClick={() => actions.discardAll(section.key === 'untracked' ? 'untracked' : 'tracked')} />}</div>
-          {view === 'tree' ? <FileTree files={section.files} renderFile={row} /> : section.files.map(row)}
+          <FileList files={section.files} view={view} renderFile={row} />
           {!section.files.length && <p className="muted">{query ? t('No match here.') : t(section.empty)}</p>}
         </section>;
       })}

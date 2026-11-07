@@ -23,20 +23,29 @@ export default function OperationNote({ note, onConsole, onDismiss }) {
   const dismiss = useRef(onDismiss);
   dismiss.current = onDismiss;
   const failed = typeof note === 'object' && note?.failed;
+  // Buttons to act on: such a note waits for the person, like a failure does.
+  const actions = (typeof note === 'object' && note?.actions) || [];
+  const stays = failed || actions.length > 0;
   // A note removed under the pointer never hears it leave: the next one starts free.
   useEffect(() => { if (!note || !region) setHeld(false); }, [note, region]);
   useEffect(() => {
-    if (!note || failed || held || !region) return undefined;
+    if (!note || stays || held || !region) return undefined;
     const timer = setTimeout(() => dismiss.current(), NOTE_MS);
     return () => clearTimeout(timer);
-  }, [note, failed, held, region]);
+  }, [note, stays, held, region]);
   if (!note || !region) return null;
-  return createPortal(<div className={`operation-note${failed ? ' failed' : ''}`} role={failed ? 'alert' : 'status'}
+  const output = failed && <button className="note-output" onClick={onConsole}><SquareTerminal aria-hidden="true" />{t('Show output')}</button>;
+  return createPortal(<div className={`operation-note${failed ? ' failed' : ''}${actions.length ? ' has-actions' : ''}`} role={failed ? 'alert' : 'status'}
     onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)}
     onFocus={() => setHeld(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setHeld(false); }}>
     {failed && <AlertTriangle className="note-icon" aria-hidden="true" />}
-    <span className="note-text">{typeof note === 'string' ? note : note.text}</span>
-    {failed && <button className="note-output" onClick={onConsole}><SquareTerminal aria-hidden="true" />{t('Show output')}</button>}
+    <span className="note-text">{typeof note === 'string' ? note : note.text}
+      {typeof note === 'object' && note.detail && <small className="note-detail">{note.detail}</small>}</span>
+    {!actions.length && output}
     <button className="note-dismiss" onClick={onDismiss} aria-label={t('Dismiss')} title={t('Dismiss')}><X aria-hidden="true" /></button>
+    {actions.length > 0 && <div className="note-actions">
+      {actions.map(action => <button key={action.label} className="note-action" onClick={() => { onDismiss(); action.run(); }}>{action.label}</button>)}
+      {output}
+    </div>}
   </div>, region);
 }

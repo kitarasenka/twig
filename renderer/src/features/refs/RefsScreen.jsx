@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowLeft, GitBranch, Globe, Link2, Pencil, Search, ShieldCheck, SquareTerminal, Tag, Trash2, Upload } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import ScreenTitle from '../../ui/ScreenTitle.jsx';
 import Dialog from '../../ui/Dialog.jsx';
 import OperationNote from '../../ui/OperationNote.jsx';
+import { ShowAll, useBudget } from '../../ui/useBudget.jsx';
 import { pushRefCommand, splitRemoteRef } from './remote-ref.js';
 import { TAG_SORTS, readTagSort, sortTags, writeTagSort } from './tag-sort.js';
-import { formatDateTime, mark, t } from '../../i18n/i18n.js';
+import { formatDateTime, mark, t, tn } from '../../i18n/i18n.js';
 
 const TABS = [['local', mark('Branches'), GitBranch, mark('No branches match this search.')],
   ['remote', mark('Remote branches'), Globe, mark('No remote branches match this search.')],
@@ -32,7 +34,7 @@ export function UpstreamDialog({ branch, current, candidates, onConfirm, onClose
   return <Dialog title={t`Upstream for ${branch}`} onClose={onClose}>
     <form className="name-dialog" onSubmit={event => { event.preventDefault(); onClose(); onConfirm(value || null); }}>
       <label htmlFor="upstream-ref">{t('Track this remote-tracking branch')}</label>
-      <select id="upstream-ref" value={value} onChange={event => setValue(event.target.value)}>
+      <select id="upstream-ref" data-autofocus value={value} onChange={event => setValue(event.target.value)}>
         <option value="">{t('No upstream')}</option>
         {candidates.map(ref => <option key={ref} value={ref}>{ref}</option>)}
       </select>
@@ -99,6 +101,7 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
     if (type !== 'tag') return list;
     return sortTags(list.map(ref => ({ ...ref, date: tagDetails?.get(ref.fullName)?.date ?? null })), tagSort);
   }, [refs, type, filter, tagDetails, tagSort]);
+  const budget = useBudget(rows, `${type}\0${filter}`);
 
   const run = useCallback(async (action, success) => {
     setNotice(''); setUnmerged(null);
@@ -179,6 +182,7 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
   return <section className="refs-screen" aria-label={t('Branches and tags')}>
     <header className="panel-heading">
       <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
+      <ScreenTitle title={t('Branches and tags')} />
       <div className="refs-tabs" role="tablist" aria-label={t('Reference kind')}>
         {TABS.map(([value, label, Icon]) => <button key={value} role="tab" type="button" aria-selected={type === value}
           className={type === value ? 'selected' : ''} onClick={() => setType(value)}>
@@ -208,7 +212,7 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
     </p>}
     <div className="refs-rows" role="list">
       {rows.length === 0 && <p className="empty-inline">{t(TABS.find(([value]) => value === type)[3])}</p>}
-      {rows.map(ref => { const tag = ref.type === 'tag' ? tagDetails?.get(ref.fullName) : null; return <div className="refs-row" role="listitem" key={ref.fullName}>
+      {budget.shown.map(ref => { const tag = ref.type === 'tag' ? tagDetails?.get(ref.fullName) : null; return <div className="refs-row" role="listitem" key={ref.fullName}>
         <div className="refs-name">
           <strong>{ref.name}{ref.type === 'local' && ref.name === headBranch && <span className="refs-head">{t('current')}</span>}
             {tag && <span className="refs-kind">{tag.annotated ? t('annotated') : t('lightweight')}</span>}
@@ -247,6 +251,7 @@ export default function RefsScreen({ repository, refs, headBranch, busy, onBack,
           </>}
         </div>
       </div>; })}
+      <ShowAll budget={budget} label={count => tn(count, 'Show all {n} ref', 'Show all {n} refs')} />
     </div>
     {upstreamFor && <UpstreamDialog branch={upstreamFor.name} current={upstreamFor.upstream} candidates={upstreamCandidates}
       onClose={() => setUpstreamFor(null)}

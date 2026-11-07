@@ -5,8 +5,9 @@ import path from 'node:path';
 import { CommandLog } from '../../main/command-log.js';
 import { runGit } from '../../main/git/exec.js';
 import { addWorktree, agentBranch, suggestWorktreePath } from '../../main/git/worktrees.js';
-import { compareWorktrees, excludeAgentFolder, finishWorktree, isAgentFolder, loadWorktreeBoard, loadWorktreeCompareDiff, loadWorktreeFileDiff,
-  loadWorktreeReview, planSquash, squashCommands, squashMessage, squashWorktree } from '../../main/git/worktree-board.js';
+import { compareWorktrees, countsInOneRead, excludeAgentFolder, finishWorktree, isAgentFolder, loadWorktreeBoard, loadWorktreeCompareDiff, loadWorktreeFileDiff,
+  loadWorktreeReview, planSquash, readDivergence, squashCommands, squashMessage, squashWorktree } from '../../main/git/worktree-board.js';
+import { createBoardRefresh } from '../../renderer/src/features/tools/board-refresh.js';
 import { UndoService } from '../../main/undo.js';
 import { createToolContext } from '../../main/mcp/context.js';
 import { checkoutRoot, commonDir } from '../../main/mcp/context.js';
@@ -14,6 +15,46 @@ import { boardBadges, changesLine, compareCell, compareChoices, connectedLine, f
 import { waitingLine } from '../../renderer/src/features/proposal/proposal-view.js';
 
 const A = 'a'.repeat(40);
+
+// --- when the board reads Git, on a fake clock -------------------------------------------------------
+{
+  let clock = 0;
+  let timer = null;
+  const reads = [];
+  let finishRead = null;
+  const gate = createBoardRefresh({ gap: 2500, now: () => clock,
+    read: fresh => { reads.push(fresh); return new Promise(resolve => { finishRead = resolve; }); },
+    later: (run, wait) => { timer = { run, at: clock + wait }; return timer; }, cancel: () => { timer = null; } });
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  const finish = async () => { finishRead(); await settle(); };
+  const tick = async to => { clock = to; if (timer && timer.at <= clock) { const { run } = timer; timer = null; run(); } await settle(); };
+  gate.request({ fresh: true, urgent: true }); await settle();
+  assert.deepEqual(reads, [true], 'the screen opening reads at once');
+  for (let i = 0; i < 30; i++) gate.request();
+  gate.request({ fresh: true });
+  await settle();
+  assert.deepEqual(reads, [true], 'while one read runs, no other starts');
+  clock = 100; await finish();
+  assert.deepEqual(reads, [true], 'and what arrived waits out the gap');
+  await tick(2000); assert.equal(reads.length, 1);
+  await tick(2600);
+  assert.deepEqual(reads, [true, true], 'thirty requests are one read, as fresh as the freshest of them');
+  clock = 2700; await finish();
+  gate.request(); await settle();
+  assert.equal(reads.length, 2, 'a branch moving right after a read waits');
+  gate.request({ fresh: true, urgent: true }); await settle();
+  assert.deepEqual(reads, [true, true, true], 'Refresh does not');
+  assert.equal(timer, null, 'and takes the waiting read with it');
+  clock = 2800; await finish();
+  gate.request(); gate.stop(); await tick(9000);
+  assert.equal(reads.length, 3, 'nothing reads after the screen closes');
+}
+
+assert.equal(countsInOneRead('git version 2.41.0'), true);
+assert.equal(countsInOneRead('git version 2.54.0'), true);
+assert.equal(countsInOneRead('git version 2.40.1 (Apple Git-143)'), false, '%(ahead-behind) came in 2.41');
+assert.equal(countsInOneRead('git version 3.0.0'), true);
+assert.equal(countsInOneRead('nonsense'), false);
 
 // --- words and commands, without Git ----------------------------------------------------------------
 assert.equal(launchCommand('/r/app/.claude/worktrees/fix'), "cd '/r/app/.claude/worktrees/fix' && claude");
@@ -94,6 +135,41 @@ try {
   assert.ok(card.lastActivity > Date.now() - 60_000, 'the last edit is now');
   assert.ok(!log.list().some(entry => entry.code !== 0 && entry.code !== null), 'a board read leaves nothing in the console that looks failed');
 
+  // One for-each-ref counts every branch; an older Git counts one by one, to the same numbers.
+  assert.deepEqual([...await readDivergence({ cwd, log, base: 'main', branches: ['agent/fix-login'], together: true })],
+    [...await readDivergence({ cwd, log, base: 'main', branches: ['agent/fix-login'], together: false })]);
+  assert.deepEqual((await readDivergence({ cwd, log, base: 'main', branches: ['agent/fix-login'] })).get('agent/fix-login'), { ahead: 2, behind: 1 });
+  assert.equal((await readDivergence({ cwd, log, base: 'main', branches: [] })).size, 0);
+
+  // What a read costs: three calls for the board, then status and a diff per
+  // worktree with changes. A branch moving reads only the worktree it moved.
+  const ran = async read => {
+    const before = log.list().length;
+    const result = await read();
+    await log.settled?.();
+    return { result, argv: log.list().slice(before).map(entry => entry.argv.slice(entry.argv.findIndex(word => /^(status|diff|rev-list|rev-parse|for-each-ref|worktree|log|merge-base)$/.test(word))).join(' ')) };
+  };
+  const known = new Map();
+  const statusOf = run => run.argv.filter(line => line.startsWith('status')).length;
+  const diffOf = run => run.argv.filter(line => line.startsWith('diff')).length;
+  const first = await ran(() => loadWorktreeBoard({ cwd, log, known, fresh: false }));
+  assert.equal(statusOf(first), 2, 'the first read reads every worktree');
+  assert.equal(diffOf(first), 1, 'the clean main worktree needs no diff');
+  assert.equal(first.argv.filter(line => line.startsWith('rev-list')).length, 0, 'and no branch is counted by itself');
+  await writeFile(path.join(folder, 'late-edit.txt'), 'an agent edit touches no ref\n');
+  const kept = await ran(() => loadWorktreeBoard({ cwd, log, known, fresh: false }));
+  assert.equal(statusOf(kept), 0, 'nothing moved: no worktree is read');
+  assert.equal(kept.result.worktrees.find(entry => entry.path === folder).changes.files, 2, 'and the card keeps what it said');
+  const fresh = await ran(() => loadWorktreeBoard({ cwd, log, known, fresh: true }));
+  assert.equal(statusOf(fresh), 2, 'coming back to the window or Refresh reads them all');
+  assert.equal(fresh.result.worktrees.find(entry => entry.path === folder).changes.files, 3, 'and sees the edit no ref showed');
+  await git(['commit', '--allow-empty', '-m', 'a commit on main'], cwd);
+  const moved = await ran(() => loadWorktreeBoard({ cwd, log, known, fresh: false }));
+  assert.equal(statusOf(moved), 1, 'a branch that moved reads its worktree alone');
+  assert.equal(moved.result.worktrees.find(entry => entry.path === folder).behind, 2, 'while every count is current');
+  await git(['reset', '--hard', 'HEAD~1'], cwd);
+  await rm(path.join(folder, 'late-edit.txt'));
+
   // Everything it changed since it left main: the commits and the uncommitted work, main's own commit not among them.
   const review = await loadWorktreeReview({ cwd, log, folder });
   assert.equal(review.fork, start);
@@ -172,6 +248,18 @@ try {
   await writeFile(path.join(root, 'hooks', 'pre-commit'), '#!/bin/sh\necho "no commits today" >&2\nexit 1\n', { mode: 0o755 });
   await git(['config', 'core.hooksPath', path.join(root, 'hooks')]);
   const hookPlan = await planSquash({ cwd, log, folder: third });
+  // A pre-commit automation sees the squash staged, and stops it the same way a hook does.
+  const baseBefore = (await runGit({ cwd, log, argv: ['rev-parse', 'HEAD'] })).stdout.trim();
+  let seen = null;
+  const stopped = await squashWorktree({ cwd, log, folder: third, message: 'checked', branchOid: hookPlan.branchOid, baseOid: hookPlan.baseOid, beforeCommit: async base => {
+    seen = (await runGit({ cwd: base, log, argv: ['diff', '--cached', '--name-only'] })).stdout.trim();
+    return 'scan → secrets: 1 possible secret';
+  } });
+  assert.equal(stopped.ok, false);
+  assert.match(stopped.message, /as it was: scan → secrets/);
+  assert.ok(seen, 'the checks saw the squash staged');
+  assert.equal((await runGit({ cwd, log, argv: ['rev-parse', 'HEAD'] })).stdout.trim(), baseBefore, 'nothing was committed');
+  assert.equal((await runGit({ cwd, log, argv: ['diff', '--cached', '--name-only'] })).stdout, '', 'and the base is as it was');
   const hooked = await squashWorktree({ cwd, log, folder: third, message: 'hooked', branchOid: hookPlan.branchOid, baseOid: hookPlan.baseOid });
   assert.equal(hooked.ok, false); assert.match(hooked.message, /Not committed, main is as it was[\s\S]*no commits today/);
   assert.equal(await git(['status', '--porcelain']), '?? local.txt');

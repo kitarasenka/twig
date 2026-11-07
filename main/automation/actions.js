@@ -5,6 +5,7 @@ import { parseCommand, isBareExecutable } from '../../renderer/src/features/auto
 import { matchesGlob } from '../../renderer/src/features/automations/condition-eval.js';
 import { checkMessage } from '../../renderer/src/features/automations/message-rules.js';
 import { scanText } from '../../renderer/src/features/automations/secret-rules.js';
+import { redactCredentials } from '../git/redact.js';
 import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
 
 const MESSAGE_RULE_TIMEOUT_MS = 1000;
@@ -74,6 +75,7 @@ export async function runAction({ action, context, cwd, log, env, signal, timeou
     }
 
     case 'secretScan': {
+      if (context.scanProblem) return { status: 'failed', detail: context.scanProblem, findings: [] };
       const findings = [];
       for (const { file, text } of context.addedLines || []) findings.push(...scanText(text, file));
       return findings.length
@@ -93,5 +95,5 @@ function processResult(result) {
       : result.code === 0 ? null
         : /ENOENT/.test(result.stderr) ? ui`Command not found on PATH.`
           : ui`Exited with code ${result.code}.`;
-  return { status, detail, stdout: result.stdout, stderr: result.stderr, ms: result.ms, cancelled: result.cancelled };
+  return { status, detail, stdout: redactCredentials(result.stdout), stderr: redactCredentials(result.stderr), ms: result.ms, cancelled: result.cancelled };
 }

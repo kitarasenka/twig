@@ -47,7 +47,7 @@ function numbering(hunk) {
  * changed lines, each with a checkbox, froze the staging screen on opening. */
 const LINE_BUDGET = 3000;
 
-export default function StageDiff({ repositoryId = null, file, diff, staged, selection, onSelection, onApply, onDiscard = null, busy, onClose }) {
+export default function StageDiff({ repositoryId = null, file, diff, staged, untracked = false, selection, onSelection, onApply, onDiscard = null, busy, onClose }) {
   const [prefs] = useDiffPrefs();
   const [showAll, setShowAll] = useState(false);
   useEffect(() => { setShowAll(false); }, [diff]);
@@ -84,7 +84,7 @@ export default function StageDiff({ repositoryId = null, file, diff, staged, sel
         <Button onClick={onClose} aria-label={t('Close diff')}>{t('Close')}</Button>
       </span>
     </header>
-    {diff.binary && repositoryId && imageType(file) && <ImageDiff repositoryId={repositoryId} file={file} source={{ kind: staged ? 'staged' : 'unstaged' }} />}
+    {diff.binary && repositoryId && imageType(file) && <ImageDiff repositoryId={repositoryId} file={file} source={{ kind: untracked ? 'untracked' : staged ? 'staged' : 'unstaged' }} />}
     {diff.binary && !(repositoryId && imageType(file)) && <p className="empty-inline">{t('Binary file changed. Stage it whole; there is no text diff to pick from.')}</p>}
     {!diff.binary && diff.hunks.length === 0 && <p className="empty-inline">{t('No textual changes in this file.')}</p>}
     {!diff.binary && diff.hunks.length > 0 && <DiffToolbar language={language} words={false} />}
@@ -107,7 +107,9 @@ export default function StageDiff({ repositoryId = null, file, diff, staged, sel
           {hunk.lines.slice(0, drawn).map((line, lineIndex) => {
             const gutter = gutters[hunkIndex][lineIndex];
             const kind = line.kind === 'add' ? 'diff-added' : line.kind === 'delete' ? 'diff-deleted' : '';
-            return <div className={`stage-line ${kind}`} key={lineIndex}>
+            // The whole row is the target: the checkbox alone is 12 px. A drag that selected text is not a click.
+            return <div className={`stage-line ${kind} ${changeable(line) ? 'pickable' : ''}`} key={lineIndex}
+              onClick={changeable(line) ? event => { if (event.target.tagName !== 'INPUT' && getSelection().isCollapsed) toggleLine(hunkIndex, lineIndex, !picked.has(lineIndex)); } : undefined}>
               {changeable(line)
                 ? <input type="checkbox" checked={picked.has(lineIndex)}
                   aria-label={staged ? t`Unstage line ${gutter.next ?? gutter.old}` : t`Stage line ${gutter.next ?? gutter.old}`}

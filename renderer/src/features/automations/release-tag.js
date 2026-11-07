@@ -73,7 +73,7 @@ export function tagNameProblem(name, existing = null) {
  * spells it — the dialog prints it before anything runs.
  */
 export function tagPushArgv(remote, name) {
-  return ['push', '--progress', remote, '--', `refs/tags/${name}`];
+  return ['push', '--progress', remote, '--', `refs/tags/${name}:refs/tags/${name}`];
 }
 
 /** `git tag` of the commit just made, as the dialog prints it and main runs it. */

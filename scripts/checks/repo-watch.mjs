@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveGitDir, resolveWatchedDir, isWatchedPath, createRepositoryWatcher } from '../../main/repo-watch.js';
+import { resolveGitDir, resolveWatchedDir, isSettingsPath, isWatchedPath, createRepositoryWatcher } from '../../main/repo-watch.js';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -19,6 +19,9 @@ for (const name of ['index', 'index.lock', 'refs/heads/main.lock', 'config', 'ob
   assert.equal(isWatchedPath(name), false, name);
 }
 assert.equal(isWatchedPath(null), true, 'a missing filename is treated as relevant');
+// What the repository's trust is read from: checked at once, nothing to redraw.
+for (const name of ['config', 'config.worktree', 'hooks/pre-commit', 'hooks', 'modules/sub/config', 'objects/info/alternates']) assert.equal(isSettingsPath(name), true, name);
+for (const name of ['config.lock', 'index', 'refs/heads/config-x', 'HEAD', 'objects/ab/cd']) assert.equal(isSettingsPath(name), false, name);
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'twig-watch-check-'));
 try {

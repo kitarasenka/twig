@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { _electron as electron } from 'playwright';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { CommandLog } from '../main/command-log.js';
@@ -173,6 +173,45 @@ try {
   await assert.rejects(page.evaluate(([id, oid]) => window.twig.moveBranchTo(id, '--force', oid, oid), [fixtureId, c1]), /Invalid/);
   await assert.rejects(page.evaluate(oid => window.twig.moveBranchTo('not-a-repository', 'main', oid, oid), c1), /unavailable/);
   assert.equal(await git(['rev-parse', 'main']), c2, 'refused requests changed nothing');
+
+  // --- Discarded changes: what Discard threw away, once Undo has moved on. ---
+  const undoTitle = () => page.locator('.toolbar').getByRole('button', { name: /^Undo/ }).getAttribute('title');
+  await writeFile(path.join(cwd, 'app.txt'), 'hours of work\n');
+  await page.evaluate(id => window.twig.discardFile(id, 'app.txt', 'unstaged'), fixtureId);
+  assert.notEqual(await readFile(path.join(cwd, 'app.txt'), 'utf8'), 'hours of work\n');
+  await page.waitForFunction(() => document.querySelector('.toolbar button[title="Undo the discard of 1 file"]'));
+  await writeFile(path.join(cwd, 'app.txt'), 'a new thought\n');
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.waitForFunction(() => /cannot put it back safely/.test([...document.querySelectorAll('.toolbar button')].map(button => button.title).join(' ')));
+  assert.match(await undoTitle(), /Reflog, under Discarded changes/, 'the Undo button says where the work is');
+  await page.getByRole('button', { name: /^Reflog/ }).click();
+  await screen.getByRole('button', { name: 'Discarded changes', exact: true }).click();
+  const discards = screen.getByRole('list', { name: 'Discarded changes', exact: true });
+  await discards.getByText('app.txt', { exact: true }).waitFor();
+  await discards.getByRole('button', { name: 'Restore…', exact: true }).first().click();
+  const restoreDialog = page.getByRole('dialog', { name: 'Restore 1 discarded file' });
+  await restoreDialog.getByText(/\$ git restore --source=[0-9a-f]{40} --worktree --pathspec-from-file=- --pathspec-file-nul/).waitFor();
+  await restoreDialog.getByRole('button', { name: 'Restore', exact: true }).click();
+  await expect('Restored 1 file. Undo takes it back.', 'restoring a discard');
+  assert.equal(await readFile(path.join(cwd, 'app.txt'), 'utf8'), 'hours of work\n', 'the discarded text is back');
+  await page.waitForFunction(() => document.querySelector('.toolbar button[title="Undo restoring 1 file"]'));
+  await undo.click();
+  await expect('Undo completed.', 'Undo the restore');
+  assert.equal(await readFile(path.join(cwd, 'app.txt'), 'utf8'), 'a new thought\n', 'and Undo puts back what it replaced');
+  const backup = await page.evaluate(id => window.twig.getDiscards(id), fixtureId);
+  assert.equal(backup[0].files[0], 'app.txt');
+  await assert.rejects(page.evaluate(id => window.twig.restoreDiscard(id, 'HEAD'), fixtureId), /Invalid object id/);
+  await assert.rejects(page.evaluate(([id, oid]) => window.twig.restoreDiscard(id, oid), [fixtureId, c1]), /no longer kept/);
+  await assert.rejects(page.evaluate(oid => window.twig.restoreDiscard('not-a-repository', oid), backup[0].id), /unavailable/);
+  await assert.rejects(page.evaluate(id => window.twig.getDiscards(id, 'extra'), fixtureId).then(() => { throw new Error('Invalid working tree request'); }), /Invalid working tree request/);
+  for (const theme of ['dark', 'light']) {
+    const box = await settings();
+    await box.getByLabel('Appearance').selectOption(theme);
+    await page.keyboard.press('Escape');
+    await page.screenshot({ path: `artifacts/reflog-discards-${theme}.png`, animations: 'disabled' });
+  }
+  await screen.getByRole('button', { name: 'Moves', exact: true }).click();
+  await git(['checkout', '--', 'app.txt']);
 
   // Screens for review, with the console collapsed.
   if (await page.getByRole('textbox', { name: 'Search command log' }).isVisible()) await page.locator('.console-status').click();

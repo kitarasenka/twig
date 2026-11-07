@@ -96,6 +96,8 @@ try {
   await page.getByText('Redo completed.', { exact: true }).waitFor();
   assert.equal(await git(['rev-parse', 'ui-branch']), committed);
   await writeFile(path.join(cwd, 'external.txt'), 'keep this\n');
+  assert.equal((await page.evaluate(id => window.twig.getUndoState(id), id)).undo, true, 'a new file nothing recorded touches leaves Undo on');
+  await git(['commit', '--allow-empty', '-m', 'From a terminal']);
   const state = await page.evaluate(id => window.twig.getUndoState(id), id);
   assert.equal(state.undo, false);
   const refused = await page.evaluate(async id => {

@@ -40,3 +40,35 @@ export function clampPanelWidth(width, available, size = PANEL_SIZE) {
 export function dragPanelWidth(startWidth, deltaX, available, side = 'right', size = PANEL_SIZE) {
   return clampPanelWidth(startWidth + (side === 'left' ? deltaX : -deltaX), available, size);
 }
+
+/**
+ * The console's height. It starts low enough to leave the graph readable in a
+ * 640 px window and never takes more than its share of the window.
+ */
+export const CONSOLE_SIZE = { min: 120, maxShare: 0.6, defaultShare: 0.25, defaultMax: 320 };
+const CONSOLE_KEY = 'twig:console-height';
+
+export function consoleDefaultHeight(windowHeight) {
+  return Math.round(Math.max(CONSOLE_SIZE.min, Math.min(CONSOLE_SIZE.defaultMax, windowHeight * CONSOLE_SIZE.defaultShare)));
+}
+
+export function clampConsoleHeight(height, windowHeight) {
+  if (!Number.isFinite(height)) return consoleDefaultHeight(windowHeight);
+  const max = Math.max(CONSOLE_SIZE.min, windowHeight * CONSOLE_SIZE.maxShare);
+  return Math.round(Math.min(max, Math.max(CONSOLE_SIZE.min, height)));
+}
+
+/** The height chosen by hand, or null while the default stands. */
+export function readConsoleHeight(storage) {
+  try {
+    const value = Number.parseInt(storage?.getItem(CONSOLE_KEY) ?? '', 10);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  } catch { return null; }
+}
+
+export function writeConsoleHeight(storage, height) {
+  try {
+    if (height === null) storage?.removeItem(CONSOLE_KEY);
+    else storage?.setItem(CONSOLE_KEY, String(height));
+  } catch { /* The height then lasts for this session. */ }
+}

@@ -36,3 +36,9 @@ export function isExternalLink(url) {
     return false;
   }
 }
+
+/** Cmd+R on macOS, Ctrl+R elsewhere: what a person presses to see the latest state. */
+export function isReloadKey(input, platform) {
+  if (input.type !== 'keyDown' || input.isAutoRepeat || input.alt || input.shift || input.key?.toLowerCase() !== 'r') return false;
+  return platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta;
+}

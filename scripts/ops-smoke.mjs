@@ -77,16 +77,34 @@ try {
   // --- the context menu ------------------------------------------------------
   const featureRow = page.getByRole('option', { name: /feature rewrites the middle/ });
   await featureRow.click({ button: 'right' });
-  const menu = page.getByRole('menu');
+  const menu = page.getByRole('menu').first();
   await menu.waitFor();
   // Only what applies: the branch that is checked out is never offered to
   // itself, and rebasing onto the tip of the current branch is not offered.
   await menu.getByRole('menuitem', { name: 'Merge feature into main', exact: true }).waitFor();
   assert.equal(await menu.getByRole('menuitem', { name: /Merge main into/ }).count(), 0);
-  // The ref that sits on this commit brings its own actions: rename, upstream, delete.
-  await menu.getByRole('menuitem', { name: 'Rename feature…', exact: true }).waitFor();
-  await menu.getByRole('menuitem', { name: 'Delete feature', exact: true }).waitFor();
+  // The ref on this commit brings its own actions, in a submenu named after it: the right
+  // arrow goes in, up and down stay inside, the left arrow and Escape come back to its row.
+  const featureItem = menu.getByRole('menuitem', { name: 'feature', exact: true });
+  const featureMenu = page.getByRole('menu', { name: 'feature', exact: true });
+  assert.equal(await featureItem.getAttribute('aria-haspopup'), 'menu');
+  await featureItem.focus();
+  await page.keyboard.press('ArrowRight');
+  await featureMenu.getByRole('menuitem', { name: 'Rename feature…', exact: true }).waitFor();
+  await featureMenu.getByRole('menuitem', { name: 'Delete feature', exact: true }).waitFor();
+  const focusedItem = () => page.evaluate(() => document.activeElement?.textContent);
+  assert.match(await focusedItem(), /^Rename feature/, 'focus moves to the first item of the submenu');
+  await page.keyboard.press('ArrowDown');
+  assert.match(await focusedItem(), /^Set upstream for feature/);
   await shot('menu');
+  await page.keyboard.press('ArrowLeft');
+  await featureMenu.waitFor({ state: 'detached' });
+  assert.equal(await focusedItem(), 'feature', 'the left arrow comes back to the row that opened it');
+  await page.keyboard.press('Enter');
+  await featureMenu.waitFor();
+  await page.keyboard.press('Escape');
+  await featureMenu.waitFor({ state: 'detached' });
+  await menu.waitFor();
 
   // Escape closes it and focus goes back to the history, not to the top of the page.
   await page.keyboard.press('Escape');
@@ -99,11 +117,15 @@ try {
   const gardenRow = page.getByRole('option', { name: /plant the garden/ });
   await gardenRow.click({ button: 'right' });
   await menu.getByRole('menuitem', { name: 'Create branch here…', exact: true }).click();
-  await page.getByLabel('Branch name').fill('scratch');
-  await page.getByRole('button', { name: 'Create branch', exact: true }).click();
+  // The field has the focus: a name typed straight away and Enter create the branch.
+  await page.getByLabel('Branch name').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'ref-name', 'the name dialog opens in its field');
+  await page.keyboard.type('scratch');
+  await page.keyboard.press('Enter');
   await expect('Branch scratch created.', 'the scratch branch is created');
   await gardenRow.click({ button: 'right' });
-  await menu.getByRole('menuitem', { name: 'Delete scratch', exact: true }).click();
+  await menu.getByRole('menuitem', { name: 'scratch', exact: true }).click();
+  await page.getByRole('menu', { name: 'scratch', exact: true }).getByRole('menuitem', { name: 'Delete scratch', exact: true }).click();
   await expect('Branch scratch deleted.', 'the scratch branch is deleted from the menu');
   assert.equal(await page.getByRole('option', { name: /\bscratch\b/ }).count(), 0, 'the deleted branch is gone from the graph');
 
@@ -181,6 +203,16 @@ try {
   assert.match(await confirm.locator('.confirm-command').innerText(), /^\$ git reset --hard [0-9a-f]{40}$/);
   assert.match(await confirm.locator('.confirm-consequence').innerText(), /destroyed/);
   await shot('confirm');
+
+  // App's keys stop at a modal: Undo must not move the repository under this command,
+  // Settings must not stack a second dialog over it, and the heading is this dialog's own.
+  const modKey = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.keyboard.press(`${modKey}+z`);
+  await page.keyboard.press(`${modKey}+,`);
+  await page.waitForTimeout(150);
+  assert.equal(await git(['rev-parse', 'HEAD']), before, 'Undo does not run behind the dialog');
+  assert.equal(await page.locator('dialog[open]').count(), 1, 'no second dialog over this one');
+  assert.match(await page.locator('dialog[open]').evaluate(node => document.getElementById(node.getAttribute('aria-labelledby'))?.textContent), /^Reset main/);
 
   // Cancelling really does nothing.
   await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();

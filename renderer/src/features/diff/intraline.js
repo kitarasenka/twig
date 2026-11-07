@@ -202,6 +202,12 @@ const HUNK = /^@@+ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
  * @param {string} patch
  * @returns {PatchRow[]}
  */
+// Past this many rows neither the changed parts of each line nor the syntax are
+// worked out: on a rewrite of tens of thousands of lines they held the window
+// for a second, for marks nobody reads at that size. Added and removed lines
+// stay coloured.
+export const PAIRED_ROWS = 20000;
+
 export function annotatePatch(patch) {
   const raw = patch.split('\n');
   // A patch ends with a newline, so the split leaves one empty tail element.
@@ -236,7 +242,7 @@ export function annotatePatch(patch) {
     };
   });
 
-  let k = firstHunk + 1;
+  let k = rows.length > PAIRED_ROWS ? rows.length : firstHunk + 1;
   while (k < rows.length) {
     if (rows[k].cls !== 'diff-deleted') { k++; continue; }
     let removedEnd = k;

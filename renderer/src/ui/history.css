@@ -104,10 +104,11 @@
 .bisect-testing { --bisect-color: var(--mark-amber); border-style: dashed; }
 .bisect-culprit { --bisect-color: var(--mark-red); background: color-mix(in srgb, var(--mark-red) 28%, transparent); font-weight: 600; }
 .mark-editor { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
-.mark-label { margin: 0 var(--space-1) 0 0; color: var(--muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
+.mark-label { color: var(--muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
 .mark-swatches { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
-.mark-swatch { width: 18px; height: 18px; min-height: 18px; padding: 0; border-radius: 999px; border: 1px solid var(--border);
+.mark-swatch { position: relative; width: 18px; height: 18px; min-height: 18px; padding: 0; border-radius: 999px; border: 1px solid var(--border);
   background: var(--mark-color); }
+.mark-swatch::after { content: ''; position: absolute; inset: -3px; }
 .mark-swatch.active { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--mark-color); }
 .mark-remove { margin-left: auto; font-size: var(--text-sm); }
 .mark-note { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -369,16 +370,16 @@
 .commit-file[aria-pressed='true'], .worktree-panel .commit-file[aria-pressed='true'] { background: var(--accent-bg); color: var(--accent); }
 /* A file row keeps its move button on the right, out of the path's way: the
    path is what gets read, the plus or minus is what gets aimed at. */
-.worktree-panel-file { display: flex; align-items: center; gap: 2px; }
+.worktree-panel-file { display: flex; align-items: center; gap: 6px; }
 .worktree-panel-file .commit-file { flex: 1; min-width: 0; }
 .worktree-panel-file .button-wrap { flex: none; }
-.worktree-panel-file button { min-height: 22px; padding: 0 var(--space-1); color: var(--muted); }
+.worktree-panel-file button { min-height: 24px; min-width: 24px; padding: 0 var(--space-1); color: var(--muted); }
 .worktree-panel-file .commit-file { padding-inline: 2px; }
 .worktree-panel-file:hover button { color: var(--text); }
 .worktree-panel-file button svg { width: 14px; height: 14px; }
 /* Moving a file is the panel's main gesture: an accent square the size of a row,
    not a grey glyph that only lights up on hover. */
-.worktree-panel-file button.move { width: 22px; min-height: 22px; padding: 0; color: var(--accent); border-color: var(--border); }
+.worktree-panel-file button.move { width: 24px; min-height: 24px; padding: 0; color: var(--accent); border-color: var(--border); }
 .worktree-panel-file button.move:hover:not(:disabled) { background: var(--accent-bg); border-color: var(--accent); }
 .worktree-panel-file button.move:disabled { color: var(--muted); }
 .worktree-panel .worktree-panel-summary { color: var(--muted); font-size: var(--text-sm); }
@@ -445,3 +446,10 @@
 /* Where HEAD is when it is not the top row: a dashed line in its own lane on the
    far left, from the top of the graph to HEAD's node. */
 .real-lane path.head-link { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 3 3; }
+/* The branch HEAD is on: filled, first on its row and next to the sprout. */
+.ref-badge.current-ref { background: var(--accent); color: var(--bg); font-weight: 600; }
+.commit-subject-heading { font-size: var(--text-lg); line-height: 1.35; overflow-wrap: anywhere; }
+.commit-subject-heading.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.files-all { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; color: var(--muted); font-size: var(--text-xs); }
+.files-all input { min-height: 0; }
+.list-show-all { display: block; margin: var(--space-2) 0; }

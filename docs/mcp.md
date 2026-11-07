@@ -230,6 +230,15 @@ an agent has usually read the file already. Runs past about 60 KB end the answer
 - `get_commit` lists up to 300 files; past that, `git show --name-status <hash>` lists the rest.
 - Untracked files over 1 MB are described, not diffed.
 - Any tool result over 120 000 characters is replaced by `OUTPUT_TOO_LARGE` with a hint.
+- One connection runs one tool call at a time and holds at most 32 more; past that a call is
+  answered busy at once (`-32000`). Four calls run at once across all connections, and a call
+  gets an answer after 60 s whatever Git is doing. `propose_commit`, `new_version` and
+  `await_commit` wait for a person and are outside this. Notifications and `ping` never wait.
+- When all 16 connections are taken, the one idle the longest gives way (its bridge reconnects
+  on its next message). A connection silent for 30 s that never said `initialize` is closed, and
+  so is a client that lets 8 MB of answers pile up unread.
+- Characters a person cannot see (Unicode tags, bidi controls, zero-width marks, line
+  separators) arrive as `\uXXXX` in every answer: subjects, author names, messages, diff lines.
 
 ### Errors
 
@@ -285,19 +294,33 @@ What happens:
 1. 🌱 Twig reads what a commit of **everything** would take (like `git add -A`: modified, new
    and deleted files), refuses if a merge/rebase is in progress, there are conflicts, HEAD is
    detached or nothing changed, and brings its window forward with a dialog: repository,
-   branch, where Commit & Push would push (the upstream, or `origin/<branch>` as a new
-   upstream), every file with its line counts, the message (editable), and the exact
-   commands. The button the agent asked for (`push`) is the default one.
+   branch, where Commit & Push would push (the remote and branch, every address it goes to,
+   and anything the configuration changes about it), every file with its line counts — a
+   click on a file shows its change — the message (editable), and the exact commands. The
+   button the agent asked for (`push`) is the default one. The file list is the difference
+   between HEAD and the tree a `git add --all` makes in a throwaway index, so what is listed
+   is what a commit takes.
 2. **Cancel** (or Esc) changes nothing: `cancelled by user`.
-3. **Commit** first checks that nothing moved since the proposal: HEAD, the branch, every
-   changed path and each file's size, mode and modification time. If anything did, the
-   dialog shows the new list and asks again — a tree nobody looked at is never committed.
+3. **Commit** first checks that nothing moved since the proposal: HEAD, the branch and that
+   tree, built again. If anything did, the dialog shows the new list and asks again — a tree
+   nobody looked at is never committed. **Commit & Push** does the same with the push: the
+   addresses and every `push.*`, `remote.<name>.*`, `branch.<name>.*` and `url.*` setting
+   are part of what was shown.
 4. Then, inside one Undo record: `git add --all`, your **pre-commit** and **commit-msg**
    automations (secret scan, message rules, your commands), the app's own commit
    (`git commit --file=- --cleanup=strip`, so Git hooks run too), then post-commit. If an
    automation blocks or `git commit` fails, the index is put back exactly as it was (it is
    saved with `git write-tree` first and restored with `git read-tree`) and the agent gets the
-   reason. **Undo** in the toolbar takes the commit back like any other.
+   reason. If the automations leave something else staged (a formatter, a `git add` from
+   elsewhere), nothing is committed and the dialog asks again with the new list. A Git hook
+   runs inside `git commit`, so what it changes is read afterwards: a changed tree is told to
+   the person and the agent and nothing is tagged or pushed; a changed message is noted.
+   **Undo** in the toolbar takes the commit back like any other.
+5. The push is written out in full, `git push <remote> refs/heads/<branch>:<destination>`, with
+   the remote and destination a bare `git push` would take from `remote.pushDefault`,
+   `branch.<name>.pushRemote`, `remote.<name>.push` and `push.default`. It never mirrors and
+   never forces, whatever the configuration says, and it is read once more before it runs: if
+   it changed while the automations ran, the commit stays and nothing is pushed.
 5. **Commit & Push** then runs the pre-push automations and the app's own push
    (`git push`, or `git push --set-upstream origin <branch>`).
 
@@ -331,8 +354,11 @@ The bumped files go into the same commit. The commit panel offers the version ch
 a Bump version action applies.
 
 **Several agents at once.** One proposal is on screen at a time. A newer proposal from the
-**same** worktree replaces the one before it (`superseded: a newer proposal replaced it`);
-one from **another** worktree waits in line — the dialog says how many are waiting — and opens
+**same** worktree replaces the one before it (`superseded: a newer proposal replaced it`) —
+the dialog says what the new one brought, takes no focus, and keeps its buttons off until the
+person presses **I have read it** — and a folder may propose once in 5 seconds (`RATE_LIMITED`).
+**Stop agents proposing commits** in the dialog turns the permission off from where it is needed.
+One from **another** worktree waits in line — the dialog says how many are waiting — and opens
 when the one on screen is answered. Each commits in its own worktree. The Worktrees board
 marks a worktree with a waiting proposal **Commit proposed**. It also marks a worktree **Agent
 connected** while an agent's bridge, started in that folder, is connected, with when it last
@@ -371,7 +397,7 @@ time. 🌱 Twig adds no trailer to the message.
 
 Errors before anything is shown: `WRITE_DISABLED`, `NOTHING_TO_COMMIT`, `REPOSITORY_BUSY`
 (operation in progress, conflicts, detached HEAD), `CONFIRMATION_UNAVAILABLE` (the window is
-closed), `PROPOSAL_NOT_FOUND` (await_commit with an unknown or expired id). `new_version`
+closed), `RATE_LIMITED` (too soon after the last proposal from this folder), `PROPOSAL_NOT_FOUND` (await_commit with an unknown or expired id). `new_version`
 does not need changes, so it answers `NOTHING_TO_COMMIT` only on a branch with no commit.
 
 Why two tools: MCP clients give up on a call after a while (Codex after 60 s by default), and a

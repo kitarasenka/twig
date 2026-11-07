@@ -1,5 +1,6 @@
 import { runGit } from './exec.js';
 import { parseChangedFiles, validateFile, validateOid } from './commit.js';
+import { STASH_CONFLICT, hasConflicts } from './commit-ops.js';
 import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
@@ -147,6 +148,9 @@ export async function runStashAction({ cwd, log, action, index, expectedOid, nam
   }
   const operation = `Stash ${action}: ${entry.ref}`;
   const result = await runGit({ cwd, log, argv, operation });
-  if (result.code !== 0) return { ok: false, message: ui`Stash ${action}: ${entry.ref} did not finish. Show output in the console.` };
+  if (result.code !== 0) {
+    if (['apply', 'pop'].includes(action) && await hasConflicts({ cwd, log })) return { ok: false, message: STASH_CONFLICT };
+    return { ok: false, message: ui`Stash ${action}: ${entry.ref} did not finish. Show output in the console.` };
+  }
   return { ok: true, message: null };
 }

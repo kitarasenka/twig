@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Play, Copy, Trash2, Pencil, Plus, ShieldAlert, FileWarning } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import ScreenTitle from '../../ui/ScreenTitle.jsx';
 import OperationNote from '../../ui/OperationNote.jsx';
 import { HOOK_EVENTS, eventLabel } from './event-labels.js';
 import { makeId, normalizeConfig } from './schema.js';
@@ -88,6 +89,7 @@ export default function AutomationsScreen({ repository, refreshKey, busy, onBack
   return <section className="automations-screen" aria-label={t('Automations')}>
     <header className="panel-heading">
       <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
+      <ScreenTitle title={t('Automations')} />
       <div className="automations-tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'pipelines'} onClick={() => setTab('pipelines')}>{t('Pipelines')}</button>
         <button role="tab" aria-selected={tab === 'history'} onClick={() => setTab('history')}>{t('Run history')}</button>

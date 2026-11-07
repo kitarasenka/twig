@@ -73,9 +73,17 @@ const ROLES = {
 
 export const SYNTAX_CLASSES = Object.freeze([...new Set(Object.values(ROLES))].map(role => `syn-${role}`));
 
-/** Past these sizes highlighting would stall the renderer; the text shows plain. */
-export const MAX_BLOCK_CHARS = 300_000;
-export const MAX_LINE_CHARS = 2_000;
+/**
+ * Past these sizes the text shows plain. Some grammars (markdown, C#, SCSS,
+ * Less, CSS, nginx) take time that grows much faster than the text on repeated
+ * input, and a regular expression cannot be interrupted: 40 KB of `[[` cost 7 s.
+ * Off the main thread a deadline ends that (see highlight-client.js), so the
+ * worker may read as far as the WORKER_ limits; these are for running here.
+ */
+export const MAX_BLOCK_CHARS = 32_000;
+export const MAX_LINE_CHARS = 500;
+export const WORKER_BLOCK_CHARS = 300_000;
+export const WORKER_LINE_CHARS = 2_000;
 
 function roleOf(token) {
   if (Object.hasOwn(ROLES, token.type)) return ROLES[token.type];
@@ -89,19 +97,18 @@ function roleOf(token) {
  * comment that spans lines is coloured on all of them.
  * @param {string[]} lines the lines, without newlines
  * @param {string | null} language a Prism grammar id from languages.js
+ * @param {{ maxBlock?: number, maxLine?: number }} [limits]
  * @returns {({ start: number, end: number, cls: string }[] | null)[]} ranges
- *   per line, or null for every line when the block is not highlighted
+ *   per line, or null for a line left plain: one over the limit, or every line
+ *   when the block is
  */
-export function highlightLines(lines, language) {
+export function highlightLines(lines, language, { maxBlock = MAX_BLOCK_CHARS, maxLine = MAX_LINE_CHARS } = {}) {
   const none = lines.map(() => null);
   const grammar = language ? Prism.languages[language] : null;
   if (!grammar || !lines.length) return none;
-  let total = 0;
-  for (const line of lines) {
-    if (line.length > MAX_LINE_CHARS) return none;
-    total += line.length + 1;
-  }
-  if (total > MAX_BLOCK_CHARS) return none;
+  // A long line stays plain by itself: a paragraph in a README is no reason to lose the rest.
+  const text = lines.map(line => (line.length > maxLine ? '' : line));
+  if (text.reduce((sum, line) => sum + line.length + 1, 0) > maxBlock) return none;
 
   const ranges = lines.map(() => []);
   let line = 0;
@@ -121,6 +128,6 @@ export function highlightLines(lines, language) {
     if (Array.isArray(content)) { for (const item of content) walk(item, inherited); return; }
     walk(content.content, roleOf(content) || inherited);
   };
-  walk(Prism.tokenize(lines.join('\n'), grammar), null);
+  walk(Prism.tokenize(text.join('\n'), grammar), null);
   return ranges.map(list => (list.length ? list : null));
 }

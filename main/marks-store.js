@@ -47,6 +47,14 @@ export class MarksStore {
     return this.#write(state => { delete state[repoId]; return repoId; });
   }
 
+  /** A repository that moved takes its marks along, over whatever the new path had. */
+  rekey(from, to) {
+    return this.#write(state => {
+      if (state[from]) { state[to] = { ...state[to], ...state[from] }; delete state[from]; }
+      return to;
+    });
+  }
+
   clear(repoId, oid) {
     return this.#write(state => {
       if (state[repoId]) {

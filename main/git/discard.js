@@ -3,9 +3,10 @@ import { lstat, readlink, realpath, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runGit } from './exec.js';
+import { limited } from './limited.js';
 import { buildPatch } from './patch-builder.js';
 import { loadWorktree, loadWorktreeDiff } from './worktree.js';
-import { DISCARD_REF, discardCommand, validDiscardPath } from './discard-plan.js';
+import { DISCARD_REF, discardCommand, restoreCommand, validDiscardPath } from './discard-plan.js';
 import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
 
 /**
@@ -14,8 +15,8 @@ import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
  * into Git's object store as a commit under the hidden ref DISCARD_REF (its
  * own chain, never shown in the graph: history reads `--exclude=refs/twig/*`).
  * After the discard, the same paths are recorded again. Undo restores from the
- * first commit and Redo from the second, and even once the Undo chain has
- * ended, the content is still in `git log refs/twig/discard`.
+ * first commit and Redo from the second, and once the Undo chain has ended the
+ * Reflog screen lists the backups and restores from them (`loadDiscards`).
  *
  * Nothing here trusts a path list from the renderer to decide *what* is
  * discarded: sections are read from a fresh `git status`, and a single path
@@ -28,6 +29,10 @@ const IDENTITY = {
 };
 /** Past this many backups the chain starts over; older ones become unreachable and Git may prune them. */
 const CHAIN_LIMIT = 200;
+const BACKUP_SUBJECT = '🌱 Twig backup before discarding ';
+/** How many discards the Reflog screen lists, and how many of a discard's paths it names. */
+const LISTED = 50;
+const NAMED = 20;
 
 async function git({ cwd, log, argv, operation, stdin = null, env = null }) {
   const result = await runGit({ cwd, log, argv, operation, stdin, env });
@@ -47,6 +52,9 @@ async function expand({ cwd, log, entries }) {
   for (const file of files) if (!validDiscardPath(file)) throw new Error(ui`🌱 Twig cannot back up ${JSON.stringify(file)} safely, so it was not discarded.`);
   return files;
 }
+
+/** A path as a line of `hash-object --stdin-paths`: quoted where Git would read it otherwise (it also drops a final CR). */
+const stdinPath = file => (/^"|\r$/.test(file) ? `"${file.replace(/[\\"]/g, '\\$&').replace(/\r/g, '\\r')}"` : file);
 
 /**
  * Records the working-tree copies of `files` as one commit on DISCARD_REF and
@@ -75,9 +83,10 @@ export async function snapshot({ cwd, log, files, message }) {
     }
   }
   if (regular.length) {
-    // `--stdin-paths` takes plain paths, one per line — no pathspec magic —
-    // and `-w` stores each blob, filtered exactly as `git add` would.
-    const oids = (await git({ cwd, log, argv: ['hash-object', '-w', '--stdin-paths'], stdin: `${regular.map(item => item.file).join('\n')}\n`,
+    // `--stdin-paths` takes paths, one per line — no pathspec magic — and `-w`
+    // stores each blob, filtered exactly as `git add` would. A line that starts
+    // with `"` is C-unquoted, so a file named `"\056\056/x"` would back up `../x`.
+    const oids = (await git({ cwd, log, argv: ['hash-object', '-w', '--stdin-paths'], stdin: `${regular.map(item => stdinPath(item.file)).join('\n')}\n`,
       operation: `Background: back up ${regular.length} file${regular.length === 1 ? '' : 's'} before discarding` })).trim().split('\n');
     if (oids.length !== regular.length) throw new Error(ui`Could not back up the files; nothing was discarded.`);
     regular.forEach((item, index) => records.push(`${item.mode} ${oids[index]}\t${item.file}`));
@@ -125,7 +134,7 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
  * @returns {Promise<{ count: number, undo: { before: string, after: string, paths: string[], removed: string[] } }>}
  */
 async function discardWith({ cwd, log, files, removed, label, run }) {
-  const before = await snapshot({ cwd, log, files, message: `🌱 Twig backup before discarding ${label}\n\n${files.join('\n')}` });
+  const before = await snapshot({ cwd, log, files, message: `${BACKUP_SUBJECT}${label}\n\n${files.join('\n')}` });
   await run();
   const after = await snapshot({ cwd, log, files, message: `🌱 Twig state after discarding ${label}\n\n${files.join('\n')}` });
   return { count: files.length, backup: before, undo: { before, after, paths: files, removed } };
@@ -197,4 +206,49 @@ export async function discardSelection({ cwd, log, path: file, digest, selection
   const lines = selection.reduce((total, entry) => total + (entry.lines === 'all' ? current.hunks[entry.index]?.lines.length || 0 : entry.lines.length), 0);
   return discardWith({ cwd, log, files: [file], removed: [], label: `${plural(lines, 'selected line')} of ${file}`,
     run: () => git({ cwd, log, argv: discardCommand('lines'), stdin: patch, operation: `Discard selected lines of ${file}` }) });
+}
+
+/** The backups on the chain, newest first; each discard wrote two commits and only the first holds what was thrown away. */
+async function readBackups({ cwd, log, limit }) {
+  const operation = 'Read discarded changes';
+  if (!(await git({ cwd, log, argv: ['for-each-ref', '--format=%(objectname)', DISCARD_REF], operation })).trim()) return [];
+  const tokens = (await git({ cwd, log, argv: ['log', `--max-count=${limit * 2}`, '-z', '--format=%H%x00%ct%x00%B', DISCARD_REF, '--'], operation })).split('\0');
+  const backups = [];
+  for (let at = 0; at + 2 < tokens.length; at += 3) {
+    const [subject, , ...files] = tokens[at + 2].split('\n');
+    if (subject.startsWith(BACKUP_SUBJECT)) backups.push({ id: tokens[at], at: Number(tokens[at + 1]), files: files.filter(Boolean) });
+  }
+  return backups;
+}
+
+/**
+ * What was discarded here, for the Reflog screen. An entry names its backup
+ * by commit id: Restore is asked by that id, never by a path.
+ * @returns {Promise<Array<{ id: string, at: number, count: number, files: string[] }>>}
+ */
+export async function loadDiscards({ cwd, log }) {
+  return (await readBackups({ cwd, log, limit: LISTED })).map(({ id, at, files }) => ({ id, at, count: files.length, files: files.slice(0, NAMED) }));
+}
+
+/**
+ * Puts a backup's files back, whatever the Undo chain did since. What is on
+ * disk at those paths now goes into a backup first, so this is undone like a
+ * discard: the record is one with its two sides swapped, and `removed` holds
+ * the files that were not there and that Git does not track.
+ * @param {{ cwd: string, log: object, id: string }} options
+ */
+export async function restoreDiscard({ cwd, log, id }) {
+  if (!(await readBackups({ cwd, log, limit: LISTED })).some(backup => backup.id === id)) throw new Error(ui`This backup is no longer kept. Refresh the list.`);
+  const files = (await git({ cwd, log, argv: ['ls-tree', '-r', '--name-only', '-z', id, '--'], operation: 'Read a discarded backup' })).split('\0').filter(Boolean);
+  if (!files.length) throw new Error(ui`This backup holds no files.`);
+  for (const file of files) if (!validDiscardPath(file)) throw new Error(ui`🌱 Twig cannot back up ${JSON.stringify(file)} safely, so it was not discarded.`);
+  const tracked = new Set((await git({ cwd, log, argv: ['ls-files', '-z'], operation: 'Background: read tracked files' })).split('\0'));
+  const root = await realpath(cwd);
+  const missing = await limited(files, 32, file => lstat(path.join(root, file)).then(() => false, () => true));
+  const removed = files.filter((file, index) => missing[index] && !tracked.has(file));
+  const label = plural(files.length, 'file');
+  const there = await snapshot({ cwd, log, files, message: `🌱 Twig state before restoring ${label}\n\n${files.join('\n')}` });
+  await git({ cwd, log, argv: restoreCommand(id), stdin: `${files.map(file => `:(literal)${file}`).join('\0')}\0`, operation: `Restore ${label} from a discard backup` });
+  const back = await snapshot({ cwd, log, files, message: `🌱 Twig state after restoring ${label}\n\n${files.join('\n')}` });
+  return { ok: true, count: files.length, undo: { before: back, after: there, paths: files, removed } };
 }

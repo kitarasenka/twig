@@ -23,9 +23,10 @@ export function shortArgv(argv) {
   if (!Array.isArray(argv)) return [];
   const out = [];
   let index = 0;
-  // Global options before the subcommand: `-c key=value` pairs and --no-pager.
+  // Global options before the subcommand: `-c key=value` pairs, --no-pager, and
+  // where a linked worktree's repository is (see `linkedCheckouts`).
   while (index < argv.length) {
-    if (argv[index] === '--no-pager') { index += 1; continue; }
+    if (argv[index] === '--no-pager' || /^--(git-dir|work-tree)=/.test(argv[index])) { index += 1; continue; }
     if (argv[index] === '-c' && index + 1 < argv.length) { index += 2; continue; }
     break;
   }

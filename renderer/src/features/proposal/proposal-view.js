@@ -55,6 +55,27 @@ export function stepLabel(view, choice) {
   return t`Patch — ${versions}`;
 }
 
+/** Why the dialog asks again: what moved while it was open. */
+export function staleLine(view) {
+  if (view.staleWhy === 'push') return t('Where this pushes changed after the agent proposed it. Check the address and the commands again.');
+  if (view.staleWhy === 'settings') return t('The Git settings or hooks of this repository changed after the agent proposed this. Check the commands again.');
+  if (view.staleWhy === 'checks') return t('What is staged changed while your automations ran. Check the list and the message again.');
+  return t('The files changed after the agent proposed this. Check the list and the message again.');
+}
+
+/** What a replacing proposal brought, in sentences: the paths are the person's to read. */
+export function replacedLines(view) {
+  const change = view.replaced;
+  if (!change) return [];
+  const paths = change.paths.join(', ');
+  return [
+    t('The agent replaced the proposal you were reading.'),
+    ...(paths ? [change.more ? tn(change.more, 'New or different: {paths} and {n} more file.', 'New or different: {paths} and {n} more files.', { paths }) : t`New or different: ${paths}.`] : []),
+    ...(change.message ? [t('The message is different.')] : []),
+    ...(change.push ? [t('It now asks to push.')] : [])
+  ];
+}
+
 /** Where Commit & Push goes, or why it cannot. */
 export function pushLine(view) {
   if (view.pushTarget?.mode) return t`Push goes to ${view.pushTarget.label}.`;

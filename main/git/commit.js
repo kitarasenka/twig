@@ -3,6 +3,10 @@ import { parseFilePatchV1, splitPatchFiles } from './diff-parser.js';
 import { chunkPath } from './worktree.js';
 import { ui } from '../../renderer/src/i18n/i18n.js';
 
+const MESSAGE_LIMIT = 1024 * 1024;
+const SUBJECT_LIMIT = 2000;
+const DIFF_LIMIT = 32 * 1024 * 1024;
+
 export function validateOid(oid) {
   if (typeof oid !== 'string' || !/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(oid)) throw new TypeError('Invalid commit identifier');
   return oid;
@@ -38,6 +42,13 @@ async function execute(cwd, log, argv, operation) {
   return result.stdout;
 }
 
+/** For output that means something cut short: up to `maxBytes`, `truncated` when there was more. */
+async function readUpTo(cwd, log, argv, operation, maxBytes) {
+  const result = await runGit({ cwd, log, argv, operation, maxBytes });
+  if (result.code !== 0 && !result.truncated) throw new Error(ui`${operation} failed. See the command console.`);
+  return result;
+}
+
 export function parseChangedFiles(output) {
   if (!output) return [];
   const tokens = output.split('\0');
@@ -52,7 +63,9 @@ export function parseChangedFiles(output) {
 
 export async function loadCommit({ cwd, log, oid }) {
   validateOid(oid);
-  const raw = await execute(cwd, log, ['show', '--no-patch', '--no-show-signature', '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%B', oid, '--'], 'Read commit');
+  // The message comes last, so a message of hundreds of megabytes (it packs down
+  // to nothing in `.git`) stops at the limit and everything before it is whole.
+  const { stdout: raw, truncated } = await readUpTo(cwd, log, ['show', '--no-patch', '--no-show-signature', '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%B', oid, '--'], 'Read commit', MESSAGE_LIMIT);
   const fields = raw.split('\0');
   if (fields.length !== 7) throw new Error('Invalid commit output');
   const [id, parentText, name, email, date, committedAt, message] = fields;
@@ -60,8 +73,12 @@ export async function loadCommit({ cwd, log, oid }) {
   const changed = await execute(cwd, log, ['diff-tree', '--root', '-r', '--no-commit-id', '--name-status', '-z', '--no-renames', ...(parents.length ? [parents[0]] : []), oid, '--'], 'Read changed files');
   const body = message.replace(/\n$/, '');
   const newline = body.indexOf('\n');
-  return { oid: id, parents, author: { name, email, date }, committedAt,
-    subject: newline < 0 ? body : body.slice(0, newline), body: newline < 0 ? '' : body.slice(newline + 1), files: parseChangedFiles(changed) };
+  const subject = newline < 0 ? body : body.slice(0, newline);
+  const rest = newline < 0 ? '' : body.slice(newline + 1);
+  const files = parseChangedFiles(changed);
+  if (!truncated) return { oid: id, parents, author: { name, email, date }, committedAt, subject, body: rest, files };
+  return { oid: id, parents, author: { name, email, date }, committedAt, subject: `${subject.slice(0, SUBJECT_LIMIT)}…`, truncated: true,
+    body: `${rest}\n\n${ui`Cut by 🌱 Twig: this message is larger than 1 MB.`}`, files };
 }
 
 export async function loadCommitFiles({ cwd, log, oid }) {
@@ -80,8 +97,10 @@ export async function loadFileDiff({ cwd, log, oid, file, base = null }) {
   const argv = base
     ? ['diff', ...plain, base, oid, '--', `:(literal)${file}`]
     : ['show', '--format=', '--first-parent', ...plain, oid, '--', `:(literal)${file}`];
-  const patch = await execute(cwd, log, argv, 'Read file diff');
-  return { patch, binary: /^(?:Binary files |GIT binary patch)/m.test(patch) };
+  const { stdout, truncated } = await readUpTo(cwd, log, argv, 'Read file diff', DIFF_LIMIT);
+  // The same kind of line as Git's own `\ No newline at end of file`: no number, no side.
+  const patch = truncated ? `${stdout.slice(0, stdout.lastIndexOf('\n') + 1)}\\ ${ui`Cut by 🌱 Twig: this diff is larger than 32 MB.`}\n` : stdout;
+  return { patch, binary: /^(?:Binary files |GIT binary patch)/m.test(patch), ...(truncated ? { truncated } : {}) };
 }
 
 export async function loadRangeFiles({ cwd, log, base, oid }) {

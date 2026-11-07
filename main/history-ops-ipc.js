@@ -6,10 +6,11 @@ import { checkout, createBranch, createTag, deleteBranch, deleteTag, readTagRef,
 import { loadBisectState, runBisect } from './git/bisect.js';
 import { rewordHead } from './git/commit-ops.js';
 import { clearPlan, planFiles, startRebase } from './git/rebase.js';
-import { loadConflict, markResolved, saveResolution, takeSide } from './git/conflicts.js';
+import { loadConflict, markResolved, saveResolution, settleDeletion, takeSide } from './git/conflicts.js';
 import { moveBranch } from './git/reflog.js';
 import { applyPatch } from './git/patches.js';
 import { ui } from '../renderer/src/i18n/i18n.js';
+import { finishFirst } from './git/operation-words.js';
 
 /**
  * History-mutating channels: the commit context menu, the interrupted-operation
@@ -109,7 +110,7 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
     handler(channel, 2, (options, oids) => withState(options, async () => {
       if (!Array.isArray(oids)) throw new TypeError('Invalid commit list');
       const state = await loadOperationState(options);
-      if (state.kind !== 'none') return { ok: false, message: ui`Finish or abort the ${state.kind} first.` };
+      if (state.kind !== 'none') return { ok: false, message: finishFirst(state.kind) };
       const merges = await findMergeCommits({ ...options, oids });
       if (merges.length) return { ok: false, message: ui`${merges[0].slice(0, 7)} is a merge commit. Cherry-pick or revert merge commits one at a time.` };
       return apply({ ...options, oids });
@@ -139,7 +140,7 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
     if (text.trim().length === 0) throw new Error('Invalid text argument');
     return withState(options, async () => {
       const state = await loadOperationState(options);
-      if (state.kind !== 'none') return { ok: false, message: ui`Finish or abort the ${state.kind} first.` };
+      if (state.kind !== 'none') return { ok: false, message: finishFirst(state.kind) };
       const warnings = await rewordHead({ ...options, message: text, expectedOid: oid });
       return { ok: true, message: warnings.join(' ') || null };
     });
@@ -199,7 +200,7 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
   handler('reflog:move-branch', 4, (options, branch, oid, expected) =>
     withState(options, async () => {
       const state = await loadOperationState(options);
-      if (state.kind !== 'none') return { ok: false, message: ui`Finish or abort the ${state.kind} first.` };
+      if (state.kind !== 'none') return { ok: false, message: finishFirst(state.kind) };
       return moveBranch({ ...options, branch: asString(branch, 255), oid, expected });
     }));
 
@@ -211,9 +212,9 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
    */
   handler('patch:am', 2, (options, token) => withState(options, async () => {
     const state = await loadOperationState(options);
-    if (state.kind !== 'none') return { ok: false, message: ui`Finish or abort the ${state.kind} first.` };
+    if (state.kind !== 'none') return { ok: false, message: finishFirst(state.kind) };
     const entry = patchFiles.take(options.cwd, token);
-    if (entry.kind !== 'mbox') throw new TypeError('This file holds no commits; apply it to the files instead.');
+    if (entry.kind !== 'mbox') throw new TypeError(ui`This file holds no commits; apply it to the files instead.`);
     return applyPatch({ ...options, kind: 'mbox', file: entry.file });
   }));
   handler('patch:apply', 3, (options, token, index) => {
@@ -253,6 +254,12 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
   handler('conflict:take', 3, (options, file, side) =>
     withState(options, () => takeSide({ ...options, path: asString(file, 32768), side: asString(side, 16) })
       .then(() => ({ ok: true, message: null }))));
+
+  handler('conflict:settle-deleted', 3, (options, file, keep) => {
+    if (typeof keep !== 'boolean') throw new Error('Invalid conflict request');
+    return withState(options, () => settleDeletion({ ...options, path: asString(file, 32768), keep })
+      .then(() => ({ ok: true, message: null })));
+  });
 
   handler('conflict:resolve', 2, (options, file) =>
     withState(options, () => markResolved({ ...options, path: asString(file, 32768) })

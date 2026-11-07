@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { AUTHOR_TINTS, LANE_WIDTH, ROW_HEIGHT, authorTint, createLaneLayout, createRowMetrics, headLineIndex, headLinePath, segmentPath } from '../../renderer/src/features/graph/layout.js';
-import { BADGE_GAP, REF_LINE_HEIGHT, badgeWidth, extraHeight, packRefLines } from '../../renderer/src/features/graph/ref-lines.js';
+import { BADGE_GAP, REF_LINE_HEIGHT, badgeWidth, extraHeight, orderRefs, packRefLines } from '../../renderer/src/features/graph/ref-lines.js';
 
 const c = (oid, ...parents) => ({ oid, parents });
 const fixtures = [
@@ -87,6 +87,16 @@ const measure = text => text.length * 6;
 const names = ['main', 'origin/main', 'v1.0.0', 'release/2026-09'];
 const widths = names.map(name => badgeWidth(name, measure));
 assert.deepEqual(packRefLines(widths, 10000), [[0, 1, 2, 3]], 'A wide column keeps every badge on one line');
+// The sprout stands before the first badge, so the checked-out branch is the first badge.
+{
+  const refs = ['feature/PAY-1', 'main', 'release/1'].map(name => ({ type: 'local', name }));
+  assert.deepEqual(orderRefs(refs, 'main').map(ref => ref.name), ['main', 'feature/PAY-1', 'release/1']);
+  assert.equal(orderRefs(refs, 'feature/PAY-1'), refs, 'already first: the same list');
+  assert.equal(orderRefs(refs, 'other'), refs, 'HEAD is elsewhere: the order stands');
+  assert.equal(orderRefs(refs, null), refs, 'a detached HEAD has no branch to move');
+  const remote = [{ type: 'remote', name: 'main' }, { type: 'local', name: 'main' }];
+  assert.equal(orderRefs(remote, 'main')[0].type, 'local', 'only a local branch can be the checked-out one');
+}
 const narrow = packRefLines(widths, widths[0] + BADGE_GAP + widths[1], 0);
 assert.deepEqual(narrow[0], [0, 1]);
 assert.deepEqual(narrow.flat(), [0, 1, 2, 3], 'Every ref is placed, none is dropped');

@@ -1,68 +1,98 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { ui } from '../../renderer/src/i18n/i18n.js';
-import { lstat } from 'node:fs/promises';
-import nodePath from 'node:path';
 import { runGit } from '../git/exec.js';
 import { loadWorktree } from '../git/worktree.js';
 import { parseNumstat } from '../git/numstat.js';
 import { loadOperationState } from '../git/operation-state.js';
-import { loadRemotes } from '../git/remotes.js';
-import { buildPushRefArgv, buildSyncArgv, loadDivergence, pushRef, runSync } from '../git/sync.js';
-import { buildStageEverythingArgv, stageEverything } from '../git/stage.js';
+import { readPushPlan } from '../git/push-plan.js';
+import { buildPushRefArgv, pushRef, runSync } from '../git/sync.js';
+import { buildStageEverythingArgv, stageEverything, withEverythingStaged } from '../git/stage.js';
 import { buildCommitArgv, createCommit, gitReason, validateCommitMessage } from '../git/commit-ops.js';
+import { inspectRepository, repoTrustDigest } from '../git/config-risk.js';
 import { readTagRef, validateRefName } from '../git/refs-ops.js';
-import { triggerPipeline } from '../automation/engine.js';
+import { stepReason, triggerPipeline } from '../automation/engine.js';
 import { pickPreviousTag, tagArgv } from '../../renderer/src/features/automations/release-tag.js';
 import { McpError } from './errors.js';
-import { fileLine } from './serialize.js';
+import { DIFF_BUDGET, fileLine } from './serialize.js';
+import { FILE_LINE_LIMIT } from './file-patches.js';
 
 /** How long one propose_commit or await_commit call waits for the person before answering "pending". */
 export const WAIT_MS = 45_000;
 /** A proposal nobody decided on, or an outcome nobody collected, is forgotten after this. */
 export const PROPOSAL_TTL_MS = 30 * 60_000;
 export const MESSAGE_LIMIT = 100_000;
+/** One agent's proposals for one folder, at most this often: each brings a dialog up in front of the person. */
+export const MIN_PROPOSAL_INTERVAL_MS = 5000;
 
 const short = oid => (oid ? oid.slice(0, 12) : null);
 
+/** `--name-status -z` with renames on: `M\0path\0`, and `R100\0old\0new\0` for a pair. */
+function parseNameStatus(output) {
+  const tokens = output.split('\0').filter(Boolean);
+  const files = [];
+  for (let at = 0; at < tokens.length; at++) {
+    const letter = tokens[at][0];
+    if ('RC'.includes(letter)) { files.push({ letter, originalPath: tokens[at + 1], path: tokens[at + 2] }); at += 2; }
+    else { files.push({ letter, originalPath: null, path: tokens[at + 1] }); at += 1; }
+  }
+  return files;
+}
+
 /**
- * What a commit of "everything" would take, and a fingerprint of it: HEAD,
- * the branch, every changed path with its status, and each changed file's
- * size, mode and modification time. A file edited again after the agent
- * looked changes its fingerprint even when its status letter does not.
+ * What a commit of "everything" would take, and a fingerprint of it: HEAD, the
+ * branch and the tree itself, built by `git add --all` in a throwaway index.
+ * The tree is the content, so a file swapped for another of the same length
+ * with its time put back still changes it. The file list and its line counts
+ * compare that same tree with HEAD: new files count, and nothing can go into
+ * the commit that the list does not show.
  */
 export async function readProposalState({ cwd, log }) {
   const worktree = await loadWorktree({ cwd, log, allUntracked: true });
   const { branch } = worktree;
   const operation = await loadOperationState({ cwd, log });
   const head = branch.oid || null;
-  const numstat = await runGit({ cwd, log, operation: 'Read change sizes for a commit proposal',
-    argv: ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '--numstat', '-z', '--find-renames', ...(head ? ['HEAD'] : ['--cached']), '--'] });
-  if (numstat.code !== 0) throw new Error(ui`Git could not count the changed lines.`);
-  const counts = parseNumstat(numstat.stdout);
-
-  const byPath = new Map();
-  for (const file of worktree.staged) byPath.set(file.path, { path: file.path, originalPath: file.originalPath, letter: file.status });
-  for (const file of worktree.unstaged) if (!byPath.has(file.path) || file.status === 'U' || file.status === 'D') byPath.set(file.path, { path: file.path, originalPath: file.originalPath, letter: file.status });
-  for (const file of worktree.untracked) byPath.set(file.path, { path: file.path, originalPath: null, letter: 'A', untracked: true });
-  const files = [...byPath.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)).map(file => {
+  const { tree, changes, counts } = await withEverythingStaged({ cwd, log }, async env => {
+    const compare = ['diff', '--cached', '--no-ext-diff', '--no-textconv', '--no-color', '--find-renames', '--ignore-submodules=none', '-z'];
+    const against = [...(head ? ['HEAD'] : []), '--'];
+    const written = await runGit({ cwd, log, env, argv: ['write-tree'], operation: 'Read the tree of a commit proposal' });
+    const names = await runGit({ cwd, log, env, argv: [...compare, '--name-status', ...against], operation: 'Read the files of a commit proposal' });
+    const numstat = await runGit({ cwd, log, env, argv: [...compare, '--numstat', ...against], operation: 'Read change sizes for a commit proposal' });
+    if (written.code !== 0 || names.code !== 0 || numstat.code !== 0) throw new Error(ui`Git could not count the changed lines.`);
+    return { tree: written.stdout.trim(), changes: parseNameStatus(names.stdout), counts: parseNumstat(numstat.stdout) };
+  });
+  const files = changes.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)).map(file => {
     const count = counts.get(file.path);
     return { ...file, insertions: count?.insertions ?? null, deletions: count?.deletions ?? null, binary: Boolean(count?.binary) };
   });
 
   const hash = createHash('sha256');
-  hash.update(`${head}\0${branch.name}\0${branch.detached}\0`);
-  for (const file of files) {
-    hash.update(`${file.path}\0${file.letter}\0`);
-    try {
-      const info = await lstat(nodePath.join(cwd, file.path), { bigint: true });
-      hash.update(`${info.size}\0${info.mode}\0${info.mtimeNs}\0`);
-    } catch { hash.update('gone\0'); }
-  }
+  hash.update(`${head}\0${branch.name}\0${branch.detached}\0${tree}\0`);
   return {
     head, branch: branch.detached ? null : branch.name, detached: branch.detached, unborn: branch.unborn,
-    operation: operation.kind, conflicts: files.filter(file => file.letter === 'U').length,
-    files, fingerprint: hash.digest('hex')
+    operation: operation.kind, conflicts: [...worktree.staged, ...worktree.unstaged].filter(file => file.status === 'U').length,
+    files, tree, fingerprint: hash.digest('hex'), settings: await repoTrustDigest(cwd, log)
   };
+}
+
+/**
+ * What the commit turned out to be against what was confirmed. A Git hook runs
+ * inside `git commit`, past every check before it, so this is read after: the
+ * paths a hook added or changed, and whether it rewrote the message.
+ */
+async function commitDrift({ cwd, log, expected, message }) {
+  const read = (argv, extra = {}) => runGit({ cwd, log, argv, operation: 'Read what the agent commit became', ...extra });
+  const tree = (await read(['rev-parse', 'HEAD^{tree}'])).stdout.trim();
+  const paths = tree === expected ? [] : (await read(['diff', '--name-only', '-z', '--no-renames', expected, tree])).stdout.split('\0').filter(Boolean);
+  const written = await read(['stripspace', '--strip-comments'], { stdin: message });
+  const committed = await read(['log', '-1', '--format=%B']);
+  return { paths, tree: tree !== expected, message: written.code === 0 && written.stdout.trim() !== committed.stdout.trim() };
+}
+
+/** What the replacing proposal brings that the one on screen did not, for the note above it. */
+function replacedBy(before, after) {
+  const known = new Map(before.state.files.map(file => [file.path, fileLine(file)]));
+  const paths = after.state.files.filter(file => known.get(file.path) !== fileLine(file)).map(file => file.path);
+  return { paths: paths.slice(0, 5), more: Math.max(0, paths.length - 5), push: Boolean(after.push && !before.push), message: after.message !== before.message };
 }
 
 /**
@@ -90,50 +120,38 @@ export async function readPreviousTag({ cwd, log, head }) {
   return pickPreviousTag(result.stdout.split('\n').filter(Boolean).map(ref => ref.replace(/^refs\/tags\//, '')));
 }
 
-/** Where Commit & Push would push: the upstream, or `origin/<branch>` made the upstream, or nowhere and why. */
-async function pushTarget({ cwd, log, branch }) {
-  const divergence = await loadDivergence({ cwd, log, branch });
-  if (divergence.upstream) {
-    // The remote a tag goes to with the branch; a remote name may itself contain a slash.
-    const configured = await runGit({ cwd, log, argv: ['config', '--get', `branch.${branch}.remote`], operation: 'Read the upstream remote' });
-    const remote = configured.code === 0 && configured.stdout.trim() ? configured.stdout.trim() : divergence.upstream.split('/')[0];
-    return { mode: 'push', label: divergence.upstream, remote, argv: buildSyncArgv('push') };
-  }
-  const remotes = await loadRemotes({ cwd, log });
-  if (remotes.some(remote => remote.name === 'origin')) {
-    return { mode: 'push-upstream', label: `origin/${branch} (new upstream)`, remote: 'origin', argv: buildSyncArgv('push-upstream', branch) };
-  }
-  return { mode: null, label: null, remote: null, argv: null, reason: `${branch} has no upstream and there is no remote named origin.` };
+/** The repository's own Git hooks a commit or its push runs, by name: the dialog says which. */
+const COMMIT_HOOKS = new Set(['pre-commit', 'prepare-commit-msg', 'commit-msg', 'post-commit', 'pre-push', 'reference-transaction', 'post-rewrite']);
+async function commitHooks({ cwd, log }) {
+  const inspected = await inspectRepository(cwd, log, { nested: false });
+  return (inspected?.findings ?? []).filter(item => item.kind === 'hook').map(item => item.key.replace(/^hooks\//, '')).filter(name => COMMIT_HOOKS.has(name)).sort();
 }
 
-/** A failed automation step in a line or two an agent can act on. */
-function stepReason(steps) {
-  const failed = steps.filter(step => step.status === 'failed');
-  return failed.map(step => {
-    const output = `${step.stderr || ''}\n${step.stdout || ''}`.split('\n').map(line => line.trimEnd()).filter(Boolean).slice(-6).join('\n').slice(-600);
-    return `${step.pipeline ? `${step.pipeline} → ` : ''}${step.name}: ${step.detail || 'failed'}${output ? `\n${output}` : ''}`;
-  }).join('\n') || 'an automation blocked it';
-}
+/** Where Commit & Push would push, word for word as it will run, or nowhere and why. */
+const pushTarget = ({ cwd, log, branch }) => readPushPlan({ cwd, log, branch, exact: true });
 
 /**
  * Commit proposals from agents. A proposal is shown in the window and nothing
  * happens until the person confirms it there; then it runs the app's own
  * commit path — stage everything, the pre-commit and commit-msg automations,
  * `createCommit`, post-commit — inside one Undo record, and, if asked, the
- * pre-push automations and the app's own push. Each proposal keeps the
- * fingerprint of what the agent was shown; if the tree moved before the
- * person confirmed, the dialog is refreshed and asks again instead of
- * committing something nobody looked at.
+ * pre-push automations and the app's own push. Each proposal keeps the tree
+ * and the push plan the person is shown; if either moved before the person
+ * confirmed, or while the automations ran, the dialog is refreshed and asks
+ * again instead of committing or pushing something nobody looked at. A Git hook
+ * that changes the commit is told to both sides, and the push does not go.
  *
  * No Electron here: `present` shows a view (or null to close it) and returns
  * whether a window could show it, so the Node check drives all of this.
  * @param {{ log: object, undo: object, automations: object, runs: object, loginPath?: ?string,
- *   isAllowed: () => boolean, present: (view: ?object) => boolean, onStep?: (step: object) => void,
- *   bump?: ?object, now?: () => number }} options
+ *   isAllowed: () => boolean, present: (view: ?object, options?: { focus?: boolean }) => boolean, onStep?: (step: object) => void,
+ *   bump?: ?object, now?: () => number, minIntervalMs?: number }} options
  */
-export function createCommitProposals({ log, undo, automations, runs, loginPath = null, isAllowed, present, onStep = null, bump = null, now = Date.now }) {
+export function createCommitProposals({ log, undo, automations, runs, loginPath = null, isAllowed, present, onStep = null, bump = null, now = Date.now, minIntervalMs = MIN_PROPOSAL_INTERVAL_MS }) {
   /** @type {Map<string, object>} */
   const proposals = new Map();
+  /** When each folder last proposed. */
+  const lastProposed = new Map();
   let shown = null;
 
   function view(proposal, extra = {}) {
@@ -146,6 +164,7 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
       files: state.files.map(file => ({ path: file.path, line: fileLine(file) })), totals,
       kind: proposal.kind, message: proposal.message, push: proposal.push,
       pushTarget: proposal.target,
+      hooks: proposal.hooks ?? [],
       commands: [buildStageEverythingArgv(), buildCommitArgv()],
       bump: proposal.bumpPlan,
       // What the version and tag switches start from: the package.json
@@ -154,8 +173,21 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
       defaults: proposal.defaults,
       // Proposals from other worktrees, waiting for this one to be answered.
       waiting: open().filter(other => other.id !== proposal.id).length,
+      // What replaced the proposal the person was reading: the dialog says so and holds its buttons.
+      replaced: proposal.replaced ?? null,
       status: proposal.status, ...extra
     };
+  }
+
+  /** The tree or the push moved: show what is there now and ask again; the agent's message may no longer describe it. */
+  async function refresh(proposal, why, message) {
+    const fresh = await readProposalState({ cwd: proposal.repo.path, log });
+    const refused = refusal(fresh, proposal.kind);
+    if (refused) { settle(proposal, `not committed: the working tree changed and ${refused[1].charAt(0).toLowerCase()}${refused[1].slice(1)}`); return { outcome: proposal.outcome, ok: false }; }
+    Object.assign(proposal, await prepare(proposal.repo, proposal.kind), { status: 'pending', replaced: null });
+    const next = view(proposal, { stale: true, staleWhy: why, message });
+    present(next);
+    return { stale: next };
   }
 
   /** Proposals nobody has answered yet, oldest first. */
@@ -197,7 +229,7 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
     const automationRepo = repo.worktreeOf ? { ...repo, id: repo.worktreeOf } : repo;
     const bumpPlan = bump ? (await bump.plan({ repo: automationRepo, files: state.files })) ?? (await bump.packagePlan?.({ repo })) ?? null : null;
     const previousTag = await readPreviousTag({ cwd: repo.path, log, head: state.head });
-    return { state, target, bumpPlan, previousTag };
+    return { state, target, bumpPlan, previousTag, hooks: await commitHooks({ cwd: repo.path, log }) };
   }
 
   /** Where the switches start: the agent's suggestion for a release, the automation's choice otherwise. */
@@ -231,6 +263,12 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
       if (suggestedTag !== null && suggestedTag !== undefined) {
         try { validateRefName(suggestedTag); } catch { throw new McpError('INVALID_ARGUMENT', `${JSON.stringify(suggestedTag)} is not a valid tag name.`); }
       }
+      const wait = (lastProposed.get(repo.path) ?? -Infinity) + minIntervalMs - now();
+      if (wait > 0) {
+        throw new McpError('RATE_LIMITED', `Too many proposals from this folder. Propose again in ${Math.ceil(wait / 1000)} s.`,
+          { hint: 'The person sees one dialog at a time: wait for their answer with await_commit instead of proposing again.' });
+      }
+      lastProposed.set(repo.path, now());
       sweep();
       const prepared = await prepare(repo, kind);
       const proposal = { id: randomUUID(), repo, kind, message: optional ? null : message, push, ...prepared,
@@ -241,12 +279,16 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
       const replaced = open().filter(other => same(other) && other.status === 'pending');
       proposals.set(proposal.id, proposal);
       const onScreen = shown ? proposals.get(shown) : null;
-      const queued = Boolean(onScreen && !onScreen.outcome && !replaced.includes(onScreen));
+      const dialogUp = Boolean(onScreen && !onScreen.outcome);
+      const queued = dialogUp && !replaced.includes(onScreen);
+      // A proposal swapped under someone reading it has to say so.
+      if (onScreen && replaced.includes(onScreen)) proposal.replaced = replacedBy(onScreen, proposal);
       // Set first: a replaced proposal on screen then hands the dialog to this one, not to the next in line.
       if (!queued) shown = proposal.id;
       for (const other of replaced) settle(other, 'superseded: a newer proposal replaced it');
-      // Shown, or the one on screen shown again with one more waiting.
-      if (!present(view(queued ? onScreen : proposal))) {
+      // Shown, or the one on screen shown again with one more waiting. Only a
+      // dialog that was not there takes the window from what the person is doing.
+      if (!present(view(queued ? onScreen : proposal), { focus: !dialogUp })) {
         if (shown === proposal.id) shown = null;
         proposals.delete(proposal.id);
         throw new McpError('CONFIRMATION_UNAVAILABLE', 'The 🌱 Twig window is not open, so nobody can confirm a commit.', { hint: 'Ask the person to open 🌱 Twig, then propose again.' });
@@ -272,6 +314,30 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
         const done = outcome => { clearTimeout(timer); resolve(outcome); };
         proposal.waiters.push(done);
       });
+    },
+
+    /**
+     * One file of a proposal as a patch, from the tree the person is confirming
+     * — not from the disk, which may have moved since. Held to the size
+     * list_changes inlines: past it the list's counts stand in.
+     * @returns {Promise<{ patch: ?string, note: ?string }>}
+     */
+    async fileDiff(id, file) {
+      const proposal = proposals.get(id);
+      if (!proposal || proposal.outcome) throw new Error(ui`This proposal was already answered or has expired.`);
+      const entry = proposal.state.files.find(item => item.path === file);
+      if (!entry) throw new TypeError('Not a file of this proposal');
+      if (entry.binary) return { patch: null, note: ui`A binary file: there is no text to show.` };
+      const lines = (entry.insertions ?? 0) + (entry.deletions ?? 0);
+      if (lines > FILE_LINE_LIMIT) return { patch: null, note: ui`${lines} changed lines, too many to show here. The Worktrees board and a terminal show them.` };
+      const cwd = proposal.repo.path;
+      const base = proposal.state.head ?? (await runGit({ cwd, log, argv: ['hash-object', '-t', 'tree', '--stdin'], stdin: '', operation: 'Read the empty tree' })).stdout.trim();
+      const paths = [entry.originalPath, entry.path].filter(Boolean).map(item => `:(literal)${item}`);
+      const result = await runGit({ cwd, log, operation: 'Read a file of a commit proposal',
+        argv: ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--find-renames', base, proposal.state.tree, '--', ...paths] });
+      if (result.code !== 0) throw new Error(ui`Git could not read this file.`);
+      if (Buffer.byteLength(result.stdout) > DIFF_BUDGET) return { patch: null, note: ui`${lines} changed lines, too many to show here. The Worktrees board and a terminal show them.` };
+      return { patch: result.stdout, note: result.stdout ? null : ui`No text change.` };
     },
 
     /** The proposal on screen, for a window that (re)loads while one is pending. */
@@ -308,19 +374,15 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
         if (await readTagRef({ cwd, log, name: tag })) return { invalid: ui`The tag ${tag} already exists. Choose another name.` };
       }
       if (!committing && tag === null) return { invalid: ui`There is nothing to commit. Choose a version to bump or a tag to create.` };
+      const wantPush = action === 'commit-push';
       const fresh = await readProposalState({ cwd, log });
-      if (fresh.fingerprint !== proposal.state.fingerprint) {
-        // Show what is there now and ask again; the agent's message may no longer describe it.
-        const refused = refusal(fresh, proposal.kind);
-        if (refused) { settle(proposal, `not committed: the working tree changed and ${refused[1].charAt(0).toLowerCase()}${refused[1].slice(1)}`); return { outcome: proposal.outcome, ok: false }; }
-        Object.assign(proposal, await prepare(proposal.repo, proposal.kind));
-        const next = view(proposal, { stale: true, message });
-        present(next);
-        return { stale: next };
-      }
+      if (wantPush && (await pushTarget({ cwd, log, branch: proposal.state.branch })).digest !== proposal.target.digest) return refresh(proposal, 'push', message);
+      if (fresh.fingerprint !== proposal.state.fingerprint) return refresh(proposal, 'files', message);
+      if (fresh.settings !== proposal.state.settings) return refresh(proposal, 'settings', message);
       proposal.status = 'running';
       try {
-        const outcome = await run(proposal, { message, wantPush: action === 'commit-push', choice: bumping ? choice : null, committing, tag });
+        const outcome = await run(proposal, { message, wantPush, choice: bumping ? choice : null, committing, tag });
+        if (outcome.moved) return await refresh(proposal, outcome.moved, message);
         settle(proposal, outcome.text);
         return { outcome: outcome.text, ok: outcome.ok };
       } catch (error) {
@@ -359,14 +421,23 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
         if (saved.code !== 0) return { ok: false, text: 'not committed: the index has entries Git cannot save (intent-to-add or conflicts). Resolve them in 🌱 Twig.' };
         const tree = saved.stdout.trim();
         const restore = () => runGit({ cwd, log, argv: ['read-tree', tree], operation: 'Restore the index after a refused agent commit' });
+        const staged = async () => (await runGit({ cwd, log, argv: ['write-tree'], operation: 'Read the staged tree of an agent commit' })).stdout.trim();
         await stageEverything({ cwd, log });
         let bumped = [];
+        let expected = proposal.state.tree;
         try {
+          if (await staged() !== expected) { await restore(); return { ok: false, moved: 'files' }; }
           const pre = await pipeline('pre-commit');
           if (pre.blocked) { await restore(); return { ok: false, text: `${ui`not committed: a pre-commit automation blocked it`}\n${stepReason(pre.steps)}` }; }
           const check = await pipeline('commit-msg', { message });
           if (check.blocked) { await restore(); return { ok: false, text: `${ui`not committed: a commit-msg automation blocked it`}\n${stepReason(check.steps)}` }; }
-          if (bump && choice) bumped = await bump.apply({ repo, choice, plan: proposal.bumpPlan });
+          // An automation may format and re-stage, or something else may have
+          // staged meanwhile. The person sees the result before it is committed.
+          if (await staged() !== expected) { await restore(); return { ok: false, moved: 'checks' }; }
+          if (bump && choice) {
+            bumped = await bump.apply({ repo, choice, plan: proposal.bumpPlan });
+            expected = await staged();
+          }
           await createCommit({ cwd, log, message });
         } catch (error) {
           if (bumped.length) await bump.revert({ repo, applied: bumped }).catch(() => {});
@@ -374,13 +445,20 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
           return { ok: false, text: `${ui`not committed: ${error.message}`}${error.detail ? `\n${error.detail}` : ''}` };
         }
         const head = await runGit({ cwd, log, argv: ['rev-parse', 'HEAD'], operation: 'Read the agent commit' });
-        return { ok: true, oid: head.stdout.trim(), bumped };
+        return { ok: true, oid: head.stdout.trim(), bumped, expected };
       });
       if (!committed.ok) return committed;
       void pipeline('post-commit').catch(() => {});
-      lines.push(edited ? ui`committed ${short(committed.oid)} on ${branch}: ${message.split('\n')[0]} (message edited in 🌱 Twig)`
-        : ui`committed ${short(committed.oid)} on ${branch}: ${message.split('\n')[0]}`);
+      const drift = await commitDrift({ cwd, log, expected: committed.expected, message });
+      const subject = message.split('\n')[0];
+      lines.push(drift.message ? ui`committed ${short(committed.oid)} on ${branch}: ${subject} (message changed by a Git hook)`
+        : edited ? ui`committed ${short(committed.oid)} on ${branch}: ${subject} (message edited in 🌱 Twig)`
+          : ui`committed ${short(committed.oid)} on ${branch}: ${subject}`);
       for (const item of committed.bumped || []) lines.push(`version ${item.path}: ${item.from} → ${item.to}`);
+      if (drift.tree) {
+        lines.push(ui`A Git hook changed what this commit takes, so it is not what you confirmed: ${drift.paths.join(', ')}. Nothing was tagged or pushed. Undo takes the commit back.`);
+        return { ok: false, text: lines.join('\n') };
+      }
     }
 
     if (tag !== null) {
@@ -400,8 +478,14 @@ export function createCommitProposals({ log, undo, automations, runs, loginPath 
     if (!target.mode) { lines.push(`not pushed: ${target.reason}`); return { ok: false, text: lines.join('\n') }; }
     const gate = await pipeline('pre-push', { remote: target.remote });
     if (gate.blocked) { lines.push(`not pushed: a pre-push automation blocked it\n${stepReason(gate.steps)}`); return { ok: false, text: lines.join('\n') }; }
-    const pushed = await undo.perform(cwd, 'sync:run', [target.mode, branch], () => runSync({ cwd, log, mode: target.mode, branch }));
-    if (pushed.ok) lines.push(`pushed to ${target.mode === 'push' ? target.label : `origin/${branch}`}`);
+    // The push the person confirmed, or none: minutes of automations may lie behind that click.
+    const plan = await pushTarget({ cwd, log, branch });
+    if (plan.digest !== proposal.target.digest) {
+      lines.push(ui`not pushed: where it would go changed after you confirmed. Check the remote, then push from the toolbar.`);
+      return { ok: false, text: lines.join('\n') };
+    }
+    const pushed = await undo.perform(cwd, 'sync:run', [plan.mode, branch], () => runSync({ cwd, log, mode: plan.mode, branch, plan }));
+    if (pushed.ok) lines.push(`pushed to ${plan.to}`);
     else { lines.push(`push failed: ${pushed.reason || pushed.message}`); return { ok: false, text: lines.join('\n') }; }
     if (tag === null) return { ok: true, text: lines.join('\n') };
 

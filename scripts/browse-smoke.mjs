@@ -167,7 +167,7 @@ try {
   await page.getByRole('tab', { name: /Tags/ }).click();
   await row('v1.0.0').getByRole('button', { name: 'Push', exact: true }).click();
   await dialog.waitFor();
-  assert.match(await dialog.innerText(), /\$ git push --progress origin -- refs\/tags\/v1\.0\.0/, 'the tag push command is shown');
+  assert.match(await dialog.innerText(), /\$ git push --progress origin -- refs\/tags\/v1\.0\.0:refs\/tags\/v1\.0\.0/, 'the tag push command is shown');
   await page.getByRole('button', { name: 'Push to origin', exact: true }).click();
   await expect('v1.0.0 pushed to origin.', 'the tag was published');
   assert.match(await git(['ls-remote', '--tags', '--', 'origin']), /refs\/tags\/v1\.0\.0/);

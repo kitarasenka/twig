@@ -12,6 +12,7 @@ import { isMenuKey, matchesShortcut } from '../../app/shortcuts.js';
 import { summaryChips } from '../worktree/worktree-summary.js';
 import { localDayKey, relativeTime } from '../../ui/relative-time.js';
 import Menu from '../../ui/Menu.jsx';
+import { revealInvisible } from '../../ui/invisible.js';
 import { t, tn } from '../../i18n/i18n.js';
 
 const EMPTY_SELECTION = new Set();
@@ -84,7 +85,7 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
         {line.map(refIndex => refs[refIndex]).map(ref => <span key={ref.fullName} title={ref.type === 'tag' ? `${ref.fullName} · ${t('Drag onto a target')}` : `${ref.fullName} · ${t('Double-click to check out')} · ${t('Drag onto a target')}`} tabIndex={0}
           onClick={() => onPickRef?.(ref)}
           onDoubleClick={event => { event.stopPropagation(); onCheckout?.([ref]); }}
-          {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
+          {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${ref.type === 'local' && ref.name === headBranch ? 'current-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
           {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
       </span>)}</span>
     <span className="lane-cell"><span className="lane-track">
@@ -102,8 +103,8 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
         onClick={event => { event.stopPropagation(); onStashes(); }}>
         <StashBox />{stashes.length > 1 && <span>{stashes.length}</span>}</button>}
     </span></span>
-    <span className="commit-subject" title={`${bisect ? `${bisect.title}\n` : ''}${commit.subject}\n${commit.body}`}>{bisect && <BisectChip mark={bisect} />}<span>{commit.subject || t('(no subject)')}</span><span className="commit-preview">{commit.body.replace(/\s+/g, ' ')}</span></span>
-    <span className="author-col" title={visibility.author ? commit.author.email : undefined}>{visibility.author && commit.author.name}</span>
+    <span className="commit-subject" title={revealInvisible(`${bisect ? `${bisect.title}\n` : ''}${commit.subject}\n${commit.body}`)}>{bisect && <BisectChip mark={bisect} />}<span>{revealInvisible(commit.subject) || t('(no subject)')}</span><span className="commit-preview">{revealInvisible(commit.body.replace(/\s+/g, ' '))}</span></span>
+    <span className="author-col" title={visibility.author ? commit.author.email : undefined}>{visibility.author && revealInvisible(commit.author.name)}</span>
     <span className={`date-cell ${age === null ? '' : ageTextClass(age)}`} title={visibility.date ? commit.committedAt : undefined}>{visibility.date && relativeDate(commit.committedAt)}</span>
   </div>;
 });

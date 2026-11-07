@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ancestorKeys, folderKey, forgetRevealed, isOpen, revealedKeys, sectionKey, selectedRefNames } from '../../renderer/src/features/refs/ref-tree-open.js';
+import { ancestorKeys, buildRefTree, folderKey, forgetRevealed, isOpen, revealedKeys, sectionKey, selectedRefNames } from '../../renderer/src/features/refs/ref-tree-open.js';
 
 const A = '82df62445b05a04be53291bb36b5db80e46dad77';
 const B = 'ebb6e9d3dec115ba8b429d3b143db9d27777a083';
@@ -56,5 +56,16 @@ assert.doesNotMatch(workspace, /<details className="branch-folder"[^>]*\bopen>/,
 assert.doesNotMatch(workspace, /<details key=\{type\} open>/, 'sections are not hard-wired open');
 assert.match(workspace, /selected-ref/);
 assert.match(readFileSync(new URL('../../renderer/src/ui/history.css', import.meta.url), 'utf8'), /\.real-branch\.selected-ref\s*\{/);
+
+// Folders by the slashes of the names; a leaf is the ref itself, not a copy.
+{
+  const refs = [local('main'), local('feat/ui/one'), local('feat/ui/two'), local('feat/api')];
+  const root = buildRefTree(refs);
+  assert.deepEqual(root.leaves.map(leaf => leaf.label), ['main']);
+  assert.equal(root.leaves[0].ref, refs[0], 'the same object, so a memoized row keeps it');
+  const feat = root.folders.get('feat');
+  assert.deepEqual(feat.leaves.map(leaf => leaf.label), ['api']);
+  assert.deepEqual(feat.folders.get('ui').leaves.map(leaf => leaf.label), ['one', 'two']);
+}
 
 console.log('Ref tree: closed by default, the selected ref opened however deep, hand toggles, filter.');

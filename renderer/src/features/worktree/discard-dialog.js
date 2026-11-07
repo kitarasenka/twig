@@ -7,7 +7,7 @@ import { mark, t, tn } from '../../i18n/i18n.js';
  * how to get it back. Pure data for ConfirmDialog; Vite and the Node check
  * both load it.
  */
-const UNDO = mark('🌱 Twig keeps a copy first, so Undo in the toolbar brings it back.');
+const UNDO = mark('🌱 Twig keeps a copy first: Undo in the toolbar brings it back, and if Undo has moved on, so does Reflog, under Discarded changes.');
 const preview = paths => (paths.length <= 5 ? paths.join(', ')
   : tn(paths.length - 5, '{list} and {n} more', '{list} and {n} more', { list: paths.slice(0, 5).join(', ') }));
 

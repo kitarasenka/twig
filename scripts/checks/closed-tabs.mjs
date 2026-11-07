@@ -1,3 +1,4 @@
+import { noteFor, placeNote } from '../../renderer/src/app/tab-notes.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -48,5 +49,19 @@ assert.match(app, /writeClosedTabs\(localStorage,/);
 const layout = await read('renderer/src/ui/layout.css');
 assert.match(layout, /\.tabs \{[^}]*scrollbar-width: none/);
 assert.match(layout, /\.tabs::-webkit-scrollbar \{ display: none; \}/);
+
+// A toolbar note stays on the tab of the repository it ran on.
+{
+  let notes = placeNote({}, '/a', { text: 'a: push failed', failed: true });
+  assert.deepEqual(noteFor(notes, '/a'), { key: '/a', note: { text: 'a: push failed', failed: true } });
+  assert.deepEqual(noteFor(notes, '/b'), { key: '', note: '' }, 'another tab does not show it');
+  notes = placeNote(notes, '', 'Demo workspace closed.');
+  assert.equal(noteFor(notes, '/b').note, 'Demo workspace closed.', 'a window-wide note shows everywhere');
+  assert.equal(noteFor(notes, '/a').key, '/a', 'a tab’s own note comes first');
+  assert.equal(noteFor(notes, null).key, '');
+  const unchanged = placeNote(notes, '/missing', '');
+  assert.equal(unchanged, notes, 'clearing nothing keeps the object');
+  assert.deepEqual(Object.keys(placeNote(notes, '/a', '')), ['']);
+}
 
 console.log('closed-tabs: ok');

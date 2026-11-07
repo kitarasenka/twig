@@ -171,7 +171,7 @@ export async function loadReverseBlame({ cwd, log, startOid, endOid, path, signa
   // Resolving happens in the IPC layer; here START..END is assumed valid and
   // START==END is the caller's job to route to loadBlame. A plain guard stays
   // so a bad range never reaches Git as `X..X`.
-  if (startOid === endOid) throw new TypeError('Reverse blame needs a non-empty range');
+  if (startOid === endOid) throw new TypeError(ui`Reverse blame needs a non-empty range`);
   const argv = buildReverseBlameArgv(startOid, endOid, path);
   const result = await runGit({ argv, cwd, log, operation: 'Reverse blame file', signal });
   if (result.cancelled) throw new BlameError(ui`Reverse blame was cancelled.`, 'cancelled');
@@ -192,7 +192,7 @@ export function buildBlameRangeArgv({ oid = null, path, start = null, end = null
   validateFile(path);
   if (start !== null) validateLine(start);
   if (end !== null) validateLine(end);
-  if (start !== null && end !== null && end < start) throw new TypeError('The last line comes before the first');
+  if (start !== null && end !== null && end < start) throw new TypeError(ui`The last line comes before the first`);
   const range = start === null && end === null ? [] : ['-L', `${start ?? 1},${end ?? ''}`];
   return ['blame', '--line-porcelain', '--no-textconv', ...range, ...(oid === null ? [] : [oid]), '--', path];
 }

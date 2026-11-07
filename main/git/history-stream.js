@@ -39,19 +39,37 @@ export class HistoryReadReplaced extends Error {
   constructor() { super(ui`This history read was replaced by a newer one.`); this.name = 'HistoryReadReplaced'; }
 }
 
+const FIELD_LIMIT = 1024 * 1024;
+
 /** Splits streamed text into commits: eight NUL-terminated fields each, across chunk boundaries. */
 export function createCommitReader() {
   // The text after the last NUL, in the pieces it came in: joined once a NUL
   // arrives, not on every chunk (a message of megabytes would be copied over
   // and over).
+  // A field stops growing at FIELD_LIMIT and says so: a commit message of
+  // hundreds of megabytes costs a repository almost nothing to carry, and held
+  // whole it would pass V8's string limit and take the history down with it.
   let pending = [];
+  let size = 0;
+  let cut = false;
   let fields = [];
+  const keep = text => {
+    if (size >= FIELD_LIMIT) { cut = true; return; }
+    pending.push(text);
+    size += text.length;
+  };
+  const take = () => {
+    const field = cut ? `${pending.join('').slice(0, FIELD_LIMIT)} … ${ui`Cut by 🌱 Twig: this message is larger than 1 MB.`}` : pending.join('');
+    pending = []; size = 0; cut = false;
+    return field;
+  };
   return {
     push(text, onCommit) {
-      if (!text.includes('\0')) { pending.push(text); return; }
+      if (!text.includes('\0')) { keep(text); return; }
       const parts = text.split('\0');
-      parts[0] = pending.join('') + parts[0];
-      pending = [parts.pop()];
+      keep(parts[0]);
+      parts[0] = take();
+      keep(parts.pop());
       for (const part of parts) {
         fields.push(part);
         if (fields.length === HISTORY_FIELD_COUNT) { onCommit(commitFromFields(fields)); fields = []; }

@@ -9,11 +9,12 @@ import { loadRepositoryStats, runMaintenance } from './git/maintenance.js';
 import { MAINTENANCE_TASKS } from './git/maintenance-plan.js';
 import { checkPatch, exportName, exportPatches, inspectPatch, readPatchFile, validateExport } from './git/patches.js';
 import { loadSubmodules, submoduleDirectory, updateSubmodules } from './git/submodules.js';
-import { addWorktree, agentBranch, findWorktree, folderName, loadWorktrees, pruneWorktrees, removeWorktree, suggestWorktreePath } from './git/worktrees.js';
+import { addWorktree, agentBranch, canonicalFolder, checkAgentFolder, findWorktree, folderName, linkedCheckouts, loadWorktrees, pruneWorktrees, removeWorktree, suggestWorktreePath } from './git/worktrees.js';
 import { compareWorktrees, excludeAgentFolder, finishWorktree, loadWorktreeBoard, loadWorktreeCompareDiff, loadWorktreeFileDiff, loadWorktreeReview, planSquash,
   squashWorktree } from './git/worktree-board.js';
 import { validateOid } from './git/commit.js';
 import { validateRefName } from './git/refs-ops.js';
+import { stepReason, triggerPipeline } from './automation/engine.js';
 import { ui } from '../renderer/src/i18n/i18n.js';
 
 /**
@@ -22,7 +23,7 @@ import { ui } from '../renderer/src/i18n/i18n.js';
  * its frame and the argument count, and resolves the repository only from the
  * saved list — a path from the renderer is never trusted as a repository.
  */
-export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journal, undo, patchFiles, folders, pendingProposals = () => new Set(), connectedAgents = () => [] }) {
+export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journal, undo, patchFiles, folders, automations, automationRuns, automationPath = null, confirmRepository = async () => true, pendingProposals = () => new Set(), connectedAgents = () => [] }) {
   const jobs = new Map();
 
   function repository(id) {
@@ -95,12 +96,21 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
     return job(options.cwd, signal => undo.perform(options.cwd, 'submodules:update', [], () => updateSubmodules({ ...options, paths, signal })));
   });
   /** Opens an initialized submodule as a repository tab of its own. */
-  handler('submodules:open', 2, async (options, wanted) => repositories.add(await submoduleDirectory({ ...options, path: wanted })));
+  handler('submodules:open', 2, async (options, wanted) => {
+    const folder = await submoduleDirectory({ ...options, path: wanted });
+    return await confirmRepository(folder) ? repositories.add(folder) : repositories.snapshot();
+  });
 
   // --- worktrees -------------------------------------------------------------------------------
   handler('worktrees:list', 1, options => loadWorktrees(options));
   /** The board: every worktree with its changes, how far it is from the base, and a waiting proposal. */
-  handler('worktrees:board', 1, options => loadWorktreeBoard({ ...options, pending: pendingProposals(), agents: connectedAgents() }));
+  /** `fresh` reads every worktree; without it, only those whose HEAD or branch moved since the last read. */
+  const boards = new Map();
+  handler('worktrees:board', 2, (options, fresh) => {
+    if (typeof fresh !== 'boolean') throw new TypeError('Invalid worktree request');
+    if (!boards.has(options.cwd)) boards.set(options.cwd, new Map());
+    return loadWorktreeBoard({ ...options, pending: pendingProposals(), agents: connectedAgents(), known: boards.get(options.cwd), fresh });
+  });
   /**
    * The folder a new worktree for `branch` would get — next to the main one,
    * inside a folder the person picks, or, for an agent, in the main
@@ -130,6 +140,7 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
     if (!request || typeof request !== 'object' || typeof request.create !== 'boolean' || typeof request.branch !== 'string') throw new TypeError('Invalid worktree request');
     const planned = folders.take(options.cwd, request.token);
     if (planned.agent && (request.branch !== planned.agent || !request.create)) throw new TypeError('Invalid worktree request');
+    if (planned.agent) await checkAgentFolder(planned.main);
     const result = await undo.perform(options.cwd, 'worktrees:add', [], () => addWorktree({ ...options, path: planned.folder, branch: request.branch,
       create: request.create, startPoint: request.create ? request.startPoint : null }));
     if (!result.ok) return result;
@@ -159,7 +170,8 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
   handler('worktrees:open', 2, async (options, folder) => {
     const found = await findWorktree({ ...options, path: folder });
     if (found.prunable) throw new Error(ui`This worktree’s folder is gone. Prune it instead.`);
-    return repositories.add(found.path);
+    if (!found.main && !(await linkedCheckouts(options)).get(canonicalFolder(found.path))?.intact) throw new Error(ui`The .git file of this folder does not lead to its repository.`);
+    return await confirmRepository(found.path) ? repositories.add(found.path) : repositories.snapshot();
   });
   /** Everything a worktree changed since its branch left the base, and one file of it. */
   handler('worktrees:review', 2, (options, folder) => loadWorktreeReview({ ...options, folder }));
@@ -183,8 +195,20 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
     if (plan.problem) return { ok: false, message: plan.problem };
     // Git names the base folder resolved; Undo keys on the folder as the tab holds it.
     const undoCwd = sameFolder(plan.basePath, options.cwd) ? options.cwd : plan.basePath;
-    return undo.perform(undoCwd, 'worktree:commit', [], () => squashWorktree({ ...options, folder, message: request.message,
-      branchOid: request.branchOid, baseOid: request.baseOid }));
+    // The base gets a commit, so the checks every commit to it gets run on this one too.
+    const automation = (event, cwd, extra = {}) => triggerPipeline({ event, repoId: options.repository.id, cwd, log: journal, automations, runs: automationRuns,
+      loginPath: automationPath, operation: `Squash into ${plan.base}: ${event}`, ...extra });
+    const beforeCommit = async cwd => {
+      for (const [event, extra] of [['pre-commit', {}], ['commit-msg', { message: request.message }]]) {
+        const checks = await automation(event, cwd, extra);
+        if (checks.blocked) return stepReason(checks.steps);
+      }
+      return null;
+    };
+    const result = await undo.perform(undoCwd, 'worktree:commit', [], () => squashWorktree({ ...options, folder, message: request.message,
+      branchOid: request.branchOid, baseOid: request.baseOid, beforeCommit }));
+    if (result.ok) void automation('post-commit', plan.basePath).catch(() => {});
+    return result;
   });
 
   function sameFolder(a, b) {

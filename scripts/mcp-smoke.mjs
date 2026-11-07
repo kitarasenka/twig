@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { _electron as electron } from 'playwright';
-import { mkdtemp, mkdir, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -205,16 +205,49 @@ try {
   const proposalDialog = page.getByRole('dialog', { name: 'Commit proposed by an agent' });
   let answer = bridge.request('tools/call', { name: 'propose_commit', arguments: proposal });
   await proposalDialog.waitFor();
+  // The window took the focus from whatever the person was typing in: it opens in the
+  // message, not on the close button, and Enter and Space do nothing for a moment.
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'proposal-message', 'the proposal opens in its message');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
+  assert.equal(await proposalDialog.getByLabel(/^Message/).inputValue(), proposal.message, 'the keys that were on their way changed nothing');
+  await page.waitForTimeout(1100);
   await proposalDialog.getByText('M +1 -0 README.md', { exact: true }).waitFor();
-  await proposalDialog.getByText('A notes.todo', { exact: true }).waitFor();
+  await proposalDialog.getByText(/^A \+\d+ -0 notes\.todo$/).waitFor();
   assert.equal(await proposalDialog.getByLabel(/^Message/).inputValue(), proposal.message);
   await proposalDialog.getByText('$ git add --all').waitFor();
   await proposalDialog.getByText(/Push goes to origin\/main\./).waitFor();
+  await proposalDialog.locator('.proposal-url', { hasText: 'demo-sandbox-remote.git' }).waitFor();
+  // A click on a file shows its change, from the tree the commit would take.
+  await proposalDialog.getByRole('button', { name: 'M +1 -0 README.md', exact: true }).click();
+  await proposalDialog.locator('.proposal-diff .diff-added').first().waitFor();
+  await assert.rejects(page.evaluate(() => window.twig.getCommitProposalFile('x', 1)), /Invalid MCP request/);
+  await assert.rejects(page.evaluate(() => window.twig.getCommitProposal().then(current => window.twig.getCommitProposalFile(current.id, '../outside'))), /Not a file of this proposal/);
+  // Proposals are paced, and the agent is told in a code of its own.
+  assert.equal((await bridge.tool('propose_commit', proposal)).error.code, 'RATE_LIMITED');
   assert.equal(await proposalDialog.getByLabel('Tag this commit').isChecked(), false, 'propose_commit starts without a tag');
   for (const theme of ['dark', 'light']) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
     await page.screenshot({ path: `artifacts/mcp-proposal-${theme}.png`, animations: 'disabled' });
   }
+  // A new proposal replaces the one on screen: it says what it brought, and a click meant for the old one cannot land on it.
+  await page.waitForTimeout(5100);
+  const firstAnswer = answer;
+  await writeFile(path.join(demo.path, 'install.sh'), 'echo hi\n');
+  answer = bridge.request('tools/call', { name: 'propose_commit', arguments: { ...proposal, push: true } });
+  await proposalDialog.getByText('The agent replaced the proposal you were reading.').waitFor();
+  await proposalDialog.getByText('New or different: install.sh.').waitFor();
+  await proposalDialog.getByText('It now asks to push.').waitFor();
+  assert.equal((await firstAnswer).result.content[0].text, 'superseded: a newer proposal replaced it\n');
+  assert.equal(await proposalDialog.getByRole('button', { name: /^Commit: Read the new proposal first/ }).isDisabled(), true, 'the buttons wait');
+  assert.equal(await proposalDialog.getByRole('button', { name: /^Commit & Push: Read the new proposal first/ }).isDisabled(), true);
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    await page.screenshot({ path: `artifacts/mcp-replaced-${theme}.png`, animations: 'disabled' });
+  }
+  await proposalDialog.getByRole('button', { name: 'I have read it' }).click({ timeout: 4000 });
+  await proposalDialog.getByRole('button', { name: 'Commit & Push', exact: true }).waitFor();
+  await rm(path.join(demo.path, 'install.sh'));
   await proposalDialog.getByRole('button', { name: 'Cancel' }).click();
   assert.equal((await answer).result.content[0].text, 'cancelled by user\n');
   await proposalDialog.waitFor({ state: 'hidden' });
@@ -223,9 +256,18 @@ try {
 
   // Commit with an edited message: the agent gets the hash and the subject that was used, and Undo takes it back.
   const headBefore = (await bridge.tool('get_workspace_context')).branch.head;
+  await page.waitForTimeout(5100);
   answer = bridge.request('tools/call', { name: 'propose_commit', arguments: proposal });
   await proposalDialog.waitFor();
   await proposalDialog.getByLabel(/^Message/).fill('docs: README edit from an agent');
+  // An edited message is not lost to Esc: it asks, and a second Esc goes back to the text.
+  await page.keyboard.press('Escape');
+  await proposalDialog.getByRole('button', { name: 'Keep editing', exact: true }).waitFor();
+  assert.equal(await proposalDialog.isVisible(), true);
+  await page.keyboard.press('Escape');
+  await proposalDialog.getByRole('button', { name: 'Keep editing', exact: true }).waitFor({ state: 'detached' });
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'proposal-message');
+  assert.equal(await proposalDialog.getByLabel(/^Message/).inputValue(), 'docs: README edit from an agent');
   await proposalDialog.getByRole('button', { name: 'Commit', exact: true }).click();
   const committed = (await answer).result.content[0].text;
   assert.match(committed, /^committed [0-9a-f]{12} on main: docs: README edit from an agent \(message edited in 🌱 Twig\)\n$/);
@@ -239,6 +281,7 @@ try {
   // new_version: the same dialog with the version and the tag on. The demo has no package.json,
   // so the version comes from its last tag (v0.0.2) and the tag follows the chosen step.
   const releaseDialog = page.getByRole('dialog', { name: 'New version proposed by an agent' });
+  await page.waitForTimeout(5100);
   answer = bridge.request('tools/call', { name: 'new_version', arguments: { repository: demo.path, push: false } });
   await releaseDialog.waitFor();
   assert.equal(await releaseDialog.getByLabel('Tag this commit').isChecked(), true);
@@ -265,6 +308,28 @@ try {
   assert.equal((await page.evaluate(id => window.twig.getTagDetails(id), demo.id)).some(tag => tag.name === 'v0.1.0'), false, 'the first Undo deletes the tag');
   await page.evaluate(id => window.twig.moveUndo(id, 'undo'), demo.id);
   assert.equal((await bridge.tool('get_workspace_context')).branch.head, headBefore, 'the second takes the commit back');
+
+  // The dialog is modal, so the way out of a stream of proposals is in it.
+  await page.waitForTimeout(5100);
+  await writeFile(path.join(demo.path, 'again.txt'), 'again\n');
+  answer = bridge.request('tools/call', { name: 'propose_commit', arguments: proposal });
+  await proposalDialog.getByRole('button', { name: 'Stop agents proposing commits' }).click();
+  assert.match((await answer).result.content[0].text, /^not committed: commits from agents were turned off/);
+  await proposalDialog.waitFor({ state: 'hidden' });
+  assert.equal((await page.evaluate(() => window.twig.getMcpSettings())).allowCommits, false);
+  await rm(path.join(demo.path, 'again.txt'));
+
+  // Settings: what 🌱 Twig kept of its commands can be cleared.
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Clear journal' }).click();
+  await page.getByText('Cleared.', { exact: true }).waitFor();
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    await page.screenshot({ path: `artifacts/settings-journal-${theme}.png`, animations: 'disabled' });
+  }
+  await page.keyboard.press('Escape');
+  assert.ok((await page.evaluate(() => window.twig.getConsoleEntries())).length < 5, 'the journal is empty but for what started since');
+  assert.equal((await stat(path.join(profile, 'command-log.jsonl'))).mode & 0o777, 0o600, 'and private');
 
   // The choice survives a restart, and the same bridge reattaches by itself.
   await app.close();

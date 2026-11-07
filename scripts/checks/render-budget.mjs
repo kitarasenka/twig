@@ -9,6 +9,8 @@ import { readFile } from 'node:fs/promises';
 import { CONSOLE_LIMIT, applyConsoleUpdates } from '../../renderer/src/app/console-entries.js';
 import { keepUnchangedRepositories } from '../../renderer/src/app/workspace-identity.js';
 import { localDayKey, relativeTime } from '../../renderer/src/ui/relative-time.js';
+import { LIST_BUDGET, budgetSlice } from '../../renderer/src/ui/list-budget.js';
+import { PAIRED_ROWS, annotatePatch } from '../../renderer/src/features/diff/intraline.js';
 
 // --- journal events in batches ------------------------------------------------
 // The one-event-at-a-time version this replaced, as the reference.
@@ -81,4 +83,42 @@ assert.match(drag, /return useMemo\(\(\) => \{/, 'the drag object keeps its iden
 const graph = await source('features/graph/CommitGraph.jsx');
 assert.match(graph, /const CommitRow = memo\(/);
 assert.ok(!/new Intl\./.test(graph), 'no Intl formatter is built per row');
-console.log('Render budget checks passed: batched journal events, kept identities, local day breaks, wording, memoized tabs and rows.');
+
+// --- long lists -------------------------------------------------------------------
+const longList = Array.from({ length: LIST_BUDGET + 20 }, (_, index) => index);
+assert.deepEqual(budgetSlice(longList, false), { shown: longList.slice(0, LIST_BUDGET), hidden: longList.length }, 'past the budget: the first rows, and how many there are');
+assert.deepEqual(budgetSlice(longList, true), { shown: longList, hidden: 0 }, 'Show all draws every one');
+const shortList = longList.slice(0, LIST_BUDGET);
+assert.equal(budgetSlice(shortList, false).shown, shortList, 'a list within the budget is drawn as it is');
+assert.equal(budgetSlice(shortList, false).hidden, 0);
+const panel = await source('features/worktree/WorktreePanel.jsx');
+const staging = await source('features/worktree/WorktreeScreen.jsx');
+for (const [name, file] of [['panel', panel], ['staging', staging]]) {
+  assert.match(file, /<FileList files=/, `${name}: its lists keep the budget`);
+  assert.match(file, /useDeferredValue\(filter\)/, `${name}: the filter does not hold the keystroke`);
+  assert.ok(!/<FileTree /.test(file), `${name}: no list is drawn around the budget`);
+}
+assert.match(await source('features/diff/FileTree.jsx'), /useMemo\(\(\) => extensionOptions/, 'the type choices are counted once per list');
+const board = await source('features/tools/WorktreesScreen.jsx');
+assert.match(board, /const ReviewFiles = memo\(/, 'opening a file does not draw the review again');
+assert.match(board, /const CompareFiles = memo\(/);
+assert.equal(board.match(/useBudget\(files\)/g).length, 2, 'both lists of the board keep the budget');
+assert.match(await source('features/refs/RefsScreen.jsx'), /budget\.shown\.map/, 'the refs screen keeps the budget');
+const consoleView = await source('app/Console.jsx');
+assert.match(consoleView, /const ConsoleEntry = memo\(/, 'a console row keeps its render while its entry is the same');
+assert.match(consoleView, /visible\.slice\(0, limit\)/, 'and a full journal is drawn in part');
+assert.match(consoleView, /setLimit\(Infinity\)/, 'Show output still finds an old failure');
+assert.match(workspace, /const RefLeaf = memo\(/, 'moving through the graph draws only the refs it selects');
+assert.match(workspace, /const BranchTree = memo\(/);
+assert.match(workspace, /useDeferredValue\(filter\)/, 'the sidebar does not hold the keystroke');
+assert.ok(!/<BranchTree [^>]*=>/s.test(workspace.match(/<BranchTree node=\{refSections[^>]*\/>/s)[0]), 'the sidebar tree gets no inline function');
+
+assert.match(await source('features/diff/DiffLines.jsx'), /highlight && rows\.length <= PAIRED_ROWS/, 'a diff of thousands of hunks is not highlighted hunk by hunk');
+// A diff past the limit keeps its colours and numbers, without the pairing.
+const pair = lines => `@@ -1,${lines} +1,${lines} @@\n${Array.from({ length: lines }, (_, index) => `-line ${index} alpha`).join('\n')}\n${Array.from({ length: lines }, (_, index) => `+line ${index} beta`).join('\n')}\n`;
+assert.ok(annotatePatch(pair(10)).some(row => row.segments), 'a usual diff marks what changed in a line');
+const huge = annotatePatch(pair(PAIRED_ROWS));
+assert.ok(huge.every(row => row.segments === null), 'a huge one does not');
+assert.equal(huge[1].cls, 'diff-deleted'); assert.equal(huge[1].oldLine, 1); assert.equal(huge.at(-1).newLine, PAIRED_ROWS);
+
+console.log('Render budget checks passed: batched journal events, kept identities, local day breaks, wording, memoized tabs and rows, long lists drawn in part, the sidebar and console rows memoized, huge diffs without pairing.');

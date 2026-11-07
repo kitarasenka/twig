@@ -5,6 +5,7 @@ import '@fontsource/fira-sans/500.css';
 import '@fontsource/fira-sans/600.css';
 import '@fontsource/fira-code/400.css';
 import App from './app/App.jsx';
+import ErrorBoundary from './ui/ErrorBoundary.jsx';
 import { startLanguage } from './i18n/load.js';
 import { getLocale } from './i18n/i18n.js';
 import './ui/tokens.css';
@@ -25,7 +26,7 @@ function Root() {
     window.addEventListener('twig:language', follow);
     return () => window.removeEventListener('twig:language', follow);
   }, []);
-  return <App key={`${getLocale()}:${generation}`} />;
+  return <ErrorBoundary whole key={`${getLocale()}:${generation}`}><App /></ErrorBoundary>;
 }
 
 // The language comes before the first paint, so no screen flashes in English.

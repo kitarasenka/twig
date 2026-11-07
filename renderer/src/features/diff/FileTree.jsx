@@ -32,7 +32,7 @@ export default function FileTree({ files, renderFile, startOpen = true, resetKey
  * so the type choices count what is there before any filter.
  */
 export function FileListControls({ view, onView, filter, onFilter, extension, onExtension, paths, label }) {
-  const options = extensionOptions(paths, extension);
+  const options = useMemo(() => extensionOptions(paths, extension), [paths, extension]);
   return <>
     <div className="file-controls">
       <div className="segmented" role="group" aria-label={t`Show ${label} as`}>

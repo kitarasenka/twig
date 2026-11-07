@@ -31,6 +31,8 @@ try {
   await page.getByRole('button', { name: 'New repository tab', exact: true }).click();
   await page.getByRole('button', { name: 'Clone repository', exact: true }).click();
   const clone = page.getByRole('dialog', { name: 'Clone repository' });
+  await clone.getByLabel('Repository URL').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.closest('label')?.textContent.startsWith('Repository URL')), true, 'Clone opens in its address field');
   await clone.getByRole('textbox', { name: 'Repository URL', exact: true }).fill(bare);
   await clone.getByRole('textbox', { name: 'New folder name', exact: true }).fill('twig-clone');
   await clone.getByRole('button', { name: 'Choose parent folder', exact: true }).click();

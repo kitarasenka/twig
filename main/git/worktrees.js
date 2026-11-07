@@ -1,5 +1,7 @@
-import { stat } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { lstat, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { gitFileLeadsTo, linkedWorktrees } from './config-risk.js';
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
 import { validateRefName } from './refs-ops.js';
@@ -44,6 +46,25 @@ export async function loadWorktrees({ cwd, log }) {
   return parseWorktreeList(result.stdout).map(worktree => ({ ...worktree, current: path.resolve(worktree.path) === here }));
 }
 
+export const canonicalFolder = folder => { try { return realpathSync.native(folder); } catch { return path.resolve(folder); } };
+
+/**
+ * Git in a linked worktree, with the `.git` file of its folder left out. That
+ * file lies in the folder an agent writes to, and whatever it names, Git would
+ * read as this checkout's repository — its config with its filters. Git's own
+ * record of the worktree lies in the repository's common directory, so
+ * `--git-dir` and `--work-tree` come from there. Keyed by the folder, resolved;
+ * `intact` says whether the `.git` file in it still leads back.
+ * @returns {Promise<Map<string, { args: string[], intact: boolean }>>}
+ */
+export async function linkedCheckouts({ cwd, log }) {
+  const result = await runGit({ cwd, log, argv: ['rev-parse', '--git-common-dir'], operation: 'Background: locate the repository folder' });
+  if (result.code !== 0) throw new Error(ui`Git could not locate this repository.`);
+  const links = await linkedWorktrees(path.resolve(cwd, result.stdout.trimEnd()));
+  return new Map(await Promise.all(links.map(async ({ admin, checkout }) => [canonicalFolder(checkout),
+    { args: [`--git-dir=${admin}`, `--work-tree=${checkout}`], intact: await gitFileLeadsTo(checkout, admin) }])));
+}
+
 /** `feature/login fix` → `feature-login-fix`, for a folder name. */
 export function folderName(branch) {
   return String(branch).replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 80) || 'worktree';
@@ -59,12 +80,30 @@ export const AGENT_FOLDER = '.claude/worktrees';
 export const agentBranch = name => `agent/${name}`;
 
 /**
+ * `.claude` is a name a repository can commit, as a link to anywhere: `git
+ * worktree add` would follow it and write the branch's files there. Each folder
+ * on the way must be a real folder, and it must stay inside the main checkout.
+ */
+export async function checkAgentFolder(main) {
+  let folder = main;
+  for (const part of AGENT_FOLDER.split('/')) {
+    folder = path.join(folder, part);
+    const info = await lstat(folder).catch(() => null);
+    if (!info) return;
+    if (!info.isDirectory()) throw new Error(ui`${folder} is not a folder, so agent worktrees cannot go there.`);
+  }
+  const relative = path.relative(canonicalFolder(main), canonicalFolder(folder));
+  if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(ui`${folder} is not a folder, so agent worktrees cannot go there.`);
+}
+
+/**
  * Where a new worktree for `branch` goes unless the person picks a folder:
  * next to the main one, as `<repository>-<branch>`, or, for an agent, in the
  * main checkout's `.claude/worktrees/<name>` — with a number added while that
  * name is taken: Git refuses a folder that already has files in it.
  */
 export async function suggestWorktreePath({ main, branch, parent = null, agent = false }) {
+  if (agent) await checkAgentFolder(main);
   const base = agent ? path.join(main, AGENT_FOLDER, folderName(branch.replace(/^agent\//, '')))
     : parent ? path.join(parent, folderName(branch)) : `${main}-${folderName(branch)}`;
   for (let attempt = 1; attempt < 100; attempt += 1) {
@@ -112,8 +151,13 @@ export async function addWorktree({ cwd, log, ...request }) {
  * from here.
  */
 export async function findWorktree({ cwd, log, path: wanted }) {
+  return pickWorktree(await loadWorktrees({ cwd, log }), wanted);
+}
+
+/** The worktree of this folder in a list already read. */
+export function pickWorktree(list, wanted) {
   if (typeof wanted !== 'string' || !path.isAbsolute(wanted)) throw new TypeError('Invalid worktree folder');
-  const found = (await loadWorktrees({ cwd, log })).find(entry => path.resolve(entry.path) === path.resolve(wanted));
+  const found = list.find(entry => path.resolve(entry.path) === path.resolve(wanted));
   if (!found) throw new TypeError(ui`There is no such worktree.`);
   return found;
 }

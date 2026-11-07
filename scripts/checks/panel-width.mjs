@@ -1,3 +1,4 @@
+import { CONSOLE_SIZE, clampConsoleHeight, consoleDefaultHeight, readConsoleHeight, writeConsoleHeight } from '../../renderer/src/ui/panel-width.js';
 import assert from 'node:assert/strict';
 import { FILE_HISTORY_PANEL_SIZE, PANEL_DEFAULT, PANEL_MAX, PANEL_MIN, clampPanelWidth, dragPanelWidth, panelWidthLimits }
   from '../../renderer/src/ui/panel-width.js';
@@ -35,5 +36,25 @@ assert.deepEqual(panelWidthLimits(Infinity, FILE_HISTORY_PANEL_SIZE), { min: PAN
 assert.equal(dragPanelWidth(560, -5000, 4000, 'right', FILE_HISTORY_PANEL_SIZE), PANEL_MAX * 2);
 assert.equal(clampPanelWidth(PANEL_MAX * 2, 900, FILE_HISTORY_PANEL_SIZE), 660);
 assert.ok(PANEL_MIN <= FILE_HISTORY_PANEL_SIZE.defaultWidth && FILE_HISTORY_PANEL_SIZE.defaultWidth <= FILE_HISTORY_PANEL_SIZE.max);
+
+// The console: a default that leaves the graph readable, a limit by share of the window.
+assert.equal(consoleDefaultHeight(640), 160);
+assert.equal(consoleDefaultHeight(1600), CONSOLE_SIZE.defaultMax);
+assert.equal(clampConsoleHeight(600, 640), 384, 'never more than 60 % of the window');
+assert.equal(clampConsoleHeight(40, 640), CONSOLE_SIZE.min);
+assert.equal(clampConsoleHeight(Number.NaN, 640), 160);
+{
+  const store = new Map();
+  const storage = { getItem: key => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: key => store.delete(key) };
+  assert.equal(readConsoleHeight(storage), null);
+  writeConsoleHeight(storage, 300);
+  assert.equal(readConsoleHeight(storage), 300);
+  writeConsoleHeight(storage, null);
+  assert.equal(readConsoleHeight(storage), null);
+  store.set('twig:console-height', 'junk');
+  assert.equal(readConsoleHeight(storage), null);
+  assert.equal(readConsoleHeight({ getItem() { throw new Error('denied'); } }), null);
+  writeConsoleHeight({ setItem() { throw new Error('denied'); } }, 200);
+}
 
 console.log('panel-width check passed');

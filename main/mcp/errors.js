@@ -19,6 +19,7 @@ export const ERROR_CODES = Object.freeze([
   'REPOSITORY_BUSY',
   'CONFIRMATION_UNAVAILABLE',
   'PROPOSAL_NOT_FOUND',
+  'RATE_LIMITED',
   // Only the stdio bridge answers with this one, when 🌱 Twig is not listening.
   'TWIG_UNAVAILABLE'
 ]);

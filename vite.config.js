@@ -16,5 +16,6 @@ export default defineConfig({
     }
   }],
   server: { host: '127.0.0.1', port: 5188, strictPort: true },
-  build: { outDir: '../dist/renderer', emptyOutDir: true }
+  // Nothing inlined: the page's font-src is 'self', and a small font as a data: URL breaks it.
+  build: { outDir: '../dist/renderer', emptyOutDir: true, assetsInlineLimit: 0 }
 });

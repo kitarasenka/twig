@@ -22,6 +22,15 @@ export function writeClosedTabs(storage, closed) {
   catch { /* The choice remains session-local if storage is unavailable. */ }
 }
 
+/** A repository located elsewhere has a new id: a closed tab stays closed under it. */
+export function moveClosedTab(closed, from, to) {
+  if (!closed.has(from)) return closed;
+  const next = new Set(closed);
+  next.delete(from);
+  next.add(to);
+  return next;
+}
+
 /**
  * The tab to start on: the remembered active repository while its tab is open,
  * otherwise the first open one; null when every tab is closed.

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { CommandLog } from '../../main/command-log.js';
@@ -13,7 +14,7 @@ import { createMcpSession } from '../../main/mcp/session.js';
 import { bindTools } from '../../main/mcp/tools/index.js';
 import { TOOLS } from '../../main/mcp/protocol.mjs';
 import { McpStore } from '../../main/mcp-store.js';
-import { actionLabels, outcomeNote, primaryAction, proposalCommands, pushLine, releaseState, stepLabel, totalsLine } from '../../renderer/src/features/proposal/proposal-view.js';
+import { actionLabels, outcomeNote, primaryAction, proposalCommands, pushLine, releaseState, replacedLines, staleLine, stepLabel, totalsLine } from '../../renderer/src/features/proposal/proposal-view.js';
 import { parseVersionTag, pickPreviousTag, releaseTagName, releaseVersion, tagNameProblem, tagPushArgv } from '../../renderer/src/features/automations/release-tag.js';
 import { buildPushRefArgv } from '../../main/git/sync.js';
 import { createBumper } from '../../main/automation/bump.js';
@@ -63,7 +64,7 @@ try {
     // With a tag: the tag after the commit, its push after the branch's, spelled as sync.js pushes a ref.
     const tagged = { ...view, pushTarget: { ...view.pushTarget, remote: 'origin' } };
     assert.deepEqual(proposalCommands(tagged, true, { tag: 'v1.2.4' }), ['git add --all', 'git commit --file=- --cleanup=strip', 'git tag -- v1.2.4 HEAD',
-      'git push --set-upstream origin x', 'git push --progress origin -- refs/tags/v1.2.4']);
+      'git push --set-upstream origin x', 'git push --progress origin -- refs/tags/v1.2.4:refs/tags/v1.2.4']);
     assert.deepEqual(proposalCommands(tagged, false, { commit: false, tag: 'v1.2.4' }), ['git tag -- v1.2.4 HEAD'], 'a release with nothing to commit only tags');
     assert.deepEqual(tagPushArgv('my/remote', 'v1'), buildPushRefArgv({ remote: 'my/remote', ref: 'refs/tags/v1' }));
     assert.deepEqual(actionLabels(false), { commit: 'Create tag', push: 'Tag & Push' });
@@ -127,7 +128,7 @@ try {
   let allowed = false;
   let windowOpen = true;
   const shown = [];
-  const proposals = createCommitProposals({ log, undo, automations, runs, isAllowed: () => allowed, present: view => { if (!windowOpen) return false; shown.push(view); return true; } });
+  const proposals = createCommitProposals({ log, undo, automations, runs, minIntervalMs: 0, isAllowed: () => allowed, present: view => { if (!windowOpen) return false; shown.push(view); return true; } });
   const repos = [{ id: cwd, name: 'repo', path: cwd, available: true }];
   const ctx = createToolContext({ repositories: { snapshot: () => ({ repositories: repos }) }, journal: log, getActiveId: () => cwd, getUiContext: () => null, proposals, waitMs: 30 });
   const session = createMcpSession({ version: '9.9.9', tools: bindTools(ctx) });
@@ -158,7 +159,7 @@ try {
     const view = shown.at(-1);
     assert.equal(view.branch, 'main');
     assert.equal(view.message, message);
-    assert.deepEqual(view.files.map(file => file.line), ['D +0 -1 README.md', 'A notes/new.txt', 'M +1 -0 src/app.js']);
+    assert.deepEqual(view.files.map(file => file.line), ['D +0 -1 README.md', 'A +1 -0 notes/new.txt', 'M +1 -0 src/app.js']);
     assert.equal(view.pushTarget.label, 'origin/main');
     assert.equal(proposals.current().id, view.id);
     await proposals.decide(view.id, { action: 'cancel', message });
@@ -231,7 +232,7 @@ try {
     const done = await proposals.decide(shown.at(-1).id, { action: 'commit-push', message });
     const oid = await head();
     assert.equal(done.outcome, `committed ${oid.slice(0, 12)} on main: feat(app): add two\npushed to origin/main`);
-    assert.equal((await runGit({ cwd: bare, log, argv: ['rev-parse', 'main'] })).stdout.trim(), oid);
+    assert.equal((await runGit({ cwd: bare, log, argv: [`--git-dir=${bare}`, 'rev-parse', 'main'] })).stdout.trim(), oid);
 
     await git('switch', '-q', '-c', 'topic');
     await write('topic.txt', 'topic\n');
@@ -270,7 +271,7 @@ try {
   // new_version: package.json bumped, the commit tagged after the previous tag, both pushed.
   {
     const bumper = createBumper({ log, automations });
-    const releases = createCommitProposals({ log, undo, automations, runs, bump: bumper, isAllowed: () => true, present: view => { shown.push(view); return true; } });
+    const releases = createCommitProposals({ log, undo, automations, runs, bump: bumper, minIntervalMs: 0, isAllowed: () => true, present: view => { shown.push(view); return true; } });
     const releaseCtx = createToolContext({ repositories: { snapshot: () => ({ repositories: repos }) }, journal: log, getActiveId: () => cwd, getUiContext: () => null, proposals: releases, waitMs: 30 });
     const releaseSession = createMcpSession({ version: '9.9.9', tools: bindTools(releaseCtx) });
     const release = async args => {
@@ -304,8 +305,8 @@ try {
       `tagged app-v1.5.0 at ${oid.slice(0, 12)}`, 'pushed to origin/topic', 'pushed tag app-v1.5.0 to origin'].join('\n'));
     assert.match(await readFile(path.join(cwd, 'package.json'), 'utf8'), /"version": "1\.5\.0"/);
     assert.equal(await git('status', '--porcelain'), '');
-    assert.equal((await runGit({ cwd: bare, log, argv: ['rev-parse', 'app-v1.5.0'] })).stdout.trim(), oid, 'the tag reached the remote');
-    assert.equal((await runGit({ cwd: bare, log, argv: ['rev-parse', 'topic'] })).stdout.trim(), oid, 'and the commit');
+    assert.equal((await runGit({ cwd: bare, log, argv: [`--git-dir=${bare}`, 'rev-parse', 'app-v1.5.0'] })).stdout.trim(), oid, 'the tag reached the remote');
+    assert.equal((await runGit({ cwd: bare, log, argv: [`--git-dir=${bare}`, 'rev-parse', 'topic'] })).stdout.trim(), oid, 'and the commit');
 
     // No bump on a clean tree: only HEAD is tagged — no commit, no message needed.
     await release({});
@@ -368,6 +369,227 @@ try {
     assert.equal(await readFile(path.join(cwd, 'x.txt'), 'utf8'), 'x\n', 'the first worktree is untouched');
   }
   assert.ok(log.list().some(entry => entry.operation === 'Stage all changes'), 'the commands are in the journal');
+
+  // --- what is shown is what is committed and where it goes -------------------------------------
+  const sh = (folder, ...argv) => execFileSync('git', argv, { cwd: folder, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  let stands = 0;
+  async function stand({ clock = null } = {}) {
+    const base = path.join(root, `stand-${++stands}`);
+    const folder = path.join(base, 'repo');
+    const remote = path.join(base, 'remote.git');
+    await mkdir(folder, { recursive: true });
+    sh(base, 'init', '-q', '--bare', remote);
+    sh(folder, 'init', '-q', '-b', 'main');
+    sh(folder, 'config', 'user.name', 'Ada'); sh(folder, 'config', 'user.email', 'a@example.com'); sh(folder, 'config', 'commit.gpgSign', 'false');
+    await writeFile(path.join(folder, 'README.md'), '# r\n');
+    await writeFile(path.join(folder, 'app.js'), 'export const a = 1;\n');
+    sh(folder, 'add', '-A'); sh(folder, 'commit', '-qm', 'init');
+    sh(folder, 'remote', 'add', 'origin', remote); sh(folder, 'push', '-q', '-u', 'origin', 'main');
+    const own = new AutomationsStore(path.join(base, 'auto')); const ownRuns = new AutomationRunsStore(path.join(base, 'auto'));
+    await Promise.all([own.load(), ownRuns.load()]);
+    const ownUndo = new UndoService({ directory: path.join(base, 'undo'), log }); await ownUndo.load();
+    const views = [];
+    const focused = [];
+    const service = createCommitProposals({ log, undo: ownUndo, automations: own, runs: ownRuns, isAllowed: () => true, minIntervalMs: clock ? 5000 : 0, now: clock ?? Date.now,
+      present: (view, options = {}) => { views.push(view); focused.push(Boolean(options.focus)); return true; } });
+    const repo = { id: folder, name: 'repo', path: folder };
+    const propose = async (text, push = false) => {
+      const proposalId = await service.propose({ repo, message: text, push });
+      return views.at(-1).id === proposalId ? views.at(-1) : service.current();
+    };
+    return { base, folder, remote, automations: own, service, views, focused, propose, repo, write: (file, text) => writeFile(path.join(folder, file), text) };
+  }
+  const refsOf = folder => sh(folder, 'for-each-ref', '--format=%(refname)').split('\n');
+
+  // remote.origin.mirror set after the dialog was shown: asked again, and then one branch goes, not a mirror.
+  {
+    const s = await stand();
+    sh(s.folder, 'branch', 'colleague'); sh(s.folder, 'push', '-q', 'origin', 'colleague'); sh(s.folder, 'branch', '-qD', 'colleague');
+    sh(s.folder, 'tag', 'v1'); sh(s.folder, 'push', '-q', 'origin', 'v1'); sh(s.folder, 'tag', '-d', 'v1');
+    await s.write('app.js', 'export const a = 2;\n');
+    const view = await s.propose('fix: small', true);
+    assert.deepEqual(view.pushTarget.urls, [s.remote], 'the dialog names the address');
+    assert.deepEqual(view.pushTarget.argv, ['push', 'origin', 'refs/heads/main:refs/heads/main']);
+    sh(s.folder, 'config', 'remote.origin.mirror', 'true');
+    const stale = await s.service.decide(view.id, { action: 'commit-push', message: view.message });
+    assert.equal(stale.stale.staleWhy, 'push', 'the configuration moved, so the person is asked again');
+    assert.deepEqual(stale.stale.pushTarget.argv, ['-c', 'remote.origin.mirror=false', 'push', 'origin', 'refs/heads/main:refs/heads/main']);
+    assert.match(stale.stale.pushTarget.notes.join(), /mirror/, 'and told');
+    assert.equal(sh(s.folder, 'log', '-1', '--format=%s'), 'init', 'nothing happened yet');
+    const done = await s.service.decide(view.id, { action: 'commit-push', message: view.message });
+    assert.equal(done.ok, true, done.outcome);
+    assert.deepEqual(refsOf(s.remote), ['refs/heads/colleague', 'refs/heads/main', 'refs/tags/v1'], 'what only the remote had is still there');
+    assert.equal(sh(s.folder, 'status', '-sb'), '## main...origin/main', 'the remote-tracking ref followed: no "1 to push" badge');
+  }
+
+  // remote.origin.pushurl moved to another repository: the address is shown before anything reaches it.
+  {
+    const s = await stand();
+    const evil = path.join(s.base, 'evil.git');
+    sh(s.base, 'init', '-q', '--bare', evil);
+    await s.write('app.js', 'export const a = 2;\n');
+    const view = await s.propose('fix: small', true);
+    sh(s.folder, 'config', 'remote.origin.pushurl', evil);
+    const stale = await s.service.decide(view.id, { action: 'commit-push', message: view.message });
+    assert.deepEqual(stale.stale.pushTarget.urls, [evil], 'the new address is on screen');
+    assert.equal(sh(evil, 'for-each-ref'), '', 'and nothing went there');
+    await s.service.decide(view.id, { action: 'cancel', message: view.message });
+  }
+
+  // A + in remote.origin.push does not force: a colleague's commit stays, the push is refused.
+  {
+    const s = await stand();
+    const other = path.join(s.base, 'other');
+    sh(s.base, 'clone', '-q', '-b', 'main', s.remote, other);
+    sh(other, 'config', 'user.name', 'B'); sh(other, 'config', 'user.email', 'b@example.com');
+    await writeFile(path.join(other, 'theirs.txt'), 'x\n'); sh(other, 'add', '-A'); sh(other, 'commit', '-qm', 'colleague'); sh(other, 'push', '-q');
+    sh(s.folder, 'config', 'remote.origin.push', '+refs/heads/main:refs/heads/main');
+    await s.write('app.js', 'export const a = 2;\n');
+    const view = await s.propose('fix: small', true);
+    assert.match(view.pushTarget.notes.join(), /force/, 'the dialog says the force is not used');
+    const done = await s.service.decide(view.id, { action: 'commit-push', message: view.message });
+    assert.equal(done.ok, false);
+    assert.match(done.outcome, /push failed/);
+    assert.equal(sh(s.remote, 'log', '-1', '--format=%s', 'main'), 'colleague', 'the colleague\'s commit is still on the remote');
+  }
+
+  // Changed while a pre-push automation runs, past the check at the click: committed, not pushed.
+  {
+    const s = await stand();
+    const evil = path.join(s.base, 'evil.git');
+    sh(s.base, 'init', '-q', '--bare', evil);
+    await writeFile(path.join(s.folder, '.git', 'move.cjs'), `require('node:child_process').execFileSync('git', ['config', 'remote.origin.pushurl', ${JSON.stringify(evil)}]);\n`);
+    await s.automations.saveConfig(s.folder, { pipelines: [{ event: 'pre-push', name: 'Late', onFailure: 'block', actions: [{ type: 'command', name: 'move', command: 'node .git/move.cjs' }] }] });
+    await s.write('app.js', 'export const a = 2;\n');
+    const view = await s.propose('fix: small', true);
+    const done = await s.service.decide(view.id, { action: 'commit-push', message: view.message });
+    assert.equal(done.ok, false);
+    assert.match(done.outcome, /^committed .*\nnot pushed: where it would go changed/);
+    assert.equal(sh(evil, 'for-each-ref'), '', 'nothing reached the new address');
+  }
+
+  // Bytes of the same length with the time put back to the nanosecond: the tree sees them.
+  {
+    const s = await stand();
+    const file = path.join(s.folder, 'app.js');
+    await s.write('app.js', 'export const a = 2;\n');
+    const view = await s.propose('fix: bump');
+    const before = await stat(file, { bigint: true });
+    await s.write('app.js', 'export const a = 9;\n');
+    execFileSync('python3', ['-I', '-c', 'import os,sys; os.utime(sys.argv[1], ns=(int(sys.argv[2]), int(sys.argv[3])))', file, String(before.atimeNs), String(before.mtimeNs)]);
+    assert.equal((await stat(file, { bigint: true })).mtimeNs, before.mtimeNs);
+    const stale = await s.service.decide(view.id, { action: 'commit', message: view.message });
+    assert.ok(stale.stale, 'a swapped file is seen');
+    assert.equal(sh(s.folder, 'log', '-1', '--format=%s'), 'init');
+  }
+
+  // Staged by someone else during a slow automation: not committed, the person sees it first.
+  {
+    const s = await stand();
+    await writeFile(path.join(s.folder, '.git', 'sleep.cjs'), 'setTimeout(() => {}, 1200);\n');
+    await s.automations.saveConfig(s.folder, { pipelines: [{ event: 'pre-commit', name: 'Tests', onFailure: 'block', actions: [{ type: 'command', name: 'tests', command: 'node .git/sleep.cjs' }] }] });
+    await s.write('app.js', 'export const a = 2;\n');
+    const view = await s.propose('fix: small');
+    const pending = s.service.decide(view.id, { action: 'commit', message: view.message });
+    await new Promise(resolve => setTimeout(resolve, 700));
+    await s.write('late.js', 'late\n');
+    sh(s.folder, 'add', 'late.js');
+    const answer = await pending;
+    assert.equal(answer.stale?.staleWhy, 'checks', 'asked again');
+    assert.deepEqual(answer.stale.files.map(file => file.line), ['M +1 -1 app.js', 'A +1 -0 late.js'], 'with the file that arrived');
+    assert.equal(sh(s.folder, 'log', '-1', '--format=%s'), 'init');
+    await s.automations.saveConfig(s.folder, { pipelines: [] });
+    const done = await s.service.decide(view.id, { action: 'commit', message: view.message });
+    assert.equal(done.ok, true, done.outcome);
+    assert.equal(sh(s.folder, 'show', '--name-only', '--format=', 'HEAD'), 'app.js\nlate.js');
+  }
+
+  // An automation that formats and stages: the same question, and the second click commits.
+  {
+    const s = await stand();
+    await writeFile(path.join(s.folder, '.git', 'format.cjs'), `const fs = require('node:fs'); fs.writeFileSync('app.js', fs.readFileSync('app.js', 'utf8').replace('a=2', 'a = 2')); require('node:child_process').execFileSync('git', ['add', 'app.js']);\n`);
+    await s.automations.saveConfig(s.folder, { pipelines: [{ event: 'pre-commit', name: 'Format', onFailure: 'block', actions: [{ type: 'command', name: 'format', command: 'node .git/format.cjs' }] }] });
+    await s.write('app.js', 'export const a=2;\n');
+    const view = await s.propose('style: format');
+    const answer = await s.service.decide(view.id, { action: 'commit', message: view.message });
+    assert.equal(answer.stale?.staleWhy, 'checks');
+    const done = await s.service.decide(view.id, { action: 'commit', message: view.message });
+    assert.equal(done.ok, true, done.outcome);
+    assert.equal(sh(s.folder, 'show', 'HEAD:app.js'), 'export const a = 2;');
+  }
+
+  // A Git hook runs inside the commit: it cannot be stopped there, so it is told, and nothing is pushed.
+  {
+    const s = await stand();
+    const hook = path.join(s.folder, '.git', 'hooks', 'pre-commit');
+    await writeFile(hook, '#!/bin/sh\nprintf evil > backdoor.js\ngit add backdoor.js\n'); await chmod(hook, 0o755);
+    await s.write('app.js', 'export const a = 2;\n');
+    const view = await s.propose('fix: small', true);
+    const done = await s.service.decide(view.id, { action: 'commit-push', message: view.message, tag: 'v9' });
+    assert.equal(done.ok, false);
+    assert.match(done.outcome, /A Git hook changed what this commit takes, so it is not what you confirmed: backdoor\.js/);
+    assert.notEqual(sh(s.remote, 'rev-parse', 'main'), sh(s.folder, 'rev-parse', 'HEAD'), 'not pushed');
+    assert.equal(sh(s.folder, 'tag'), '', 'not tagged');
+  }
+  {
+    const s = await stand();
+    const hook = path.join(s.folder, '.git', 'hooks', 'commit-msg');
+    await writeFile(hook, '#!/bin/sh\nprintf "\\nChange-Id: I1\\n" >> "$1"\n'); await chmod(hook, 0o755);
+    await s.write('app.js', 'export const a = 2;\n');
+    const view = await s.propose('fix: small', true);
+    const done = await s.service.decide(view.id, { action: 'commit-push', message: view.message });
+    assert.equal(done.ok, true, 'a trailer from a hook is said, and the push goes');
+    assert.match(done.outcome, /\(message changed by a Git hook\)\npushed to origin\/main$/);
+  }
+
+  // New files have sizes; a skip-worktree entry is in the list; the file view reads the shown tree.
+  {
+    const s = await stand();
+    await s.write('app.js', 'export const a = 2;\n');
+    await s.write('new.txt', 'one\ntwo\nthree\n');
+    await s.write('logo.bin', Buffer.from([0, 1, 2, 3, 0]));
+    await s.write('big.txt', 'x\n'.repeat(600));
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: s.folder, input: 'hidden\n', encoding: 'utf8' }).trim();
+    sh(s.folder, 'update-index', '--cacheinfo', `100644,${blob},README.md`); sh(s.folder, 'update-index', '--skip-worktree', 'README.md');
+    const view = await s.propose('feat: files');
+    assert.deepEqual(view.files.map(file => file.line), ['M +1 -1 README.md', 'M +1 -1 app.js', 'A +600 -0 big.txt', 'A bin logo.bin', 'A +3 -0 new.txt']);
+    assert.deepEqual(view.totals, { insertions: 605, deletions: 2 }, 'a new file counts');
+    await s.write('app.js', 'export const a = 3;\n');
+    assert.match((await s.service.fileDiff(view.id, 'app.js')).patch, /\+export const a = 2;/, 'the tree shown, not the disk');
+    assert.match((await s.service.fileDiff(view.id, 'new.txt')).patch, /\+three/);
+    assert.match((await s.service.fileDiff(view.id, 'logo.bin')).note, /binary/);
+    assert.match((await s.service.fileDiff(view.id, 'big.txt')).note, /600 changed lines/);
+    await assert.rejects(s.service.fileDiff(view.id, '../secret'), TypeError, 'only a file of the proposal');
+    await assert.rejects(s.service.fileDiff('nope', 'app.js'));
+    assert.equal(sh(s.folder, 'diff', '--cached', '--name-only'), 'README.md', 'none of this touched the real index');
+  }
+
+  // A proposal swapped under the person says what it brought and takes no focus; proposals are paced per folder.
+  {
+    let time = 1_000_000;
+    const s = await stand({ clock: () => time });
+    await s.write('app.js', 'export const a = 2;\n');
+    const first = await s.propose('docs: fix a typo');
+    assert.equal(first.replaced, null, 'the first proposal is shown as ever');
+    assert.equal(s.focused.at(-1), true, 'and brings the window forward');
+    await assert.rejects(s.propose('docs: fix a typo', true), error => error.code === 'RATE_LIMITED' && /5 s/.test(error.message) && /await_commit/.test(error.extra.hint));
+    time += 4000;
+    await assert.rejects(s.propose('docs: fix a typo'), error => error.code === 'RATE_LIMITED' && /1 s/.test(error.message));
+    time += 1000;
+    await s.write('install.sh', 'curl x | sh\n');
+    const second = await s.propose('docs: fix a typo', true);
+    assert.deepEqual(second.replaced, { paths: ['install.sh'], more: 0, push: true, message: false });
+    assert.equal(s.focused.at(-1), false, 'a replacement lands in the dialog already there');
+    assert.deepEqual(replacedLines(second), ['The agent replaced the proposal you were reading.', 'New or different: install.sh.', 'It now asks to push.']);
+    await s.service.decide(second.id, { action: 'cancel', message: second.message });
+    time += 5000;
+    await s.propose('docs: again');
+    assert.equal(s.views.at(-1).replaced, null, 'nothing was on screen: nothing was replaced');
+    assert.equal(s.focused.at(-1), true);
+  }
+  assert.equal(staleLine({ staleWhy: 'push' }).includes('address'), true);
+  assert.equal(staleLine({ staleWhy: 'checks' }).includes('automations'), true);
+  assert.equal(staleLine({}).includes('files'), true);
 } finally {
   await rm(root, { recursive: true, force: true });
 }

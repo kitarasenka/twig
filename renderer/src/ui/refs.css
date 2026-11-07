@@ -87,6 +87,13 @@ button.danger:disabled { border-color: var(--border); }
 .reflog-toolbar { flex-wrap: wrap; }
 .reflog-intro { margin: 0; padding: var(--space-2) var(--space-4); font-size: var(--text-xs); line-height: 1.5; border-bottom: 1px solid var(--border); }
 .reflog-body { display: flex; flex: 1; min-height: 0; }
+.discard-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.discard-list { flex: 1; min-height: 0; margin: 0; padding: 0; list-style: none; overflow: auto; }
+.discard-list li { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border); }
+.discard-list li > div { flex: 1; min-width: 0; }
+.discard-list strong, .discard-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.discard-list strong { font-weight: 500; }
+.discard-list small { color: var(--muted); font-size: var(--text-xs); }
 .reflog-list { width: 440px; flex: none; overflow: auto; border-right: 1px solid var(--border); }
 .reflog-list > .button-wrap { display: inline-block; margin: var(--space-3) var(--space-4); }
 .reflog-list [role="listitem"] > button { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 2px; width: 100%;

@@ -57,7 +57,7 @@ export function registerRepositoryIpc(getWindow, entryUrl, { journal, repositori
     try {
       const result = await cloneRepository({ parent: destination.path, name, url, log: journal, signal: controller.signal });
       if (!result.ok) return result;
-      return { ...result, workspace: await repositories.add(result.path) };
+      return { ...result, workspace: await repositories.add(result.path, { made: true }) };
     } finally { clone = null; }
   });
   register('clone:cancel', 0, () => { clone?.abort(); return true; });

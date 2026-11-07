@@ -432,3 +432,19 @@ fonts are local. A Git client's settings panel and its docs page should stay cal
 
 **Not changed:** the 10–11 px eyebrow and caption sizes. They match the existing landing
 sections, and the 15 px body text in older landing sections was out of scope for this pass.
+
+## Window polish after the 2026-11 audit
+
+The skill was not re-run: nothing here is a new kind of element. Decisions, all on existing tokens:
+
+- **Tabs** are 148–240 px. Only the name gives way; the OFFLINE/DEMO label and the close button stay whole. The strip's hidden side fades with a `mask-image` (no scrollbar says it), and a chevron beside the plus lists every tab, ticked like any checkbox menu.
+- **The tab bar** carries the logo image alone: it already has the word in it.
+- **The commit menu** puts what is done to the commit first; each ref is one row with a submenu, named after the ref, in the row's badge order. Rows are 26 px. A list longer than the window shows a shade at the scrolled edge (`background-attachment: local` over `scroll`, in `--overlay`).
+- **A branch badge** of the checked-out branch is filled with `--accent`, text `--bg`, and stands first, beside the sprout.
+- **One heading per screen**: Back to history on the left, the screen's name right after it, the screen's own actions on the right. The History heading is the graph's and goes with it.
+- **The commit form** on the staging screen is one line until focused or written in; Amend, co-authors, the subject counter and Commit share one row. Its label is visually hidden, the placeholder says what to write.
+- **Notes** rise above the commit form (CSS `anchor()`), because Commit stands exactly where notes do.
+- **Disabled quiet trash** has no border and `--muted`: the one thing that cannot be pressed must not be the loudest.
+- **Small targets** keep their picture and grow a transparent hit area (`::after`, 3 px around), or the whole row takes the click (a diff line).
+- **Settings** has three groups with the `.shortcuts-group` look: Interface, Connections, This repository; the version line closes the window.
+- **Zoomed in** (toolbar under 840 CSS px) the tools show icons only, with their names kept for the tooltip and screen readers, and what still does not fit wraps. Under 900 CSS px the details panel waits for its button.

@@ -10,7 +10,7 @@ import {
 import { EditorStore } from '../../main/editor-store.js';
 import { absolutePath, buildFileMenu, fileManagerName } from '../../renderer/src/features/diff/file-menu.js';
 import { buildRefMenu, buildSectionMenu } from '../../renderer/src/features/refs/ref-menu.js';
-import { buildCommitMenu, refActionItems } from '../../renderer/src/features/ops/commit-menu.js';
+import { buildCommitMenu, flatMenuItems, refActionItems } from '../../renderer/src/features/ops/commit-menu.js';
 
 const A = '82df62445b05a04be53291bb36b5db80e46dad77';
 const B = 'ebb6e9d3dec115ba8b429d3b143db9d27777a083';
@@ -179,7 +179,7 @@ const tag = { type: 'tag', name: 'v1.0', fullName: 'refs/tags/v1.0', target: B }
   byKey(buildRefMenu({ ref: main, head, handlers }), 'ref-rename-refs/heads/main').run();
   assert.deepEqual(calls, [['renameBranch', 'main']], 'the checked-out branch can be renamed too');
   assert.equal(byKey(buildRefMenu({ ref: main, head, operation: { kind: 'rebase' }, handlers: {} }), 'ref-rename-refs/heads/main').reason,
-    'Finish or abort the rebase first');
+    'Finish or abort the rebase first.');
   assert.equal(keys(buildRefMenu({ ref: remote, head, remotes: ['origin'], handlers: {} })).some(key => key.startsWith('ref-rename-')), false,
     'a remote branch has no rename: Git cannot rename a ref on the server');
 }
@@ -210,7 +210,7 @@ const tag = { type: 'tag', name: 'v1.0', fullName: 'refs/tags/v1.0', target: B }
   // Mid-merge Git refuses everything that writes; reading and copying still work.
   const items = buildRefMenu({ ref: feature, head, remotes: ['origin'], operation: { kind: 'merge' }, handlers: {} });
   for (const key of ['checkout', 'merge', 'rebase', 'branch-from', 'ref-rename-refs/heads/feature/x', 'ref-delete-refs/heads/feature/x']) {
-    assert.equal(byKey(items, key).reason, 'Finish or abort the merge first', key);
+    assert.equal(byKey(items, key).reason, 'Finish or abort the merge first.', key);
   }
   for (const key of ['show', 'compare', 'copy-name', 'copy-sha']) assert.equal(byKey(items, key).reason, undefined, key);
 }
@@ -224,12 +224,12 @@ const tag = { type: 'tag', name: 'v1.0', fullName: 'refs/tags/v1.0', target: B }
   const items = buildRefMenu({ ref: feature, head, remotes: ['origin'], handlers });
   for (const key of ['show', 'checkout', 'merge-noff', 'rebase', 'compare', 'branch-from', 'copy-name', 'copy-sha']) byKey(items, key).run();
   assert.deepEqual(calls, [['show', feature], ['checkoutBranch', 'feature/x'], ['merge', 'feature/x', true], ['rebaseOnto', feature],
-    ['compare', feature], ['createBranchFrom', feature], ['copy', 'feature/x', 'Branch name'], ['copy', B, 'SHA']]);
+    ['compare', feature], ['createBranchFrom', feature], ['copy', 'feature/x', 'Branch name copied.'], ['copy', B, 'SHA copied.']]);
 }
 // The sidebar and the commit menu offer the very same management items for a ref.
 {
   const shared = refActionItems({ ref: feature, remotes: ['origin'], head, handlers: {} }).map(item => item.key);
-  const commitItems = keys(buildCommitMenu({ commit: { oid: B, parents: [A] }, refs: [feature], remotes: ['origin'], head, handlers: {} }));
+  const commitItems = keys(flatMenuItems(buildCommitMenu({ commit: { oid: B, parents: [A] }, refs: [feature], remotes: ['origin'], head, handlers: {} })));
   const sidebarItems = keys(buildRefMenu({ ref: feature, head, remotes: ['origin'], handlers: {} }));
   for (const key of shared) {
     assert.ok(commitItems.includes(key), `commit menu has ${key}`);
@@ -245,7 +245,7 @@ assert.equal(byKey(buildSectionMenu({ type: 'remote', head, remotes: [], handler
 assert.equal(byKey(buildSectionMenu({ type: 'remote', head, remotes: ['origin'], handlers: {} }), 'fetch').reason, undefined);
 assert.equal(byKey(buildSectionMenu({ type: 'local', head: { oid: null }, handlers: {} }), 'new-branch').reason, 'Nothing is checked out yet');
 assert.equal(byKey(buildSectionMenu({ type: 'tag', head, operation: { kind: 'rebase' }, handlers: {} }), 'new-tag').reason,
-  'Finish or abort the rebase first');
+  'Finish or abort the rebase first.');
 
 // --- rename dialog starts on the current name ------------------------------------------------
 {
@@ -257,7 +257,7 @@ assert.equal(byKey(buildSectionMenu({ type: 'tag', head, operation: { kind: 'reb
   }
   assert.match(dialogs, /useState\(initialValue\)/);
   assert.match(dialogs, /'That is the current name'/, 'an unchanged name is refused');
-  assert.match(workspace, /ref\.type === 'local' && matchesShortcut\(event, 'rename'\)/, 'the rename key renames a local branch in the sidebar');
+  assert.match(workspace, /item\.type === 'local' && matchesShortcut\(event, 'rename'\)/, 'the rename key renames a local branch in the sidebar');
 }
 
 // --- wiring parity -----------------------------------------------------------------------------

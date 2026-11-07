@@ -1,9 +1,10 @@
 import { ipcMain } from 'electron';
 import { isTrustedPage } from './security.js';
 import { commitWithBump } from './automation/bump.js';
-import { loadWorktree, loadWorktreeDiff } from './git/worktree.js';
+import { createHash } from 'node:crypto';
+import { loadUntrackedDiff, loadWorktree, loadWorktreeDiff } from './git/worktree.js';
 import { applySelection, intentToAdd, stageAll, stageFile, unstageAll, unstageFile } from './git/stage.js';
-import { discardAll, discardFile, discardSelection } from './git/discard.js';
+import { discardAll, discardFile, discardSelection, loadDiscards, restoreDiscard } from './git/discard.js';
 import { addIgnoreRule } from './git/ignore.js';
 import { createCommit, stashPop, stashPush } from './git/commit-ops.js';
 import { validateCoAuthors } from './git/co-author-trailer.js';
@@ -36,9 +37,9 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
       const run = () => read({ cwd: repo.path, log: journal, repoId: repo.id }, ...args.slice(1));
       // Every discard is one kind for Undo: its inverse comes from the backup it recorded.
       const kind = channel === 'stash:action' && ['apply', 'pop'].includes(args[1]) ? `stash:${args[1]}`
-        : channel.startsWith('worktree:discard') ? 'worktree:discard' : channel;
+        : channel.startsWith('worktree:discard') ? 'worktree:discard' : channel === 'discard:restore' ? 'worktree:restore-discard' : channel;
       const parameters = kind !== channel ? [args[2]] : args.slice(1);
-      return ['worktree:read', 'worktree:diff', 'worktree:co-authors', 'stash:list', 'stash:files', 'stash:diff', 'sync:divergence', 'sync:cancel', 'sync:run', 'sync:push-ref', 'sync:drop'].includes(channel)
+      return ['worktree:read', 'worktree:diff', 'worktree:untracked-diff', 'worktree:co-authors', 'discard:list', 'stash:list', 'stash:files', 'stash:diff', 'sync:divergence', 'sync:cancel', 'sync:run', 'sync:push-ref', 'sync:drop'].includes(channel)
         ? run() : undo.perform(repo.path, kind, parameters, run);
     });
   }
@@ -69,7 +70,40 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     if (typeof unborn !== 'boolean') throw new Error('Invalid unstage request');
     return unstageFile({ ...options, path: asPath(path), unborn }).then(() => true);
   });
-  handler('worktree:track', 2, (options, path) => intentToAdd({ ...options, path: asPath(path) }).then(() => true));
+
+  /**
+   * An untracked file read without touching the index: `git add -N` for a look
+   * at it moved the file out of Untracked and made `git stash` refuse the tree.
+   * Only a path the status still lists as untracked is read.
+   */
+  async function readUntracked(options, path) {
+    const tree = await loadWorktree(options);
+    if (!tree.untracked.some(entry => entry.path === path)) throw new Error(ui`This file is not untracked any more. Refresh and try again.`);
+    const diff = await loadUntrackedDiff({ cwd: options.cwd, log: options.log, path });
+    return { ...diff, unborn: Boolean(tree.branch?.unborn), digest: diff.text === undefined ? null : createHash('sha256').update(diff.text, 'utf8').digest('hex') };
+  }
+  handler('worktree:untracked-diff', 2, (options, path) => readUntracked(options, asPath(path)));
+
+  /**
+   * Picked lines of an untracked file. Staging part of a new file needs the path
+   * in the index, so this is the moment it is recorded; a selection that does
+   * not go through leaves the file untracked again.
+   */
+  handler('worktree:apply-untracked', 4, async (options, path, digest, selection) => {
+    if (typeof digest !== 'string' || !Array.isArray(selection)) throw new Error('Invalid apply request');
+    const file = asPath(path);
+    const before = await readUntracked(options, file);
+    if (before.digest !== digest) throw new Error(ui`This file changed since the diff was read. Refresh and select again.`);
+    await intentToAdd({ ...options, path: file });
+    try {
+      const current = await loadWorktreeDiff({ ...options, path: file, staged: false });
+      return await applySelection({ ...options, path: file, hunks: current.hunks, selection, reverse: false,
+        added: current.added, deleted: current.deleted, mode: current.mode });
+    } catch (error) {
+      await unstageFile({ ...options, path: file, unborn: before.unborn }).catch(() => {});
+      throw error;
+    }
+  });
 
   /**
    * The bulk actions take a section, never a list of files: the paths are read
@@ -115,6 +149,13 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
   });
 
   /**
+   * The backups discards left, for when the Undo chain has moved on. Restore
+   * names a backup by the commit id the list gave; main checks it is one of them.
+   */
+  handler('discard:list', 1, options => loadDiscards(options));
+  handler('discard:restore', 2, (options, id) => restoreDiscard({ ...options, id: asOid(id) }));
+
+  /**
    * A rule for one untracked path in the root `.gitignore`. The renderer names
    * the path and the kind of rule; main checks the path is untracked right now
    * and computes the pattern itself (git/ignore-plan.js).
@@ -137,7 +178,7 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
 
   handler('stash:push', 3, (options, includeUntracked, message) => {
     if (typeof includeUntracked !== 'boolean' || typeof message !== 'string' || message.length > 4096) throw new Error('Invalid stash request');
-    return stashPush({ ...options, includeUntracked, message }).then(() => true);
+    return stashPush({ ...options, includeUntracked, message }).then(result => result.saved);
   });
   handler('stash:pop', 1, options => stashPop(options).then(() => true));
   handler('stash:list', 1, options => loadStashes(options));
@@ -165,8 +206,8 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     return loadDivergence({ ...options, branch });
   });
 
-  handler('sync:run', 3, async (options, mode, branch) => {
-    if (typeof mode !== 'string' || (branch !== null && typeof branch !== 'string')) throw new Error('Invalid sync request');
+  handler('sync:run', 4, async (options, mode, branch, remote) => {
+    if (typeof mode !== 'string' || (branch !== null && typeof branch !== 'string') || (remote !== null && typeof remote !== 'string')) throw new Error('Invalid sync request');
     const key = options.cwd;
     running.get(key)?.abort();
     const controller = new AbortController();
@@ -174,7 +215,7 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     try {
       return await undo.perform(options.cwd, 'sync:run', [mode, branch], () => controller.signal.aborted
         ? { ok: false, cancelled: true, notStarted: true, message: ui`Cancelled before Git started.` }
-        : runSync({ ...options, mode, branch, signal: controller.signal }));
+        : runSync({ ...options, mode, branch, remote, signal: controller.signal }));
     } finally {
       if (running.get(key) === controller) running.delete(key);
     }

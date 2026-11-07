@@ -98,7 +98,7 @@ export function validatePipeline(pipeline) {
       if (!action.path.trim()) errors.push(t`Action ${number}: choose a script path.`);
       else if (action.path.includes('..') || action.path.startsWith('/') || action.path.startsWith('~') || /\0/.test(action.path)) {
         errors.push(t`Action ${number}: the script path must be inside the repository.`);
-      }
+      } else if (action.path !== action.path.trim()) errors.push(t`Action ${number}: the script path starts or ends with a space.`);
       if (action.args) try { parseCommand(`x ${action.args}`); } catch (error) { errors.push(t`Action ${number}: ${error.message}`); }
     }
     if (action.type === 'bumpVersion') {

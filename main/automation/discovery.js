@@ -1,9 +1,11 @@
-import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { runGit } from '../git/exec.js';
 import { HOOK_EVENTS } from '../../renderer/src/features/automations/event-labels.js';
-import { normalizeConfig } from '../../renderer/src/features/automations/schema.js';
+import { normalizeConfig, validatePipeline } from '../../renderer/src/features/automations/schema.js';
+import { parseCommand } from '../../renderer/src/features/automations/command-parse.js';
 import { ui } from '../../renderer/src/i18n/i18n.js';
 
 const DISPATCH_MARK = 'TWIG AUTOMATION DISPATCHER';
@@ -13,27 +15,55 @@ export function digestBytes(text) {
   return createHash('sha256').update(text ?? '', 'utf8').digest('hex');
 }
 
-const SCRIPT_DIGEST_BYTES = 4 * 1024 * 1024;
+/** SHA-256 of a file of any size, read as a stream. */
+function fileDigest(file) {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256');
+    createReadStream(file).on('error', reject).on('data', chunk => hash.update(chunk)).on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+/** The words of a command that can name a file: its arguments, and the value of `--option=value`. */
+export function fileWords(action) {
+  let argv = [];
+  try {
+    if (action.type === 'command' || action.type === 'custom') argv = parseCommand(action.command).slice(1);
+    if (action.type === 'script' && action.args) argv = parseCommand(`x ${action.args}`).slice(1);
+  } catch { return []; }
+  return argv.map(word => (word.startsWith('-') ? word.split('=').slice(1).join('=') : word)).filter(Boolean);
+}
+
+/** The word as a file of the working tree, or null: outside it, not there, or not a regular file. */
+async function repositoryFile(cwd, word) {
+  const resolved = path.resolve(cwd, word);
+  const relative = path.relative(cwd, resolved);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  try { return (await stat(resolved)).isFile() ? resolved : null; } catch { return null; }
+}
 
 /**
  * Trust must cover what will run, not only the JSON that names it: a `script`
- * action runs a file of the repository, and editing that file after approval
- * would otherwise run new code without a new prompt. Each script's bytes join
- * the digest (a missing or huge file by a marker). Without script actions the
- * digest is the JSON's alone, so approvals made before this stay valid.
+ * action runs a file of the repository, `sh tools/lint.sh` does the same with
+ * one more word, and editing that file after approval would otherwise run new
+ * code without a new prompt. So every script's bytes join the digest (a missing
+ * file by a marker), and so does each file a command names as an argument,
+ * whatever its size. The path hashed is the path run: nothing is trimmed here
+ * that `runAction` does not trim. Without such files the digest is the JSON's
+ * alone, so approvals of `npm test` made before this stay valid.
  */
 async function configDigest(cwd, text, config) {
-  const scripts = [...new Set(config.pipelines.flatMap(pipeline => pipeline.actions)
-    .filter(action => action.type === 'script' && action.path.trim()).map(action => action.path.trim()))].sort();
-  if (!scripts.length) return digestBytes(text);
+  const actions = config.pipelines.flatMap(pipeline => pipeline.actions);
+  const scripts = [...new Set(actions.filter(action => action.type === 'script').map(action => action.path))].sort();
+  const words = [...new Set(actions.flatMap(fileWords))].sort();
   const hash = createHash('sha256').update(text, 'utf8');
   for (const script of scripts) {
     let content;
-    try {
-      const bytes = await readFile(path.resolve(cwd, script));
-      content = bytes.length > SCRIPT_DIGEST_BYTES ? `large:${bytes.length}` : createHash('sha256').update(bytes).digest('hex');
-    } catch { content = 'missing'; }
+    try { content = await fileDigest(path.resolve(cwd, script)); } catch { content = 'missing'; }
     hash.update(`\0${script}\0${content}`, 'utf8');
+  }
+  for (const word of words) {
+    const file = await repositoryFile(cwd, word);
+    if (file) hash.update(`\0${word}\0${await fileDigest(file).catch(() => 'missing')}`, 'utf8');
   }
   return hash.digest('hex');
 }
@@ -50,6 +80,9 @@ export async function readRepoConfig(cwd) {
     const text = await readFile(file, 'utf8');
     try {
       const config = normalizeConfig(JSON.parse(text), 'repo');
+      // Held to the rules a pipeline made in 🌱 Twig is held to: what cannot be saved here cannot run from a file either.
+      const problem = config.pipelines.flatMap(pipeline => validatePipeline(pipeline).errors)[0];
+      if (problem) return { present: true, text, digest: digestBytes(text), config: null, error: ui`This repository’s .twig/hooks.json cannot be used. ${problem}` };
       return { present: true, text, digest: await configDigest(cwd, text, config), config, error: null };
     } catch {
       return { present: true, text, digest: digestBytes(text), config: null, error: ui`This repository’s .twig/hooks.json is not valid JSON.` };

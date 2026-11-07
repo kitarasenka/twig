@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Copy, CornerUpLeft, GitBranchPlus, History, LocateFixed, RefreshCw } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import ScreenTitle from '../../ui/ScreenTitle.jsx';
 import DiffLines from '../diff/DiffLines.jsx';
 import FileStatus from '../diff/FileStatus.jsx';
 import ImageDiff from '../diff/ImageDiff.jsx';
+import DiscardedChanges from './DiscardedChanges.jsx';
 import { imageType } from '../../../../main/git/image-types.js';
 import { failureText, formatDateTime, t } from '../../i18n/i18n.js';
 import { actionLabel, moveBranchDialog, moveReason, relativeTime, shortenIds, suggestBranchName } from './reflog-view.js';
@@ -18,6 +20,9 @@ import { actionLabel, moveBranchDialog, moveReason, relativeTime, shortenIds, su
  * branch" in words, not only in colour: those are the ones Git forgets when
  * the reflog expires. Its contents are shown here, because the history graph
  * cannot show a commit nothing points at.
+ *
+ * Its second view is the same promise for files: what Discard threw away,
+ * which no reflog holds.
  */
 export default function ReflogScreen({ repository, refs, headBranch, operation, busy, onBack, onPerform, onDialog, onJump, onConsole }) {
   const [branch, setBranch] = useState(null);
@@ -28,6 +33,8 @@ export default function ReflogScreen({ repository, refs, headBranch, operation, 
   const [selected, setSelected] = useState(null);
   const [commit, setCommit] = useState(null);
   const [diff, setDiff] = useState(null);
+  const [view, setView] = useState('moves');
+  const [discardsKey, setDiscardsKey] = useState(0);
   const generation = useRef(0);
   const diffRequest = useRef(0);
   const list = useRef(null);
@@ -133,19 +140,24 @@ export default function ReflogScreen({ repository, refs, headBranch, operation, 
   return <section className="reflog-screen" aria-label={t('Reflog')}>
     <header className="panel-heading">
       <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
-      <div><History aria-hidden="true" /><strong>{t('Reflog')}</strong><span className="count">{entries.length}{page.nextSkip !== null ? '+' : ''}</span></div>
-      <Button icon={RefreshCw} reason={loading ? t('Reading the reflog') : undefined} onClick={() => void load(0)}>{t('Refresh')}</Button>
+      <ScreenTitle icon={History} title={t('Reflog')}><span className="count">{entries.length}{page.nextSkip !== null ? '+' : ''}</span></ScreenTitle>
+      <Button icon={RefreshCw} reason={loading ? t('Reading the reflog') : undefined} onClick={() => { if (view === 'moves') void load(0); else setDiscardsKey(key => key + 1); }}>{t('Refresh')}</Button>
     </header>
     <div className="refs-toolbar reflog-toolbar">
-      <label className="refs-remote">{t('Where')}
+      <div className="segmented" role="group" aria-label={t('What this screen shows')}>
+        <button aria-pressed={view === 'moves'} onClick={() => setView('moves')}>{t('Moves')}</button>
+        <button aria-pressed={view === 'discards'} onClick={() => setView('discards')}>{t('Discarded changes')}</button>
+      </div>
+      {view === 'moves' && <><label className="refs-remote">{t('Where')}
         <select aria-label={t('Reflog of')} value={branch ?? ''} onChange={event => { setBranch(event.target.value || null); setSelected(null); }}>
           <option value="">{t('HEAD has been')}</option>
           {locals.map(ref => <option key={ref.name} value={ref.name}>{t`${ref.name} has been`}</option>)}
         </select></label>
       <label className="checkbox-row"><input type="checkbox" checked={onlyLost} onChange={event => setOnlyLost(event.target.checked)} />
-        {t('Only commits on no branch')} <span className="count">{lostCount}</span></label>
+        {t('Only commits on no branch')} <span className="count">{lostCount}</span></label></>}
     </div>
-    <p className="reflog-intro muted">{t`Every move of ${name}, newest first — including ones made outside 🌱 Twig. Git keeps entries for 90 days, and commits on no branch for 30, so a reset, rebase, amend or deleted branch can be brought back from here.`}</p>
+    {view === 'discards' && <DiscardedChanges repository={repository} busy={busy} refreshKey={discardsKey} onPerform={onPerform} onDialog={onDialog} onConsole={onConsole} />}
+    {view === 'moves' && <><p className="reflog-intro muted">{t`Every move of ${name}, newest first — including ones made outside 🌱 Twig. Git keeps entries for 90 days, and commits on no branch for 30, so a reset, rebase, amend or deleted branch can be brought back from here.`}</p>
     {error && <p className="history-error" role="alert">{error}<button onClick={onConsole}>{t('Show output')}</button></p>}
     <div className="reflog-body">
       <div className="reflog-list" ref={list} role="list" aria-label={t`Reflog of ${name}`} onKeyDown={keyDown}>
@@ -208,6 +220,6 @@ export default function ReflogScreen({ repository, refs, headBranch, operation, 
                 : <DiffLines patch={diff.patch} path={diff.path} label={t`Diff of ${diff.path}`} />}
         </div>}
       </div>}
-    </div>
+    </div></>}
   </section>;
 }

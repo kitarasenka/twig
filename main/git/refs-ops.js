@@ -14,7 +14,7 @@ import { ui } from '../../renderer/src/i18n/i18n.js';
 // bad name before it costs a process.
 const FORBIDDEN = /[\0-\x20\x7f~^:?*[\\]/;
 
-export function validateRefName(name) {
+function checkRefName(name) {
   if (typeof name !== 'string' || name.length === 0 || name.length > 255) throw new TypeError('Invalid ref name');
   if (FORBIDDEN.test(name) || name.includes('..') || name.includes('@{') || name === '@'
     || name.startsWith('/') || name.endsWith('/') || name.includes('//')
@@ -25,12 +25,23 @@ export function validateRefName(name) {
   return name;
 }
 
+/**
+ * Git never makes `--squash` a branch or a tag by itself, but a server can send
+ * one and a clone keeps it. Used in a revision's place it would be an option of
+ * whatever command it lands in, so nothing but deleting it takes such a name.
+ */
+export function validateRefName(name) {
+  checkRefName(name);
+  if (name.startsWith('-')) throw new TypeError('Invalid ref name');
+  return name;
+}
+
 export function buildCreateBranchArgv(name, startPoint) {
   return ['branch', '--', validateRefName(name), validateOid(startPoint)];
 }
 
 export function buildCheckoutBranchArgv(name) {
-  return ['checkout', validateRefName(name), '--'];
+  return ['checkout', '--end-of-options', validateRefName(name), '--'];
 }
 
 export function buildCheckoutNewBranchArgv(name, startPoint) {
@@ -53,7 +64,7 @@ export function buildCreateTagArgv(name, oid, annotated) {
 
 /** `-D` deletes an unmerged branch and is destructive: §6.5 requires a dialog first. */
 export function buildDeleteBranchArgv(name, force) {
-  return ['branch', force ? '-D' : '-d', '--', validateRefName(name)];
+  return ['branch', force ? '-D' : '-d', '--', checkRefName(name)];
 }
 
 export function buildRenameBranchArgv(from, to) {
@@ -71,7 +82,7 @@ export function buildUpstreamArgv(branch, upstream) {
 }
 
 export function buildDeleteTagArgv(name) {
-  return ['tag', '-d', '--', validateRefName(name)];
+  return ['tag', '-d', '--', checkRefName(name)];
 }
 
 async function mutate({ cwd, log, argv, operation, failed, stdin = null }) {
@@ -111,7 +122,7 @@ export function createTag({ cwd, log, name, oid, message = '' }) {
  * @param {{ cwd: string, log: object, name: string }} options
  */
 export async function readTagRef({ cwd, log, name }) {
-  const result = await runGit({ cwd, log, argv: ['rev-parse', '--verify', '--quiet', `refs/tags/${validateRefName(name)}`], operation: `Read tag ${name}` });
+  const result = await runGit({ cwd, log, argv: ['rev-parse', '--verify', '--quiet', `refs/tags/${checkRefName(name)}`], operation: `Read tag ${name}` });
   return result.code === 0 ? result.stdout.trim() : null;
 }
 

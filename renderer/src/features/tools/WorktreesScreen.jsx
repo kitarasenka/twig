@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Bot, Copy, ExternalLink, FilePlus2, FolderGit2, GitCompare, GitMerge, Plus, RefreshCw, Scissors, Trash2, X } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
+import ScreenTitle from '../../ui/ScreenTitle.jsx';
 import Dialog from '../../ui/Dialog.jsx';
 import OperationNote from '../../ui/OperationNote.jsx';
 import { relativeTime } from '../../ui/relative-time.js';
+import { ShowAll, useBudget } from '../../ui/useBudget.jsx';
 import DiffLines from '../diff/DiffLines.jsx';
 import FileStatus from '../diff/FileStatus.jsx';
+import { showAllFiles } from '../diff/FileList.jsx';
+import { createBoardRefresh } from './board-refresh.js';
 import { boardBadges, changesLine, compareCell, compareChoices, connectedLine, finishCommands, folderLabel, launchCommand, progressLine, squashReason,
   worktreeLine, worktreeRemoveCommand, worktreeRemoveReason } from './tools-view.js';
 import { failureText, t, tn, tr } from '../../i18n/i18n.js';
@@ -56,11 +60,12 @@ export default function WorktreesScreen({ repository, platform, busy, refreshKey
   const generation = useRef(0);
   const reviewRequest = useRef(0);
   const diffRequest = useRef(0);
+  const gate = useRef(null);
 
-  const refresh = useCallback(async () => {
-    const epoch = ++generation.current;
+  const read = useCallback(async fresh => {
+    const epoch = generation.current;
     try {
-      const next = await window.twig.getWorktreeBoard(repository.id);
+      const next = await window.twig.getWorktreeBoard(repository.id, fresh);
       if (epoch !== generation.current) return;
       setBoard(next); setError('');
       setSelected(current => (current && next.worktrees.some(entry => entry.path === current) ? current
@@ -68,15 +73,29 @@ export default function WorktreesScreen({ repository, platform, busy, refreshKey
     } catch (failure) { if (epoch === generation.current) setError(failureText(failure, t('Could not read the worktrees.'))); }
     finally { if (epoch === generation.current) setLoading(false); }
   }, [repository.id]);
-  useEffect(() => { void refresh(); const token = generation; return () => { token.current++; }; }, [refresh, refreshKey]);
-  // An agent edits files without touching .git, so coming back to the window reads the board again;
-  // an agent connecting or leaving over MCP does too.
+  /** Asked for by the person: every worktree, as soon as the running read ends. */
+  const refresh = useCallback(() => gate.current?.request({ fresh: true, urgent: true }), []);
   useEffect(() => {
-    const onFocus = () => void refresh();
+    gate.current = createBoardRefresh({ read });
+    gate.current.request({ fresh: true, urgent: true });
+    const token = generation;
+    return () => { token.current++; gate.current?.stop(); gate.current = null; };
+  }, [read]);
+  // A branch moved: only the worktrees whose HEAD moved are read again.
+  const seenKey = useRef(refreshKey);
+  useEffect(() => { if (seenKey.current !== refreshKey) { seenKey.current = refreshKey; gate.current?.request(); } }, [refreshKey]);
+  // An agent edits files without touching .git, so coming back to the window
+  // from somewhere else reads every worktree. An agent connecting or leaving
+  // over MCP changes only what its card says.
+  useEffect(() => {
+    let blurredAt = 0;
+    const onBlur = () => { blurredAt = Date.now(); };
+    const onFocus = () => { if (blurredAt && Date.now() - blurredAt > 1500) gate.current?.request({ fresh: true }); blurredAt = 0; };
+    window.addEventListener('blur', onBlur);
     window.addEventListener('focus', onFocus);
-    const offAgents = window.twig.onMcpAgents(onFocus);
-    return () => { window.removeEventListener('focus', onFocus); offAgents(); };
-  }, [refresh]);
+    const offAgents = window.twig.onMcpAgents(() => gate.current?.request());
+    return () => { window.removeEventListener('blur', onBlur); window.removeEventListener('focus', onFocus); offAgents(); };
+  }, []);
 
   const card = board.worktrees.find(entry => entry.path === selected) || null;
   const reviewable = Boolean(card && !card.main && !card.bare && !card.prunable);
@@ -104,6 +123,10 @@ export default function WorktreesScreen({ repository, platform, busy, refreshKey
       if (epoch === diffRequest.current) setDiff({ path: file.path, binary: file.binary, ...result });
     } catch (failure) { if (epoch === diffRequest.current) setDiff({ path: file.path, error: failureText(failure, t('Could not read this diff.')) }); }
   }
+
+  const opener = useRef(openDiff);
+  opener.current = openDiff;
+  const onFile = useCallback(file => void opener.current(file), []);
 
   async function copyLaunch(entry) {
     const command = launchCommand(entry.path, platform);
@@ -170,7 +193,7 @@ export default function WorktreesScreen({ repository, platform, busy, refreshKey
   return <section className="tool-screen worktree-board" aria-label={t('Worktrees')}>
     <header className="panel-heading">
       <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
-      <div><FolderGit2 aria-hidden="true" /><strong>{t('Worktrees')}</strong><span className="count">{board.worktrees.length}</span></div>
+      <ScreenTitle icon={FolderGit2} title={t('Worktrees')}><span className="count">{board.worktrees.length}</span></ScreenTitle>
       <div className="tool-actions">
         {board.worktrees.some(entry => entry.prunable) && <Button icon={Scissors} reason={reason} onClick={() => void prune()}
           title={t('git worktree prune: forget worktrees whose folders are gone')}>{t('Prune missing')}</Button>}
@@ -189,7 +212,7 @@ export default function WorktreesScreen({ repository, platform, busy, refreshKey
       <ul className="board-list" aria-label={t('Worktrees')}>
         {board.worktrees.map(entry => <li key={entry.path}>
           <button type="button" className={entry.path === selected ? 'selected' : ''} aria-pressed={entry.path === selected} onClick={() => setSelected(entry.path)}>
-            <strong>{folderLabel(entry.path)}{boardBadges(entry).map(badge => <span key={badge} className={`tool-badge${badge === 'Commit proposed' || badge === 'Done' ? ' strong' : ''}`}>{t(badge)}</span>)}</strong>
+            <strong>{folderLabel(entry.path)}{boardBadges(entry).map(badge => <span key={badge} className={`tool-badge${badge === 'Commit proposed' || badge === 'Done' || badge === '.git leads elsewhere' ? ' strong' : ''}`}>{t(badge)}</span>)}</strong>
             <span>{worktreeLine(entry)}</span>
             {progressLine(entry, base) && <span>{progressLine(entry, base)}</span>}
             {entry.changes && <small>{changesLine(entry.changes)}</small>}
@@ -230,12 +253,29 @@ export default function WorktreesScreen({ repository, platform, busy, refreshKey
           ? t`The main worktree holds ${base}. Its uncommitted changes are on the history screen; other worktrees are compared with it.`
           : t('The main worktree holds the base branch. Its uncommitted changes are on the history screen; other worktrees are compared with it.')}</p>}
         {reviewable && partner && <Compare repositoryId={repository.id} left={card} right={partner} base={base} />}
-        {reviewable && !partner && <Review review={review?.folder === card.path ? review : null} diff={diff} base={base} onFile={file => void openDiff(file)} />}
+        {reviewable && !partner && <Review review={review?.folder === card.path ? review : null} diff={diff} base={base} onFile={onFile} />}
       </div>}
     </div>
     {squash && <SquashDialog plan={squash} onSquash={doSquash} onClose={() => setSquash(null)} />}
   </section>;
 }
+
+/** The files of a review. On its own so that opening one file does not draw the others again. */
+const ReviewFiles = memo(function ReviewFiles({ files, openPath, onFile }) {
+  const budget = useBudget(files);
+  return <ul className="stash-files" aria-label={t('Files this worktree changed')}>
+    {files.length === 0 && <li className="empty-inline">{t('Nothing changed yet.')}</li>}
+    {budget.shown.map(file => <li key={`${file.path}:${file.untracked}`}>
+      <button type="button" className={openPath === file.path ? 'selected' : ''} aria-pressed={openPath === file.path} onClick={() => onFile(file)}>
+        <FileStatus status={file.status} />
+        <span title={file.path}>{file.path}</span>
+        {file.untracked ? <small><FilePlus2 aria-hidden="true" />{t('untracked')}</small>
+          : file.insertions !== null && <small>+{file.insertions} −{file.deletions}</small>}
+      </button>
+    </li>)}
+    {budget.hidden > 0 && <li><ShowAll budget={budget} label={showAllFiles} /></li>}
+  </ul>;
+});
 
 /** What one worktree changed since its branch left the base: its commits, then every file. */
 function Review({ review, diff, base, onFile }) {
@@ -249,17 +289,7 @@ function Review({ review, diff, base, onFile }) {
       {review.commits.map(commit => <li key={commit.oid}><code>{commit.oid.slice(0, 7)}</code><span>{commit.subject}</span></li>)}
     </ul>}
     <div className="board-split">
-      <ul className="stash-files" aria-label={t('Files this worktree changed')}>
-        {review.files.length === 0 && <li className="empty-inline">{t('Nothing changed yet.')}</li>}
-        {review.files.map(file => <li key={`${file.path}:${file.untracked}`}>
-          <button type="button" className={diff?.path === file.path ? 'selected' : ''} aria-pressed={diff?.path === file.path} onClick={() => onFile(file)}>
-            <FileStatus status={file.status} />
-            <span title={file.path}>{file.path}</span>
-            {file.untracked ? <small><FilePlus2 aria-hidden="true" />{t('untracked')}</small>
-              : file.insertions !== null && <small>+{file.insertions} −{file.deletions}</small>}
-          </button>
-        </li>)}
-      </ul>
+      <ReviewFiles files={review.files} openPath={diff?.path ?? null} onFile={onFile} />
       {diff && <div className="diff-view" ref={diffPane} aria-label={t`Diff of ${diff.path}`}>
         {diff.loading ? <div className="loading-shell"><div className="skeleton" /></div>
           : diff.error ? <p role="alert" className="empty-inline">{diff.error}</p>
@@ -270,6 +300,23 @@ function Review({ review, diff, base, onFile }) {
     </div>
   </div>;
 }
+
+/** The table of a comparison, on its own for the same reason as ReviewFiles. */
+const CompareFiles = memo(function CompareFiles({ files, names, openPath, onOpen }) {
+  const budget = useBudget(files);
+  return <table className="board-compare-files" aria-label={t`Files changed in ${names[0]} or ${names[1]}`}>
+    <thead><tr><th scope="col">{t('File')}</th><th scope="col">{names[0]}</th><th scope="col">{names[1]}</th></tr></thead>
+    <tbody>
+      {files.length === 0 && <tr><td colSpan={3} className="empty-inline">{t('Neither changed anything yet.')}</td></tr>}
+      {budget.shown.map(file => <tr key={file.path} className={openPath === file.path ? 'selected' : ''}>
+        <th scope="row"><button type="button" aria-pressed={openPath === file.path} onClick={() => onOpen(file)}>{file.path}</button></th>
+        <td className={file.left ? '' : 'muted'}>{compareCell(file.left)}</td>
+        <td className={file.right ? '' : 'muted'}>{compareCell(file.right)}</td>
+      </tr>)}
+      {budget.hidden > 0 && <tr><td colSpan={3}><ShowAll budget={budget} label={showAllFiles} /></td></tr>}
+    </tbody>
+  </table>;
+});
 
 /**
  * Two worktrees side by side: what each changed since it left the base, file
@@ -300,9 +347,12 @@ function Compare({ repositoryId, left, right, base }) {
       if (epoch === diffRequest.current) setDiff({ path: file.path, ...next });
     } catch (failure) { if (epoch === diffRequest.current) setDiff({ path: file.path, error: failureText(failure, t('Could not compare this file.')) }); }
   }
+  const opener = useRef(open);
+  opener.current = open;
+  const onOpen = useCallback(file => void opener.current(file), []);
+  const names = useMemo(() => [folderLabel(left.path), folderLabel(right.path)], [left.path, right.path]);
   if (!result) return <div className="loading-shell" aria-label={t('Comparing the two worktrees')}><div className="skeleton" /></div>;
   if (result.error) return <p role="alert" className="empty-inline">{result.error}</p>;
-  const names = [folderLabel(left.path), folderLabel(right.path)];
   const side = summary => `${tn(summary.commits, '{n} commit', '{n} commits')}, ${tn(summary.uncommitted, '{n} file not committed', '{n} files not committed')}, ${tn(summary.files, '{n} file changed', '{n} files changed')}`;
   return <div className={`board-review board-compare${diff ? ' has-diff' : ''}`}>
     <p className="board-summary">{tx(base ? '{left}: {leftSide} · {right}: {rightSide}, each since it left {base}.' : '{left}: {leftSide} · {right}: {rightSide}.',
@@ -312,17 +362,7 @@ function Compare({ repositoryId, left, right, base }) {
       : t`Pick the one to keep, squash it into the base, then remove the other. In a file’s diff, − lines are ${names[0]}’s and + lines are ${names[1]}’s.`}</p>
     <div className="board-split">
       <div className="board-split-files">
-        <table className="board-compare-files" aria-label={t`Files changed in ${names[0]} or ${names[1]}`}>
-          <thead><tr><th scope="col">{t('File')}</th><th scope="col">{names[0]}</th><th scope="col">{names[1]}</th></tr></thead>
-          <tbody>
-            {result.files.length === 0 && <tr><td colSpan={3} className="empty-inline">{t('Neither changed anything yet.')}</td></tr>}
-            {result.files.map(file => <tr key={file.path} className={diff?.path === file.path ? 'selected' : ''}>
-              <th scope="row"><button type="button" aria-pressed={diff?.path === file.path} onClick={() => void open(file)}>{file.path}</button></th>
-              <td className={file.left ? '' : 'muted'}>{compareCell(file.left)}</td>
-              <td className={file.right ? '' : 'muted'}>{compareCell(file.right)}</td>
-            </tr>)}
-          </tbody>
-        </table>
+        <CompareFiles files={result.files} names={names} openPath={diff?.path ?? null} onOpen={onOpen} />
       </div>
       {diff && <div className="diff-view" ref={diffPane} aria-label={t`${diff.path}: ${names[0]} against ${names[1]}`}>
         {diff.loading ? <div className="loading-shell"><div className="skeleton" /></div>
@@ -360,7 +400,7 @@ function SquashDialog({ plan, onSquash, onClose }) {
       {plan.commands.length > 0 && <>
         <p className="muted">{t`These commands will run in ${plan.basePath}, the message on standard input:`}</p>
         {plan.commands.map((argv, index) => <code key={index} className="confirm-command">$ git {shown(argv)}</code>)}
-        <p className="muted">{t`If Git stops on a conflict or a hook refuses the commit, ${plan.base} is put back as it was (git reset --merge). Undo in ${plan.base} takes the commit back and leaves its changes staged.`}</p>
+        <p className="muted">{t`Your pre-commit and commit-msg automations run before the commit. If one of them, a conflict or a Git hook stops it, ${plan.base} is put back as it was (git reset --merge). Undo in ${plan.base} takes the commit back and leaves its changes staged.`}</p>
       </>}
       <div className="dialog-actions">
         <Button type="button" onClick={onClose}>{t('Cancel')}</Button>

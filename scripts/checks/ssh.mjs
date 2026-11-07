@@ -46,6 +46,15 @@ try {
   assert.doesNotMatch(validationCopy(dangerous), /touch/);
   await ssh.saveConfig(dangerous, updated.digest);
   await assert.rejects(access(marker));
+  // OpenSSH drops quotes from the keyword and, since 9.9, takes `exec=command` as one word.
+  for (const line of [`"Match" exec "touch ${marker}"`, `Ma"tch" exec "touch ${marker}"`, `"match"=exec "touch ${marker}"`,
+    `Match exec="touch ${marker}"`, `Match !exec="touch ${marker}"`, `Match "exec=touch ${marker}"`, `\tMATCH "EXEC" "touch ${marker}"`]) {
+    assert.doesNotMatch(validationCopy(`${line}\n  User git\n`), /touch/, `${line} reaches ssh -G`);
+    await ssh.saveConfig(`${line}\n  User git\n`, (await ssh.readConfig()).digest).catch(() => {});
+    await assert.rejects(access(marker), `${line} ran during validation`);
+  }
+  assert.doesNotMatch(validationCopy('"Include" missing/*\n'), /missing/);
+  await ssh.saveConfig(dangerous, (await ssh.readConfig()).digest);
   await assert.rejects(ssh.testConnection('--ProxyCommand=bad'), TypeError);
   await writeFile(path.join(root, 'outside'), 'unchanged');
   await rm(config.path); await symlink(path.join(root, 'outside'), config.path);

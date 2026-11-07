@@ -25,6 +25,7 @@ try {
   const page = await app.firstWindow();
   page.setDefaultTimeout(15000);
   page.on('pageerror', e => errors.push(e.message));
+  page.on('console', message => { if (message.type() === 'error' && /font-src/.test(message.text())) errors.push(message.text()); });
   // The demo tab is a real seeded sandbox repository, not a mock: on first
   // launch the app runs git init and scripts a sample history under the temp
   // profile, then renders the same HistoryWorkspace every connected repo uses.
@@ -39,26 +40,26 @@ try {
     'applySelection', 'cancelSync', 'checkoutRef', 'cherryPick', 'compareCommits', 'copyText', 'createBranch',
     'checkForUpdate', 'getUpdateState', 'downloadUpdate', 'cancelUpdate', 'installUpdate', 'setAutoUpdateCheck', 'onUpdateState', 'createCommit', 'createTag', 'getAppInfo', 'getLanguage', 'setLanguage', 'getCommit', 'getCommitFiles', 'getConsoleEntries', 'getConsoleOutput',
     'getDivergence', 'getFileDiff', 'getImagePair', 'getFileText', 'getFileHistory', 'getGitProfile', 'getHistoryPage', 'getOperationState', 'getRebaseCandidates', 'getRefs',
-    'getWorkspace', 'getWorktreeDiff', 'markConflictResolved', 'searchHistory', 'mergeRevision', 'onConsoleUpdate', 'openRepository',
+    'getWorkspace', 'checkGit', 'onWorkspaceUpdate', 'onRefreshKey', 'initRepository', 'chooseRepositoryLocation', 'locateRepository', 'settleConflictDeletion', 'getWorktreeDiff', 'markConflictResolved', 'searchHistory', 'mergeRevision', 'onConsoleUpdate', 'openRepository',
     'readConflict', 'readWorktree', 'rebaseOnto', 'resetTo', 'revertCommit', 'rewordCommit', 'runSequencer', 'runSync',
     'saveConflict', 'saveGitProfileValue', 'selectRepository', 'stageAll', 'stageFile', 'stashList', 'stashPop', 'stashPush', 'takeConflictSide',
-    'trackFile', 'unstageAll', 'unstageFile', 'cancelClone', 'cancelRemote', 'changeRemote', 'chooseCloneDestination',
+    'getUntrackedDiff', 'applyUntrackedSelection', 'unstageAll', 'unstageFile', 'cancelClone', 'cancelRemote', 'changeRemote', 'chooseCloneDestination',
     'stashFiles', 'stashDiff', 'stashAction', 'pushRef', 'runDrop', 'deleteBranch', 'renameBranch', 'setUpstream', 'deleteTag',
     'getBisectState', 'runBisect', 'listMarks', 'setMark', 'clearMark',
     'getBlame', 'getReverseBlame', 'getBlameBefore', 'cancelBlame',
     'cloneRepository', 'getRemotes', 'removeRepository', 'resetDemoWorkspace', 'setDemoWorkspaceVisible', 'getUndoState', 'moveUndo', 'onUndoUpdate',
     'watchRepository', 'onRepositoryChange', 'getReflog', 'moveBranchTo',
     'getBackgroundFetch', 'setBackgroundFetch', 'getBackgroundFetchStatus', 'onBackgroundFetch',
-    'getMcpSettings', 'setMcpEnabled', 'reportUiContext', 'setMcpCommitsAllowed', 'getCommitProposal', 'decideCommitProposal', 'onCommitProposal', 'onCommitProposalStep', 'getBumpPlan',
+    'getMcpSettings', 'setMcpEnabled', 'reportUiContext', 'setMcpCommitsAllowed', 'getCommitProposal', 'decideCommitProposal', 'getCommitProposalFile', 'onCommitProposal', 'onCommitProposalStep', 'getBumpPlan',
     'getSshKeys', 'getSshConfig', 'generateSshKey', 'saveSshConfig', 'testSshConnection', 'cancelSshConnection', 'secureSshKey',
     'getAutomationConfig', 'saveAutomationConfig', 'trustAutomations', 'runAutomation', 'cancelAutomation', 'getAutomationRuns', 'getAutomationRun', 'onAutomationStep',
-    'runConsoleCommand', 'getEditor', 'setEditor', 'openInEditor', 'revealFile',
+    'runConsoleCommand', 'clearConsole', 'getEditor', 'setEditor', 'openInEditor', 'revealFile',
     'discardFile', 'discardAll', 'discardSelection',
     'cherryPickMany', 'revertMany', 'getSignature', 'getLfsStatus', 'pullLfs', 'cancelRepositoryTool',
     'exportPatches', 'choosePatch', 'applyPatchCommits', 'applyPatchFiles',
     'getSubmodules', 'updateSubmodules', 'openSubmodule',
     'getWorktrees', 'planWorktree', 'addWorktree', 'removeWorktree', 'pruneWorktrees', 'openWorktree',
-    'getWorktreeBoard', 'getWorktreeReview', 'getWorktreeFileDiff', 'planWorktreeSquash', 'squashWorktree', 'finishWorktree',
+    'getDiscards', 'restoreDiscard', 'getWorktreeBoard', 'getWorktreeReview', 'getWorktreeFileDiff', 'planWorktreeSquash', 'squashWorktree', 'finishWorktree',
     'compareWorktrees', 'getWorktreeCompareDiff', 'onMcpAgents',
     'getTagDetails', 'getCoAuthors', 'addIgnoreRule', 'getRepositoryStats', 'runMaintenance'].sort());
   const security = await app.evaluate(({ BrowserWindow }) => {
@@ -106,6 +107,9 @@ try {
   await page.getByRole('button', { name: 'Modified app/console.js', exact: true }).click();
   const codeDiff = page.getByRole('region', { name: 'File diff', exact: true });
   await codeDiff.locator('.syn-keyword', { hasText: 'export' }).first().waitFor();
+  // Prism runs in a worker: a grammar that spins stops the worker, not this window.
+  assert.deepEqual(await page.evaluate(() => performance.getEntriesByType('resource').map(entry => entry.name).filter(name => /\/syntax-(?!worker)/.test(name))), [],
+    'coloured by the worker: the copy for a page without workers was not loaded');
   assert.equal(await codeDiff.locator('.diff-language').textContent(), 'JavaScript');
   assert.ok(await codeDiff.locator('.diff-lines.diff-syntax').count() === 1);
   assert.equal(await codeDiff.locator('.diff-added .diff-marker').first().textContent(), '+');
@@ -121,6 +125,32 @@ try {
   await page.keyboard.press('Escape');
   await codeDiff.locator('.syn-keyword').first().waitFor();
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
+  // The small targets take a click around the icon too.
+  assert.equal(await page.evaluate(() => {
+    const button = document.querySelector('.repo-refresh');
+    const box = button.getBoundingClientRect();
+    return document.elementFromPoint(box.left - 2, box.top - 2)?.closest('button') === button;
+  }), true, 'Refresh answers a little outside its icon');
+  const focusIs = selector => page.evaluate(wanted => document.activeElement?.matches(wanted), selector);
+  assert.ok(await focusIs('.real-history-scroll'), 'back from a view, the keyboard goes on from the graph');
+  // A screen says where the keyboard is: its name takes the focus, its sidebar item is current,
+  // there is one heading above it, and coming back lands on the graph again.
+  await page.locator('.sidebar-nav').getByRole('button', { name: /^Stashes/ }).click();
+  await page.getByRole('heading', { name: 'Stashes' }).waitFor();
+  assert.ok(await focusIs('h2.screen-title'), 'the screen title has the focus');
+  assert.equal(await page.locator('.sidebar-nav [aria-current="page"]').innerText().then(text => text.split('\n')[0]), 'Stashes');
+  assert.equal(await page.locator('.graph-heading').count(), 0, 'one heading on a screen');
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
+  await page.locator('.graph-heading').waitFor();
+  assert.ok(await focusIs('.real-history-scroll'));
+  assert.equal(await page.locator('.sidebar-nav [aria-current="page"]').count(), 0);
+  // Typing in the search box stays there when a screen opens from a click elsewhere.
+  await page.getByRole('textbox', { name: 'Search commits and references' }).focus();
+  await page.evaluate(() => document.querySelector('.sidebar-nav button').click());
+  await page.getByRole('heading', { name: 'Branches and tags' }).waitFor();
+  assert.ok(await focusIs('.sidebar-filter input'), 'a field being typed in keeps the focus');
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
+  await page.locator('.graph-heading').waitFor();
   // The console lives at the bottom and opens from its own status bar; the
   // toolbar has no second switch for it.
   assert.equal(await page.locator('.toolbar').getByRole('button', { name: /Terminal/ }).count(), 0);
@@ -148,7 +178,7 @@ try {
   // Off shows the exact command in the list, and the choice is remembered.
   await page.locator('.console-short').click();
   assert.equal(await page.getByRole('checkbox', { name: 'Short' }).isChecked(), false);
-  const fullCheck = page.getByText(/git --no-pager -c color.ui=false -c log.showSignature=false -c core.fsmonitor=false --version/);
+  const fullCheck = page.getByText(/git --no-pager -c color.ui=false -c log.showSignature=false -c core.fsmonitor=false -c safe.bareRepository=explicit -c protocol.ext.allow=never -c protocol.fd.allow=never --version/);
   await fullCheck.first().waitFor();
   assert.equal(await versionCheck.count(), 0);
   assert.equal(await page.evaluate(() => localStorage.getItem('twig:console-commands')), 'full');
@@ -196,6 +226,11 @@ try {
   // The update check is manual: the button is there, and nothing presses it for
   // the person. It stays unclicked here — this run must make no network call.
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  // Settings reads as three groups, the version line last; a repository's own things in the last group.
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  assert.deepEqual(await settings.locator('.settings-group').allInnerTexts().then(texts => texts.map(text => text.toLowerCase())), ['interface', 'connections', 'this repository']);
+  const lastGroup = await settings.locator('.settings-sections').evaluate(root => [...root.children].slice([...root.children].findLastIndex(node => node.matches('.settings-group'))).map(node => node.className));
+  assert.deepEqual(lastGroup, ['settings-group', 'setting-row', 'setting-row', 'settings-note'], 'the version line closes the window');
   const updateButton = page.getByRole('button', { name: 'Check for updates', exact: true });
   await updateButton.waitFor();
   assert.equal(await updateButton.isDisabled(), false, 'the update check is available from Settings');
@@ -224,6 +259,44 @@ try {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 640));
   await page.screenshot({ path: 'artifacts/m0-compact.png', animations: 'disabled' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  // The console opens low enough to leave the graph readable; the line above it
+  // resizes it, the height is remembered and stops at 60 % of the window.
+  await page.locator('.console-status').click();
+  const consoleBody = () => page.evaluate(() => Math.round(document.querySelector('.console-body').getBoundingClientRect().height));
+  const windowHeight = await page.evaluate(() => innerHeight);
+  assert.ok(await consoleBody() <= windowHeight * 0.26, 'the default leaves room for the graph');
+  assert.ok(await page.getByRole('listbox', { name: 'Commit history', exact: true }).evaluate(node => node.clientHeight) >= 112, 'at least four rows of the graph stay');
+  const edge = page.getByRole('separator', { name: 'Console height' });
+  const edgeBox = await edge.boundingBox();
+  const startHeight = await consoleBody();
+  await page.mouse.move(edgeBox.x + 200, edgeBox.y + edgeBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(edgeBox.x + 200, edgeBox.y - 40, { steps: 6 });
+  await page.mouse.up();
+  assert.ok(Math.abs(await consoleBody() - startHeight - 44) <= 6, 'dragging up makes it taller');
+  assert.equal(String(await consoleBody()), await page.evaluate(() => localStorage.getItem('twig:console-height')));
+  await edge.focus();
+  await page.keyboard.press('End');
+  assert.ok(await consoleBody() <= Math.ceil(windowHeight * 0.6), 'never more than its share of the window');
+  await edge.dblclick();
+  assert.equal(await page.evaluate(() => localStorage.getItem('twig:console-height')), null, 'double-click goes back to the default');
+  await page.locator('.console-status').click();
+  // Zoomed to 200 % the window is narrow in CSS pixels: every tool stays on screen,
+  // with its name kept for the tooltip, and the details panel gives the graph the room.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(2));
+  await page.waitForFunction(() => innerWidth < 600);
+  await page.locator('.commit-detail').waitFor({ state: 'detached' });
+  const zoomed = await page.evaluate(() => ({ width: innerWidth, right: Math.max(...[...document.querySelectorAll('.toolbar button')].map(node => node.getBoundingClientRect().right)), overflow: document.documentElement.scrollWidth > innerWidth, graph: document.querySelector('.graph-panel').getBoundingClientRect().width }));
+  assert.ok(zoomed.right <= zoomed.width, `the toolbar fits: ${zoomed.right} of ${zoomed.width}`);
+  assert.equal(zoomed.overflow, false);
+  assert.ok(zoomed.graph >= 250, `the graph keeps its room: ${zoomed.graph}`);
+  await page.getByRole('button', { name: /^Publish|^Push/ }).first().waitFor();
+  await page.screenshot({ path: 'artifacts/zoom-200.png', animations: 'disabled' });
+  await page.getByRole('button', { name: 'Show commit details' }).click();
+  await page.locator('.commit-detail').waitFor();
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1));
+  await page.waitForFunction(() => innerWidth >= 900);
+  await page.locator('.commit-detail').waitFor();
   assert.equal(await page.evaluate(async () => { try { await fetch('https://example.com'); return true; } catch { return false; } }), false);
   assert.deepEqual(errors, []);
   console.log('Electron smoke passed: sandbox, bridge, selection, keyboard, tabs, search, panel divider, console, manual update check, themes, compact layout, network block.');
