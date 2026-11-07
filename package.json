@@ -1,6 +1,6 @@
 {
   "name": "twig",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "releaseDate": "2026-11-07",
   "private": true,
   "type": "module",
