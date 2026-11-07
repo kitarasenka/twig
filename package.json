@@ -47,7 +47,7 @@
     "prismjs": "1.30.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "vite": "8.2.2"
+    "vite": "8.3.5"
   },
   "build": {
     "appId": "app.nodex.twig",
