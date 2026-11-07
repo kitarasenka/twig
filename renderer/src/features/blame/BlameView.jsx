@@ -34,7 +34,7 @@ function colourMap(lines) {
  * <start>..<end>`, never the working tree. Back/Forward walk a local chain of
  * steps; that chain is independent of Git Undo/Redo (nothing here mutates).
  */
-export default function BlameView({ repository, seed, onBack, onJump, onConsole, onSelect }) {
+export default function BlameView({ repository, seed, onBack, onJump, onConsole, onSelect, detailButton }) {
   const [chain, setChain] = useState(() => [{ mode: 'blame', oid: seed.oid, path: seed.path, endRef: null, mapping: null }]);
   const [pos, setPos] = useState(0);
   const [data, setData] = useState(null);
@@ -213,6 +213,7 @@ export default function BlameView({ repository, seed, onBack, onJump, onConsole,
         <Button icon={ArrowLeft} aria-label={t('Back')} title={t('The previous blame in this chain')} reason={pos === 0 ? t('No earlier step') : undefined} onClick={() => go(-1)} />
         <Button icon={ArrowRight} aria-label={t('Forward')} title={t('The next blame in this chain')} reason={pos === chain.length - 1 ? t('No later step') : undefined} onClick={() => go(1)} />
         {chain.length > 1 && <span className="blame-step" aria-label={t`Step ${pos + 1} of ${chain.length}`}>{pos + 1}/{chain.length}</span>}
+        {detailButton}
       </div>
     </header>
 

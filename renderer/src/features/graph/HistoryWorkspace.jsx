@@ -1,6 +1,6 @@
 import { memo, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, AlignLeft, ArrowLeft, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow, Wrench } from 'lucide-react';
+import { AlertTriangle, AlignLeft, ArrowLeft, ArrowRight, Boxes, Bug, FileInput, FolderGit2, GitBranch, HardDrive, History, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Search, X, Globe, Tag, Workflow, Wrench } from 'lucide-react';
 import { StashBox } from '../../ui/stash-icons.js';
 import Button from '../../ui/Button.jsx';
 import OperationNote, { NoteRegion } from '../../ui/OperationNote.jsx';
@@ -9,6 +9,10 @@ import CommitPanel from '../commit/CommitPanel.jsx';
 import Splitter from '../../ui/Splitter.jsx';
 import { PANEL_DEFAULT, SIDEBAR_SIZE, FILE_HISTORY_PANEL_SIZE } from '../../ui/panel-width.js';
 import CommitGraph, { UNCOMMITTED } from './CommitGraph.jsx';
+import { WorktreeRefIcon, worktreeRefTitle } from './worktree-ref.jsx';
+import { branchWorktrees, isWorktreeSelection, selectedFolder, worktreeSelection } from './worktree-lanes.js';
+import { useGraphWorktrees } from './useGraphWorktrees.js';
+import { folderLabel } from '../tools/folder-label.js';
 import WorktreeScreen from '../worktree/WorktreeScreen.jsx';
 import WorktreePanel from '../worktree/WorktreePanel.jsx';
 import { conflictCount, summarizeStatus } from '../worktree/worktree-summary.js';
@@ -53,6 +57,7 @@ import { finishFirst, stepNote } from '../../../../main/git/operation-words.js';
 const ConflictEditor = lazyScreen(() => import('../conflicts/ConflictEditor.jsx'));
 const ReflogScreen = lazyScreen(() => import('../reflog/ReflogScreen.jsx'));
 const WorktreesScreen = lazyScreen(() => import('../tools/WorktreesScreen.jsx'));
+const WorktreeDetail = lazyScreen(() => import('../tools/WorktreeDetail.jsx'));
 const SubmodulesScreen = lazyScreen(() => import('../tools/SubmodulesScreen.jsx'));
 const MaintenanceScreen = lazyScreen(() => import('../tools/MaintenanceScreen.jsx'));
 const WorktreeDialog = lazyScreen(() => import('../tools/WorktreeDialog.jsx'));
@@ -79,7 +84,9 @@ const NO_BISECT = { active: false, terms: { bad: 'bad', good: 'good' }, start: n
 /** The four centre-pane screens that replace the graph instead of selecting a commit. */
 const SCREENS = ['worktree', 'branches', 'stashes', 'reflog', 'worktrees', 'submodules', 'maintenance', 'automations'];
 /** Values of `selected` that are not a commit oid and so have no commit to read. */
-const isCommitSelection = value => Boolean(value) && !SCREENS.includes(value) && value !== UNCOMMITTED;
+const isCommitSelection = value => Boolean(value) && !SCREENS.includes(value) && value !== UNCOMMITTED && !isWorktreeSelection(value);
+// What `selected` holds when it is not a commit: a reload keeps it, a drag leaves it.
+const holdsView = value => SCREENS.includes(value) || value === UNCOMMITTED || isWorktreeSelection(value);
 const NO_KEYS = new Set();
 /** Right-click and the menu keys on one element, opening at the pointer or under the element. */
 function contextMenuProps(open, keydown) {
@@ -95,7 +102,7 @@ function contextMenuProps(open, keydown) {
 }
 
 /** One ref in the sidebar, on its own so that moving through the graph draws only the refs it selects. */
-const RefLeaf = memo(function RefLeaf({ item, label, picked, current, drag, handlers }) {
+const RefLeaf = memo(function RefLeaf({ item, label, picked, current, worktree, drag, handlers }) {
   const bound = drag.bind(refEndpoint(item));
   // F2 (by default) renames a local branch, the way it renames a file in a file manager.
   const keydown = event => {
@@ -104,21 +111,21 @@ const RefLeaf = memo(function RefLeaf({ item, label, picked, current, drag, hand
   };
   return <button {...bound} {...contextMenuProps((x, y) => handlers.menu(item, x, y), keydown)} className={`real-branch ${current ? 'current-branch' : ''} ${picked ? 'selected-ref' : ''} ${drag.className(refEndpoint(item))}`}
     aria-current={picked ? 'true' : undefined}
-    title={item.name.startsWith('-') ? t('This name looks like a command-line option') : item.type === 'tag' ? t`${item.fullName} · Drag onto a target · Right-click for actions` : t`${item.fullName} · Double-click to check out · Drag onto a target · Right-click for actions`}
+    title={item.name.startsWith('-') ? t('This name looks like a command-line option') : worktree ? `${item.fullName} · ${worktreeRefTitle(worktree)}` : item.type === 'tag' ? t`${item.fullName} · Drag onto a target · Right-click for actions` : t`${item.fullName} · Double-click to check out · Drag onto a target · Right-click for actions`}
     onClick={() => handlers.select(item)} onDoubleClick={() => handlers.checkout([item])}>
-    {item.type === 'remote' ? <Globe /> : item.type === 'tag' ? <Tag /> : <GitBranch />}<span>{label}</span>{item.name.startsWith('-') && <AlertTriangle role="img" aria-label={t('This name looks like a command-line option')} />}{(item.ahead > 0 || item.behind > 0) && <small>↑{item.ahead} ↓{item.behind}</small>}</button>;
+    {item.type === 'remote' ? <Globe /> : item.type === 'tag' ? <Tag /> : worktree ? <WorktreeRefIcon card={worktree} /> : <GitBranch />}<span>{label}</span>{item.name.startsWith('-') && <AlertTriangle role="img" aria-label={t('This name looks like a command-line option')} />}{(item.ahead > 0 || item.behind > 0) && <small>↑{item.ahead} ↓{item.behind}</small>}</button>;
 });
 
-const BranchTree = memo(function BranchTree({ node, type, path = '', tree, handlers, drag, headBranch }) {
+const BranchTree = memo(function BranchTree({ node, type, path = '', tree, handlers, drag, headBranch, worktrees }) {
   return <>{[...node.folders].map(([name, child]) => {
     const key = folderKey(type, path + name);
     const open = tree.isOpen(key);
     // A closed folder renders nothing inside: a long remote list stays cheap.
     return <details className="branch-folder" key={name} open={open}><summary onClick={event => { event.preventDefault(); tree.toggle(key, !open); }}>{name}</summary>
-      {open && <BranchTree node={child} type={type} path={`${path}${name}/`} tree={tree} handlers={handlers} drag={drag} headBranch={headBranch} />}</details>;
+      {open && <BranchTree node={child} type={type} path={`${path}${name}/`} tree={tree} handlers={handlers} drag={drag} headBranch={headBranch} worktrees={worktrees} />}</details>;
   })}
     {node.leaves.map(({ ref, label }) => <RefLeaf key={ref.fullName} item={ref} label={label} picked={tree.selected.has(ref.fullName)}
-      current={ref.type === 'local' && ref.name === headBranch} drag={drag} handlers={handlers} />)}</>;
+      current={ref.type === 'local' && ref.name === headBranch} worktree={ref.type === 'local' ? worktrees.get(ref.name) : undefined} drag={drag} handlers={handlers} />)}</>;
 });
 
 /**
@@ -130,7 +137,7 @@ const showsImage = diff => Boolean(diff.source && imageType(diff.file) && (diff.
 
 // In the centre a diff stands in for the history, so it offers the way back to it;
 // in the file-history side panel it only closes.
-function Diff({ diff, repositoryId, onBack, onClose, onCommit, onBlame, view, onConsole }) {
+function Diff({ diff, repositoryId, onBack, onClose, onCommit, onBlame, view, onConsole, detailButton }) {
   // A binary file has no text to show whole; an image has its own viewer.
   const textual = !diff.error && !diff.binary && !showsImage(diff);
   const full = view.full && textual && Boolean(diff.source);
@@ -138,22 +145,25 @@ function Diff({ diff, repositoryId, onBack, onClose, onCommit, onBlame, view, on
     {onBack && <Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>}
     <code>{diff.file}</code>
     {diff.section && <span className="pill">{diff.section === 'staged' ? t('Staged') : diff.section === 'untracked' ? t('Untracked') : t('Not staged')}</span>}
+    {diff.worktree && <span className="pill">{folderLabel(diff.worktree)}</span>}
     <div className="diff-heading-actions">
-      {textual && <FileViewSwitch full={view.full} onFull={view.setFull} />}
+      {textual && !diff.worktree && <FileViewSwitch full={view.full} onFull={view.setFull} />}
       {onBlame && <Button icon={AlignLeft} onClick={onBlame}>{t('Blame')}</Button>}
       {onClose && <Button icon={X} aria-label={t('Close diff')} onClick={onClose} />}
+      {detailButton}
     </div></header>
-    {onCommit && <div className="file-history-diff-heading"><code>{diff.oid.slice(0, 8)}</code><Button icon={GitBranch} onClick={onCommit}>{t('Go to commit')}</Button></div>}
+    {onCommit && <div className="file-history-diff-heading"><button type="button" className="commit-hash-link" title={t('Go to commit')} onClick={onCommit}><code>{diff.oid.slice(0, 8)}</code><ArrowRight aria-hidden="true" /></button><Button icon={GitBranch} onClick={onCommit}>{t('Go to commit')}</Button></div>}
     {diff.loading ? <div className="loading-shell" aria-label={t('Loading diff')}><div className="skeleton" /></div> : diff.error ? <p role="alert" className="empty-inline">{tr(diff.error)}</p> : showsImage(diff) ? <ImageDiff repositoryId={repositoryId} file={diff.file} source={diff.source} />
       : full ? <FileView repositoryId={repositoryId} file={diff.file} source={diff.source} patch={diff.patch} withChanges={view.withChanges} onWithChanges={view.setWithChanges} onConsole={onConsole} />
       : diff.note ? <p className="empty-inline">{tr(diff.note)}</p> : diff.binary ? <p className="empty-inline">{t('Binary file changed. A text diff is unavailable.')}</p> : diff.patch ? <DiffLines patch={diff.patch} path={diff.file} /> : <p className="empty-inline">{t('No changes for this file in this comparison.')}</p>}
   </section>;
 }
 
-function FileHistory({ data, selected, onSelect, onBack, onConsole }) {
+function FileHistory({ data, selected, onSelect, onBack, onConsole, detailButton }) {
   return <section className="diff-view file-history" aria-label={t('File history')}>
     <header className="panel-heading"><Button icon={ArrowLeft} onClick={onBack}>{t('Back to history')}</Button>
-      <span>{t('HISTORY')} <code>{data.path}</code>{data.commits ? <small> · {data.commits.length}</small> : null}</span></header>
+      <span>{t('HISTORY')} <code>{data.path}</code>{data.commits ? <small> · {data.commits.length}</small> : null}</span>
+      {detailButton && <div className="diff-heading-actions">{detailButton}</div>}</header>
     {data.loading ? <div className="loading-shell" aria-label={t('Loading file history')}><div className="skeleton" /></div>
       : data.error ? <p role="alert" className="empty-inline">{data.error} <button onClick={onConsole}>{t('Show output')}</button></p>
       : !data.commits.length ? <p className="empty-inline">{t('Git has no recorded history for this file.')}</p>
@@ -281,7 +291,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       setMenu(null); setFileMenu(null); setRefMenu(null); setSelection([]);
       if (!conflict) {
         setDiff(null); setFileHistory(null); diffRequest.current++;
-        setSelected(value => SCREENS.includes(value) || value === UNCOMMITTED ? data.commits[0]?.oid || null : value);
+        setSelected(value => holdsView(value) ? data.commits[0]?.oid || null : value);
       }
     },
     onDrop: (source, target, x, y) => { setMenu(null); setDropMenu({ source, target, x, y }); } });
@@ -401,7 +411,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       // a page of the new history to the old rows.
       busy.current = true; setLoading(true); setError('');
       if (!keepView) {
-        setSelected(current => select || (SCREENS.includes(current) || current === UNCOMMITTED ? current : null));
+        setSelected(current => select || (holdsView(current) ? current : null));
         setSelection([]); setRange(null); setDiff(null); setFileHistory(null); diffRequest.current++;
       }
       const readAt = Date.now();
@@ -1200,6 +1210,16 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       if (request === diffRequest.current) setDiff({ file: file.path, section, source, patch: result.text, binary: result.binary, loading: false });
     } catch { if (request === diffRequest.current) setDiff({ file: file.path, section, error: t('Could not read the diff. Show output in the console.'), loading: false }); }
   }
+  /** A file from a worktree chosen in the graph: what that worktree changed in it since it left the base. */
+  async function openWorktreeChange(folder, file) {
+    const request = ++diffRequest.current;
+    setFileHistory(null);
+    setDiff({ file: file.path, worktree: folder, loading: true });
+    try {
+      const result = await window.twig.getWorktreeFileDiff(repository.id, folder, file.path, file.untracked);
+      if (request === diffRequest.current) setDiff({ file: file.path, worktree: folder, binary: file.binary, ...result, loading: false });
+    } catch (failure) { if (request === diffRequest.current) setDiff({ file: file.path, worktree: folder, error: failureText(failure, t('Could not read this diff.')), loading: false }); }
+  }
   async function openFileHistory(path) {
     const request = ++diffRequest.current;
     setDiff(null);
@@ -1355,6 +1375,18 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     finally { setWorking(false); }
   }
   const screen = SCREENS.includes(selected) ? selected : null;
+  // The other worktrees: rows and lanes in the graph, marks on their branches. Not read
+  // behind a screen (the Worktrees one reads its own) or in a tab nobody is looking at.
+  const [refreshPresses, setRefreshPresses] = useState(0);
+  const worktreeBoard = useGraphWorktrees({ repositoryId: repository.id, enabled: active && !screen && !repository.blocked, tips: branchTips, refresh: `${refreshRequest}:${refreshPresses}` });
+  const worktreeBranches = useMemo(() => branchWorktrees(worktreeBoard.worktrees), [worktreeBoard]);
+  const worktreeFolder = selectedFolder(selected);
+  const worktreeCard = worktreeFolder ? worktreeBoard.worktrees.find(entry => entry.path === worktreeFolder) ?? null : null;
+  // A worktree removed elsewhere takes its selection with it, as a clean tree does "Uncommitted changes".
+  useEffect(() => {
+    if (worktreeFolder && !worktreeCard) setSelected(dataRef.current.commits[0]?.oid || null);
+  }, [worktreeFolder, worktreeCard]);
+  const [boardFocus, setBoardFocus] = useState(null);
   const uncommitted = selected === UNCOMMITTED;
   const hunterCommit = !screen && !range ? data.commits[indexMap.get(selected)] : null;
   const hunterReason = toolbarBusyReason || (working ? t('Git is working') : undefined)
@@ -1436,7 +1468,13 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
   const [detailInNarrow, setDetailInNarrow] = useState(false);
   useEffect(() => { if (!narrow) setDetailInNarrow(false); }, [narrow]);
   const closeDetail = () => { setDetail(false); setDetailInNarrow(false); };
+  const openBoard = folder => { setBoardFocus(folder); choose('worktrees'); };
   const showDetail = detail && !conflict && !screen && (!narrow || detailInNarrow);
+  // A view in the centre stands in for the graph and has its own heading, which leads
+  // back to it: the graph's heading goes with the graph, and the way to the details
+  // panel moves into the heading that stays.
+  const centreView = Boolean(diff || fileHistory || blame || conflict);
+  const detailButton = !showDetail && !conflict ? <Button icon={PanelRightOpen} aria-label={t('Show commit details')} onClick={() => { setDetail(true); setDetailInNarrow(true); }} /> : null;
   // What is on screen, for an AI agent asking through the MCP server. Sent
   // only from the active tab and only when the selection changes; main keeps
   // the last report in memory and nowhere else.
@@ -1457,7 +1495,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
   // the life of the tab and calls the current implementation. Fresh functions on
   // every render re-rendered every visible row of every tab on each refresh.
   const latest = useRef(null);
-  latest.current = { openMenu, checkoutOnDoubleClick, choose, selectInGraph,
+  latest.current = { openMenu, checkoutOnDoubleClick, choose, selectInGraph, openBoard,
     selectRef: ref => { setTreeKept(treeShown); pickRef(ref); void jump(ref.target); },
     refMenu: (ref, x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ ref, x, y }); },
     renameRef: ref => { if (operation.kind === 'none' && !working) refHandlers(ref).renameBranch(ref.name); } };
@@ -1469,6 +1507,9 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     menu: (oid, x, y) => latest.current.openMenu(oid, x, y),
     checkout: refs => latest.current.checkoutOnDoubleClick(refs),
     uncommitted: () => latest.current.choose(UNCOMMITTED),
+    // The panel is all a worktree row opens, so unlike a commit it shows even in a narrow window.
+    worktree: folder => { latest.current.choose(worktreeSelection(folder)); setDetailInNarrow(true); },
+    board: folder => latest.current.openBoard(folder),
     stashes: () => latest.current.choose('stashes')
   }), []);
   const refLeafHandlers = useMemo(() => ({
@@ -1488,7 +1529,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         title={t('Apply patch: a .patch or .mbox file — commits through git am, a plain diff through git apply')} onClick={() => void openPatch()}>{t('Patch')}</Button></>, toolsSlot)}
     {active && refreshSlot && createPortal(
       <Button className="repo-refresh" icon={RefreshCw} aria-label={t('Refresh')} reason={loading ? t('History is loading') : undefined} title={t('Refresh: re-read the history, branches and working tree')}
-        onClick={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); }} />, refreshSlot)}
+        onClick={() => { void reload(); void refreshOperation(); onRepositoryChanged?.(); setRefreshPresses(count => count + 1); }} />, refreshSlot)}
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} aria-label={t('Repository navigation')}>
       {collapsed ? <Button icon={PanelLeftOpen} aria-label={t('Expand repository sidebar')} onClick={() => setCollapsed(false)} /> : <>
         <div className="sidebar-filter"><Search /><input ref={filterRef} aria-label={t('Search commits and references')} placeholder={t('Search')} value={filter} onChange={event => setFilter(event.target.value)} />
@@ -1500,7 +1541,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
             <StashBox /><span>{t('Stashes')}</span><small>{stashes.length}</small></button>
           <button className={`real-branch ${screen === 'reflog' ? 'selected' : ''}`} aria-current={screen === 'reflog' ? 'page' : undefined} onClick={() => choose('reflog')} title={t('Where HEAD and each branch have been — recover lost work')}>
             <History /><span>{t('Reflog')}</span></button>
-          <button className={`real-branch ${screen === 'worktrees' ? 'selected' : ''}`} aria-current={screen === 'worktrees' ? 'page' : undefined} onClick={() => choose('worktrees')} title={t('Other checkouts of this repository, each in its own folder')}>
+          <button className={`real-branch ${screen === 'worktrees' ? 'selected' : ''}`} aria-current={screen === 'worktrees' ? 'page' : undefined} onClick={() => openBoard(null)} title={t('Other checkouts of this repository, each in its own folder')}>
             <FolderGit2 /><span>{t('Worktrees')}</span></button>
           <button className={`real-branch ${screen === 'submodules' ? 'selected' : ''}`} aria-current={screen === 'submodules' ? 'page' : undefined} onClick={() => choose('submodules')} title={t('Repositories pinned inside this one')}>
             <Boxes /><span>{t('Submodules')}</span></button>
@@ -1513,7 +1554,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
           const open = tree.isOpen(sectionKey(type));
           return <details key={type} open={open}><summary onClick={event => { event.preventDefault(); tree.toggle(sectionKey(type), !open); }}
             {...contextMenuProps((x, y) => { setMenu(null); setFileMenu(null); setRefMenu({ section: type, label, x, y }); })}>{label}<span>{refSections[type].count}</span></summary>
-            {open && <BranchTree node={refSections[type].root} type={type} tree={tree} handlers={refLeafHandlers} drag={drag} headBranch={headBranch} />}
+            {open && <BranchTree node={refSections[type].root} type={type} tree={tree} handlers={refLeafHandlers} drag={drag} headBranch={headBranch} worktrees={worktreeBranches} />}
             {open && !refSections[type].matches && <p className="section-empty">{type === 'local' ? t('No matching local refs') : type === 'remote' ? t('No matching remote refs') : t('No matching tags refs')}</p>}
           </details>;
         })}</div><div className="sidebar-footer"><span {...(headRef ? { tabIndex: 0, title: t`${headRef.name} · Right-click for actions`,
@@ -1525,7 +1566,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     </aside>
     {!collapsed && <Splitter side="left" width={sidebarWidth} onWidth={setSidebarWidth} label={t('Repository sidebar width')} />}
     <main className="graph-panel" aria-label={t('Repository history')}>
-      {!screen && <header className="graph-heading"><div><GitBranch /><strong>{t('History')}</strong><span className="count">{tn(data.commits.length, '{n} loaded', '{n} loaded')}</span></div><div>{!showDetail && !conflict && <Button icon={PanelRightOpen} aria-label={t('Show commit details')} onClick={() => { setDetail(true); setDetailInNarrow(true); }} />}</div></header>}
+      {!screen && !centreView && <header className="graph-heading"><div><GitBranch /><strong>{t('History')}</strong><span className="count">{tn(data.commits.length, '{n} loaded', '{n} loaded')}</span></div><div>{detailButton}</div></header>}
       {error && <div className="history-error" role="alert">{error}<button onClick={onConsole}>{t('Show output')}</button></div>}
       {drag.state && <div className="git-drag-status" role="status">
         <span>{tx('Source {source} → Target {target}', { source: <strong>{endpointLabel(drag.state.source)}</strong>,
@@ -1551,7 +1592,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
           title={t('Runs git lfs pull: downloads the content of these files and puts it in place of their pointers')}>{t('Download (git lfs pull)')}</Button>}
         {lfsPulling && <Button onClick={() => void window.twig.cancelRepositoryTool(repository.id)}>{t('Cancel')}</Button>}
       </div>}
-      <div hidden={Boolean(diff) || Boolean(fileHistory) || Boolean(blame) || Boolean(conflict) || Boolean(screen)} className="history-slot">
+      <div hidden={centreView || Boolean(screen)} className="history-slot">
         {search ? <div className="search-results">
           <div className="search-results-heading" role="status">
             <span>{searchSummary({ ...search, count: search.commits.length })}</span>
@@ -1571,7 +1612,8 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         : loading && !data.commits.length ? <div className="loading-shell" aria-label={t('Loading history')}>{Array.from({ length: 12 }, (_, i) => <div className="skeleton" key={i} />)}</div>
           : <CommitGraph commits={data.commits} lanes={data.lanes} laneCount={data.width} refMap={refMap} indexMap={indexMap} selected={selected} selection={selectionSet} head={repository.status?.branch?.oid}
             onSelect={rowHandlers.select} onMenu={rowHandlers.menu} onCheckout={rowHandlers.checkout} onPickRef={pickRef} loadMore={loadMore} hasMore={data.nextSkip !== null} loading={loading} summary={summary} stashes={stashes} marks={marks} bisectMarks={bisectMarks}
-            onUncommitted={rowHandlers.uncommitted} onStashes={rowHandlers.stashes} reveal={reveal} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} headLine />}
+            onUncommitted={rowHandlers.uncommitted} onStashes={rowHandlers.stashes} reveal={reveal} active={active} commitColors={commitColors} drag={drag} headBranch={headBranch} headLine
+            worktrees={worktreeBoard.worktrees} worktreeBase={worktreeBoard.base} worktreeBranches={worktreeBranches} onWorktree={rowHandlers.worktree} onWorktreeBoard={rowHandlers.board} />}
       </div>
       {conflict && <ConflictEditor key={conflict} repositoryId={repository.id} file={conflict} onConsole={onConsole} onBack={() => setConflict(null)} onDraft={readUnsaved}
         onResolved={state => {
@@ -1589,7 +1631,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} onJump={oid => void jump(oid)} />}
       {!conflict && screen === 'worktree' && <WorktreeScreen repository={repository} operation={operation} onConsole={onConsole} onChanged={({ history = false } = {}) => { if (history) void reload(); void refreshOperation(); onRepositoryChanged?.(); }}
         runAutomation={runAutomation} refreshKey={refreshRequest} onResolveConflict={setConflict} onBack={() => choose(data.commits[0]?.oid || null)} />}
-      {!conflict && screen === 'worktrees' && <WorktreesScreen repository={repository} platform={platform} busy={working} refreshKey={`${toolsRefresh}:${branchTips}`}
+      {!conflict && screen === 'worktrees' && <WorktreesScreen repository={repository} platform={platform} busy={working} refreshKey={`${toolsRefresh}:${branchTips}`} focus={boardFocus}
         onBack={() => choose(data.commits[0]?.oid || null)} onNew={branch => openWorktreeDialog(branch)} onNewAgent={() => openWorktreeDialog(null, true)}
         onOpen={folder => openTab(() => window.twig.openWorktree(repository.id, folder))}
         onDialog={setDialog} onWorkspace={next => onWorkspace?.(next)} onConsole={onConsole}
@@ -1602,11 +1644,11 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       {!conflict && screen === 'automations' && <AutomationsScreen repository={repository} refreshKey={automationRefresh} busy={working || Boolean(execution)}
         onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onChanged={() => setAutomationRefresh(value => value + 1)}
         onRunEvent={(event, options) => void runAutomation(event, options)} />}
-      {!conflict && !screen && blame && <BlameView repository={repository} seed={blame} onConsole={onConsole}
+      {!conflict && !screen && blame && <BlameView repository={repository} seed={blame} onConsole={onConsole} detailButton={detailButton}
         onBack={closeBlame} onJump={oid => { closeBlame(); void jump(oid); }} onSelect={setBlameSel} />}
-      {!conflict && !blame && diff && !fileHistory && <Diff diff={diff} repositoryId={repository.id} view={fileView} onConsole={onConsole} onBack={() => { diffRequest.current++; setDiff(null); }}
+      {!conflict && !blame && diff && !fileHistory && <Diff diff={diff} repositoryId={repository.id} view={fileView} onConsole={onConsole} detailButton={detailButton} onBack={() => { diffRequest.current++; setDiff(null); }}
         onBlame={diff.file && (diff.oid || indexMap.has(selected)) ? () => openBlame(diff.file, diff.oid || selected) : undefined} />}
-      {!conflict && !blame && fileHistory && <FileHistory data={fileHistory} selected={diff?.oid} onConsole={onConsole}
+      {!conflict && !blame && fileHistory && <FileHistory data={fileHistory} selected={diff?.oid} onConsole={onConsole} detailButton={detailButton}
         onSelect={openHistoryDiff} onBack={() => { diffRequest.current++; setFileHistory(null); setDiff(null); }} />}
     </main>
     {showDetail && (fileHistory || blame
@@ -1623,7 +1665,10 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       onFileMenu={(file, section, x, y) => { setMenu(null); setRefMenu(null); setFileMenu({ path: file.path, section, status: file.status, x, y }); }}
       actions={stagingActions} error={stagingError} onConsole={onConsole} onDismissError={() => setStagingError('')}
       onFile={(file, section) => (file.status === 'U' ? setConflict(file.path) : void openWorktreeFile(file, section))} onStaging={() => choose('worktree')} onClose={closeDetail} />}
-    {showDetail && !fileHistory && !blame && !uncommitted && <CommitPanel repositoryId={repository.id} {...commitState} onClose={closeDetail} onParent={jump} onFile={openFile}
+    {showDetail && !fileHistory && !blame && worktreeCard && <WorktreeDetail repositoryId={repository.id} card={worktreeCard} base={worktreeBoard.base}
+      openPath={diff?.worktree === worktreeCard.path ? diff.file : null} onFile={file => void openWorktreeChange(worktreeCard.path, file)}
+      onOpen={folder => openTab(() => window.twig.openWorktree(repository.id, folder))} onBoard={openBoard} onClose={closeDetail} />}
+    {showDetail && !fileHistory && !blame && !uncommitted && !worktreeCard && <CommitPanel repositoryId={repository.id} {...commitState} onClose={closeDetail} onParent={jump} onFile={openFile}
       openPath={diff && !diff.section ? diff.file : null} onFileMenu={(path, x, y) => setFileMenu({ path, x, y })} onConsole={onConsole} range={range} commitColors={commitColors} remotes={remotes}
       mark={commitState.commit ? marks[commitState.commit.oid] || null : null} onSetMark={applyMark} onClearMark={removeMark} />}
     {fileMenu && <Menu x={fileMenu.x} y={fileMenu.y} label={t`Actions for ${fileMenu.path}`} onClose={() => setFileMenu(null)}

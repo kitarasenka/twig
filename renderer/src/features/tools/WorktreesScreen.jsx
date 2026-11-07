@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bot, Copy, ExternalLink, FilePlus2, FolderGit2, GitCompare, GitMerge, Plus, RefreshCw, Scissors, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Bot, Copy, ExternalLink, FolderGit2, GitCompare, GitMerge, Plus, RefreshCw, Scissors, Trash2, X } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import ScreenTitle from '../../ui/ScreenTitle.jsx';
 import Dialog from '../../ui/Dialog.jsx';
@@ -7,8 +7,8 @@ import OperationNote from '../../ui/OperationNote.jsx';
 import { relativeTime } from '../../ui/relative-time.js';
 import { ShowAll, useBudget } from '../../ui/useBudget.jsx';
 import DiffLines from '../diff/DiffLines.jsx';
-import FileStatus from '../diff/FileStatus.jsx';
 import { showAllFiles } from '../diff/FileList.jsx';
+import ReviewFiles from './ReviewFiles.jsx';
 import { createBoardRefresh } from './board-refresh.js';
 import { boardBadges, changesLine, compareCell, compareChoices, connectedLine, finishCommands, folderLabel, launchCommand, progressLine, squashReason,
   worktreeLine, worktreeRemoveCommand, worktreeRemoveReason } from './tools-view.js';
@@ -45,13 +45,13 @@ function useRevealDiff(path) {
  * and its branch go. An agent is started in a worktree by the person, from
  * the command the card copies; 🌱 Twig runs no agent itself.
  */
-export default function WorktreesScreen({ repository, platform, busy, refreshKey = 0, onBack, onNew, onNewAgent, onOpen, onDialog, onWorkspace, onChanged, onConsole }) {
+export default function WorktreesScreen({ repository, platform, busy, refreshKey = 0, focus = null, onBack, onNew, onNewAgent, onOpen, onDialog, onWorkspace, onChanged, onConsole }) {
   const [board, setBoard] = useState({ base: null, worktrees: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [working, setWorking] = useState(false);
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(focus);
   const [review, setReview] = useState(null);
   const [diff, setDiff] = useState(null);
   const [squash, setSquash] = useState(null);
@@ -259,23 +259,6 @@ export default function WorktreesScreen({ repository, platform, busy, refreshKey
     {squash && <SquashDialog plan={squash} onSquash={doSquash} onClose={() => setSquash(null)} />}
   </section>;
 }
-
-/** The files of a review. On its own so that opening one file does not draw the others again. */
-const ReviewFiles = memo(function ReviewFiles({ files, openPath, onFile }) {
-  const budget = useBudget(files);
-  return <ul className="stash-files" aria-label={t('Files this worktree changed')}>
-    {files.length === 0 && <li className="empty-inline">{t('Nothing changed yet.')}</li>}
-    {budget.shown.map(file => <li key={`${file.path}:${file.untracked}`}>
-      <button type="button" className={openPath === file.path ? 'selected' : ''} aria-pressed={openPath === file.path} onClick={() => onFile(file)}>
-        <FileStatus status={file.status} />
-        <span title={file.path}>{file.path}</span>
-        {file.untracked ? <small><FilePlus2 aria-hidden="true" />{t('untracked')}</small>
-          : file.insertions !== null && <small>+{file.insertions} −{file.deletions}</small>}
-      </button>
-    </li>)}
-    {budget.hidden > 0 && <li><ShowAll budget={budget} label={showAllFiles} /></li>}
-  </ul>;
-});
 
 /** What one worktree changed since its branch left the base: its commits, then every file. */
 function Review({ review, diff, base, onFile }) {

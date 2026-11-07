@@ -1,6 +1,9 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GitBranch, Sprout, Globe, Tag, FilePenLine, Bookmark, Bug, CheckCircle2, FlaskConical, SkipForward, XCircle } from 'lucide-react';
 import { StashBox } from '../../ui/stash-icons.js';
+import lazyScreen from '../../ui/lazy-screen.jsx';
+import { WorktreeRefIcon, worktreeRefTitle } from './worktree-ref.jsx';
+import { pickRows, selectedFolder, worktreeLanes } from './worktree-lanes.js';
 import { LANE_ORIGIN, LANE_WIDTH, ROW_HEIGHT, authorInitials, authorTint, createRowMetrics, headLineIndex, headLinePath, segmentPath } from './layout.js';
 import { HEAD_WIDTH, MARK_WIDTH, badgeWidth, extraHeight, packRefLines } from './ref-lines.js';
 import { ageStop, ageStrokeClass, ageTextClass } from './age-color.js';
@@ -26,7 +29,11 @@ function BisectChip({ mark }) {
 }
 /** What `selected` holds while the uncommitted row, not a commit, is chosen. */
 export const UNCOMMITTED = 'uncommitted';
+// Only a repository with other worktrees loads the rows.
+const WorktreeStrip = lazyScreen(() => import('./WorktreeStrip.jsx'));
 const EMPTY_LINES = [[]];
+const NO_WORKTREES = [];
+const NO_WORKTREE_BRANCHES = new Map();
 /** The Branch / tag cell keeps a gap to the graph column (`padding-right`). */
 const REF_CELL_PADDING = 8;
 
@@ -65,12 +72,13 @@ export function relativeDate(value) {
   return Number.isNaN(time) ? '' : relativeTime(time / 1000);
 }
 
-const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, index, selected, member, head, stashes, stashX, onStashes, refs, refLines, mark, bisect, onSelect, onMenu, onCheckout, onPickRef, dayStart, age, drag, headBranch, visibility, origin, headIndex }) {
+const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, index, selected, member, head, stashes, stashX, onStashes, refs, refLines, mark, bisect, onSelect, onMenu, onCheckout, onPickRef, dayStart, age, drag, headBranch, visibility, origin, headIndex, worktreeLinks, worktreeBranches }) {
   // In age mode a row paints its own age onto every lane crossing it, so the
   // graph reads as one gradient down the page instead of per-branch colours.
   const stroke = age === null ? null : ageStrokeClass(age);
   const laneX = origin + layout.lane * LANE_WIDTH;
   const headLine = headLinePath(index, headIndex, height, laneX);
+  const worktreeLines = worktreeLinks.map(link => headLinePath(index, link.tip, height, laneX, link.x)).filter(Boolean);
   const endpoint = rowEndpoint(commit, refs, headBranch);
   return <div role="option" id={`commit-${commit.oid}`} aria-selected={selected || member} aria-posinset={index + 1} aria-setsize={total}
     {...drag?.bind(endpoint)}
@@ -82,16 +90,17 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
       {visibility.branch && refLines.map((line, lineIndex) => <span className="ref-line" key={lineIndex}>
         {lineIndex === 0 && mark && <span className="mark-chip" title={mark.note || t('Marked')}><Bookmark aria-label={mark.note ? t`Marked: ${mark.note}` : t('Marked')} /></span>}
         {lineIndex === 0 && head && <Sprout aria-label="HEAD" />}
-        {line.map(refIndex => refs[refIndex]).map(ref => <span key={ref.fullName} title={ref.type === 'tag' ? `${ref.fullName} · ${t('Drag onto a target')}` : `${ref.fullName} · ${t('Double-click to check out')} · ${t('Drag onto a target')}`} tabIndex={0}
+        {line.map(refIndex => refs[refIndex]).map(ref => <span key={ref.fullName} title={ref.type === 'tag' ? `${ref.fullName} · ${t('Drag onto a target')}` : ref.type === 'local' && worktreeBranches.has(ref.name) ? `${ref.fullName} · ${worktreeRefTitle(worktreeBranches.get(ref.name))}` : `${ref.fullName} · ${t('Double-click to check out')} · ${t('Drag onto a target')}`} tabIndex={0}
           onClick={() => onPickRef?.(ref)}
           onDoubleClick={event => { event.stopPropagation(); onCheckout?.([ref]); }}
           {...drag?.bind(refEndpoint(ref))} className={`ref-badge ${ref.type === 'remote' ? 'remote-ref' : ''} ${ref.type === 'local' && ref.name === headBranch ? 'current-ref' : ''} ${drag?.className(refEndpoint(ref)) || ''}`}>
-          {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : <GitBranch />}<span>{ref.name}</span></span>)}
+          {ref.type === 'remote' ? <Globe /> : ref.type === 'tag' ? <Tag /> : ref.type === 'local' && worktreeBranches.has(ref.name) ? <WorktreeRefIcon card={worktreeBranches.get(ref.name)} /> : <GitBranch />}<span>{ref.name}</span></span>)}
       </span>)}</span>
     <span className="lane-cell"><span className="lane-track">
       <svg className="real-lane" aria-hidden="true" height={height}>
         {stashes && <path className="stash-link" d={`M${laneX} ${height / 2}H${stashX}`} />}
         {headLine && <path className="head-link" d={headLine} />}
+        {worktreeLines.map(line => <path key={line} className="worktree-link" d={line} />)}
         {layout.segments.map((segment, i) => <path key={i} className={stroke || `graph-color-${segment.color}`} d={segmentPath(segment, height, origin)} />)}
         <circle className={`${stroke || `graph-color-${layout.color}`} author-tint author-tint-${authorTint(commit.author)}`} cx={laneX} cy={height / 2} r={8} />
         {mark && <circle className="mark-node" cx={laneX} cy={height / 2} r={8} />}
@@ -109,7 +118,7 @@ const CommitRow = memo(function CommitRow({ commit, layout, top, height, total, 
   </div>;
 });
 
-export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, onCheckout, onPickRef, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, bisectMarks = NO_BISECT_MARKS, onUncommitted, onStashes, reveal = null, active, commitColors = 'lanes', drag, headBranch, headLine = false }) {
+export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMap, selected, selection, head, onSelect, onMenu, onCheckout, onPickRef, loadMore, hasMore, loading, summary = null, stashes = [], marks = {}, bisectMarks = NO_BISECT_MARKS, onUncommitted, onStashes, reveal = null, active, commitColors = 'lanes', drag, headBranch, headLine = false, worktrees = NO_WORKTREES, worktreeBase = null, worktreeBranches = NO_WORKTREE_BRANCHES, onWorktree, onWorktreeBoard }) {
   const selectionSet = selection || EMPTY_SELECTION;
   const scroller = useRef(null);
   const [viewport, setViewport] = useState({ top: 0, height: 600 });
@@ -187,12 +196,19 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
   // Not the top row, HEAD gets a dashed line of its own on the far left, and
   // every commit lane moves one lane to the right to make room for it.
   const headIndex = headLine ? headLineIndex(head, indexMap, hasMore) : null;
-  const origin = LANE_ORIGIN + (headIndex === null ? 0 : LANE_WIDTH);
+  const headLanes = headIndex === null ? 0 : 1;
+  // Worktree rows and their lanes belong to the history, not to search results (`headLine` tells them apart).
+  const pinnedWorktree = selectedFolder(selected);
+  const strip = useMemo(() => (headLine ? pickRows(worktrees, pinnedWorktree) : { rows: NO_WORKTREES, hidden: 0 }), [headLine, worktrees, pinnedWorktree]);
+  const lanesOfWorktrees = useMemo(() => worktreeLanes(strip.rows, indexMap, hasMore, headLanes), [strip, indexMap, hasMore, headLanes]);
+  const worktreeLinks = useMemo(() => lanesOfWorktrees.filter(lane => lane.tip !== null), [lanesOfWorktrees]);
+  const stripRef = useRef(null);
+  const origin = LANE_ORIGIN + (headLanes + strip.rows.length) * LANE_WIDTH;
   const stashX = origin + laneCount * LANE_WIDTH;
   // The graph column fits the lanes by default; a drag pins it to a fixed width.
   // Narrower than its lanes, the column clips them and scrolls sideways by
   // itself (`graphOffset`), so the lanes never spill over the message column.
-  const autoGraphWidth = Math.max(GRAPH_AUTO_MIN, (laneCount + stashLane + (headIndex === null ? 0 : 1)) * LANE_WIDTH + 24);
+  const autoGraphWidth = Math.max(GRAPH_AUTO_MIN, (laneCount + stashLane + headLanes + strip.rows.length) * LANE_WIDTH + 24);
   const minGraphWidth = graphFloor(autoGraphWidth);
   const graphWidth = Number.isFinite(columns.graph) ? clampColumnWidth('graph', columns.graph, minGraphWidth) : autoGraphWidth;
   const graphOffset = clampGraphScroll(graphScroll, autoGraphWidth, graphWidth);
@@ -389,6 +405,8 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
       <span className="worktree-row-chips">{summaryChips(summary).map(chip =>
         <span className={`worktree-chip chip-${chip.key}`} key={chip.key}>{chip.text}</span>)}</span>
     </button>}
+    {strip.rows.length > 0 && <WorktreeStrip rows={strip.rows} hidden={strip.hidden} lanes={lanesOfWorktrees} headLane={headLanes === 1} base={worktreeBase} selected={pinnedWorktree}
+      visibility={visibility} onSelect={onWorktree} onBoard={onWorktreeBoard} stripRef={stripRef} />}
     <div className="real-history-scroll" ref={scroller} role="listbox" aria-label={t('Commit history')} aria-multiselectable="true" tabIndex={0}
       onDragOverCapture={event => { if (dragging) dragY.current = event.clientY; }}
       onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget)) dragY.current = null; }}
@@ -399,13 +417,14 @@ export default function CommitGraph({ commits, lanes, laneCount, refMap, indexMa
         // The header is a sibling of the scroller, so it has to be shifted by hand
         // to stay aligned once resized columns push the table wider than the pane.
         if (columnsRef.current) columnsRef.current.style.transform = `translateX(${-node.scrollLeft}px)`;
+        if (stripRef.current) stripRef.current.style.transform = `translateX(${-node.scrollLeft}px)`;
         if (node.scrollHeight - node.scrollTop - node.clientHeight < ROW_HEIGHT * 15 && hasMore && !loading) loadMore();
       }}>
       <div className="virtual-commits" style={{ height: metrics.totalHeight(commits.length) }}>
         {commits.slice(start, end).map((commit, offset) => <CommitRow key={commit.oid} commit={commit} layout={lanes[start + offset]} index={start + offset} total={commits.length}
           top={metrics.top(start + offset)} height={metrics.height(start + offset)} refLines={refLines.get(commit.oid) || EMPTY_LINES}
           selected={selected === commit.oid} member={selectionSet.has(commit.oid)} head={head === commit.oid} refs={refMap.get(commit.oid)} onSelect={onSelect} onMenu={onMenu} onCheckout={onCheckout} onPickRef={onPickRef} age={now === null ? null : ageStop(commit.committedAt, now)}
-          mark={marks[commit.oid] || null} bisect={bisectMarks.get(commit.oid.toLowerCase()) || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch} visibility={visibility} origin={origin} headIndex={headIndex}
+          mark={marks[commit.oid] || null} bisect={bisectMarks.get(commit.oid.toLowerCase()) || null} stashes={stashesByBase.get(commit.oid)} stashX={stashX} onStashes={onStashes} drag={drag} headBranch={headBranch} visibility={visibility} origin={origin} headIndex={headIndex} worktreeLinks={worktreeLinks} worktreeBranches={worktreeBranches}
           dayStart={start + offset > 0 && localDayKey(commit.committedAt) !== localDayKey(commits[start + offset - 1].committedAt)} />)}
       </div>
     </div>

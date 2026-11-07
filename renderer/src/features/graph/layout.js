@@ -156,10 +156,11 @@ export function headLineIndex(head, indexMap, hasMore) {
  * The dashed HEAD line in one row: its own lane on the far left (LANE_ORIGIN;
  * the commit lanes move one lane right while it shows), straight through the
  * rows above HEAD, then down to the middle of HEAD's row and across to its node.
+ * A worktree's line runs the same way in its own lane (`laneX`).
  */
-export function headLinePath(index, headIndex, height, nodeX) {
+export function headLinePath(index, headIndex, height, nodeX, laneX = LANE_ORIGIN) {
   if (headIndex === null || index > headIndex) return null;
-  if (index < headIndex) return `M${LANE_ORIGIN} 0V${height}`;
+  if (index < headIndex) return `M${laneX} 0V${height}`;
   const middle = height / 2;
-  return `M${LANE_ORIGIN} 0V${middle}H${nodeX - 8}`;
+  return `M${laneX} 0V${middle}H${nodeX - 8}`;
 }

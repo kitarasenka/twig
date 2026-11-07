@@ -134,6 +134,7 @@
   "All repositories for your OS account. Local settings take priority.": "Alle Repositorys Ihres Benutzerkontos. Lokale Einstellungen haben Vorrang.",
   "All tabs": "Alle Tabs",
   "All types": "Alle Typen",
+  "All worktrees": "Alle Worktrees",
   "Allow": "Zulassen",
   "Allow agents to propose commits": "Agenten dürfen Commits vorschlagen",
   "Allowed signers file": "Allowed-Signers-Datei",
@@ -331,6 +332,7 @@
   "Check out {0} as a new branch…": "Checkout von {0} als neuer Branch…",
   "Checked out at the pinned commit {0}.": "Ausgecheckt beim festgelegten Commit {0}.",
   "Checked out at {0}, not at the pinned {1}.": "Ausgecheckt bei {0}, nicht beim festgelegten {1}.",
+  "Checked out in worktree {0}": "In Worktree {0} ausgecheckt",
   "Checked out {0} with a detached HEAD.": "Checkout von {0} mit detached HEAD ausgeführt.",
   "Checked out {0}.": "Checkout von {0} ausgeführt.",
   "Checking GitHub for a newer release…": "Suche auf GitHub nach einem neueren Release…",
@@ -436,6 +438,7 @@
   "Close the tab": "Tab schließen",
   "Close the {name} tab?": "Tab {name} schließen?",
   "Close uncommitted changes": "Änderungen ohne Commit schließen",
+  "Close worktree details": "Worktree-Details schließen",
   "Close {0}": "{0} schließen",
   "Close {0} tab": "Tab {0} schließen",
   "Close 🌱 Twig and reopen it as {0}": "🌱 Twig schließen und als {0} wieder öffnen",
@@ -1896,6 +1899,7 @@
   "Show the commit": "Commit anzeigen",
   "Show the folder each command ran in": "Ordner anzeigen, in dem jeder Befehl lief",
   "Show the uncommitted files in the details panel": "Dateien ohne Commit im Detailbereich anzeigen",
+  "Show what this worktree changed": "Zeigen, was sich in diesem Worktree geändert hat",
   "Show workspace-demo": "workspace-demo anzeigen",
   "Show {0} as": "{0} anzeigen als",
   "Showing {0} of {1} lines.": "{0} von {1} Zeilen werden angezeigt.",
@@ -2531,6 +2535,7 @@
   "View output for {0}": "Ausgabe für {0} anzeigen",
   "View the diff; leave Git unchanged": "Diff ansehen; Git bleibt unverändert",
   "Violet": "Violett",
+  "WORKTREE": "WORKTREE",
   "Wait for Undo to finish": "Warten Sie, bis Rückgängig abgeschlossen ist",
   "Wait for the SSH action to finish": "Warten Sie, bis die SSH-Aktion abgeschlossen ist",
   "Wait for the action to finish": "Warten Sie, bis die Aktion abgeschlossen ist",
@@ -3067,6 +3072,10 @@
   "{n} more proposal is waiting from other worktrees. The next one opens when you answer this one.|{n} more proposals are waiting from other worktrees. The next one opens when you answer this one.": {
     "one": "{n} weiterer Vorschlag aus anderen Worktrees wartet. Der nächste öffnet sich, wenn Sie diesen beantworten.",
     "other": "{n} weitere Vorschläge aus anderen Worktrees warten. Der nächste öffnet sich, wenn Sie diesen beantworten."
+  },
+  "{n} more worktree|{n} more worktrees": {
+    "one": "{n} weiterer Worktree",
+    "other": "{n} weitere Worktrees"
   },
   "{n} new commit is made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.|{n} new commits are made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.": {
     "one": "Auf {target} wird {n} neuer Commit erstellt, der je einen ausgewählten Commit rückgängig macht, neueste zuerst. Aus dem Verlauf wird nichts entfernt. Bei einem Konflikt hält Git dort an, und das Banner bietet Fortsetzen, Überspringen und Abbrechen.",

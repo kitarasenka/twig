@@ -5,7 +5,7 @@ import path from 'node:path';
 import { CommandLog } from '../../main/command-log.js';
 import { runGit } from '../../main/git/exec.js';
 import { addWorktree, agentBranch, suggestWorktreePath } from '../../main/git/worktrees.js';
-import { compareWorktrees, countsInOneRead, excludeAgentFolder, finishWorktree, isAgentFolder, loadWorktreeBoard, loadWorktreeCompareDiff, loadWorktreeFileDiff,
+import { compareWorktrees, countsInOneRead, excludeAgentFolder, finishWorktree, isAgentFolder, loadGraphWorktrees, loadWorktreeBoard, loadWorktreeCompareDiff, loadWorktreeFileDiff,
   loadWorktreeReview, planSquash, readDivergence, squashCommands, squashMessage, squashWorktree } from '../../main/git/worktree-board.js';
 import { createBoardRefresh } from '../../renderer/src/features/tools/board-refresh.js';
 import { UndoService } from '../../main/undo.js';
@@ -164,6 +164,19 @@ try {
   assert.equal(statusOf(fresh), 2, 'coming back to the window or Refresh reads them all');
   assert.equal(fresh.result.worktrees.find(entry => entry.path === folder).changes.files, 3, 'and sees the edit no ref showed');
   await git(['commit', '--allow-empty', '-m', 'a commit on main'], cwd);
+  // The rows above the graph are that board, and each checkout knows which one is its own.
+  const graph = await loadGraphWorktrees({ cwd, log, fresh: true });
+  assert.deepEqual(graph.worktrees.map(entry => [entry.path, entry.current]), [[cwd, true], [folder, false]]);
+  assert.deepEqual((await loadGraphWorktrees({ cwd: folder, log, fresh: true })).worktrees.map(entry => entry.current), [false, true], 'from the linked checkout too');
+  const throughLink = path.join(root, 'through-a-link');
+  await symlink(cwd, throughLink);
+  assert.equal((await loadGraphWorktrees({ cwd: throughLink, log, fresh: true })).worktrees[0].current, true, 'a repository opened through a symlink is still this one');
+  // Most repositories have no linked worktree, and the graph asks on every refresh: not one Git for those.
+  const single = path.join(root, 'single');
+  await git(['init', '--initial-branch=main', single]);
+  const entriesBefore = log.list().length;
+  assert.deepEqual(await loadGraphWorktrees({ cwd: single, log, fresh: true }), { base: null, main: null, worktrees: [] });
+  assert.equal(log.list().length, entriesBefore, 'no worktree, no Git');
   const moved = await ran(() => loadWorktreeBoard({ cwd, log, known, fresh: false }));
   assert.equal(statusOf(moved), 1, 'a branch that moved reads its worktree alone');
   assert.equal(moved.result.worktrees.find(entry => entry.path === folder).behind, 2, 'while every count is current');

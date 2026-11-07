@@ -132,6 +132,7 @@
   "All repositories for your OS account. Local settings take priority.": "この OS アカウントのすべてのリポジトリ。ローカル設定が優先されます。",
   "All tabs": "すべてのタブ",
   "All types": "すべての種類",
+  "All worktrees": "すべての worktree",
   "Allow": "許可",
   "Allow agents to propose commits": "エージェントによる commit の提案を許可",
   "Allowed signers file": "許可された署名者ファイル",
@@ -327,6 +328,7 @@
   "Check out {0} as a new branch…": "{0} を新しい branch として checkout…",
   "Checked out at the pinned commit {0}.": "固定された commit {0} で checkout されています。",
   "Checked out at {0}, not at the pinned {1}.": "固定された {1} ではなく {0} で checkout されています。",
+  "Checked out in worktree {0}": "worktree {0} で checkout 済み",
   "Checked out {0} with a detached HEAD.": "{0} を detached HEAD で checkout しました。",
   "Checked out {0}.": "{0} を checkout しました。",
   "Checking GitHub for a newer release…": "GitHub で新しいリリースを確認しています…",
@@ -428,6 +430,7 @@
   "Close the tab": "タブを閉じる",
   "Close the {name} tab?": "{name} タブを閉じますか？",
   "Close uncommitted changes": "未 commit の変更を閉じる",
+  "Close worktree details": "worktree の詳細を閉じる",
   "Close {0}": "{0} を閉じる",
   "Close {0} tab": "{0} タブを閉じる",
   "Close 🌱 Twig and reopen it as {0}": "🌱 Twig を閉じて {0} として開き直す",
@@ -1857,6 +1860,7 @@
   "Show the commit": "commit を表示",
   "Show the folder each command ran in": "各コマンドを実行したフォルダを表示",
   "Show the uncommitted files in the details panel": "未 commit のファイルを詳細パネルに表示",
+  "Show what this worktree changed": "この worktree の変更を表示",
   "Show workspace-demo": "workspace-demo を表示",
   "Show {0} as": "{0} の表示方法",
   "Showing {0} of {1} lines.": "{1} 行中 {0} 行を表示しています。",
@@ -2466,6 +2470,7 @@
   "View output for {0}": "{0} の出力を表示",
   "View the diff; leave Git unchanged": "diff を表示。Git は変更しない",
   "Violet": "紫",
+  "WORKTREE": "WORKTREE",
   "Wait for Undo to finish": "元に戻す操作が終わるまでお待ちください",
   "Wait for the SSH action to finish": "SSH の操作が終わるまでお待ちください",
   "Wait for the action to finish": "操作が終わるまでお待ちください",
@@ -2957,6 +2962,9 @@
   },
   "{n} more proposal is waiting from other worktrees. The next one opens when you answer this one.|{n} more proposals are waiting from other worktrees. The next one opens when you answer this one.": {
     "other": "ほかの worktree からの提案があと {n} 件待機しています。この提案に回答すると次が開きます。"
+  },
+  "{n} more worktree|{n} more worktrees": {
+    "other": "ほかに {n} 個の worktree"
   },
   "{n} new commit is made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.|{n} new commits are made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.": {
     "other": "{target} に {n} 個の新しい commit が作成され、それぞれが選択した commit を 1 つずつ新しい順に取り消します。履歴からは何も削除されません。競合が起きると Git はそこで停止し、バナーに Continue、Skip、Abort が表示されます。"

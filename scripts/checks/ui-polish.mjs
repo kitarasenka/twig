@@ -54,7 +54,10 @@ for (const [file, message] of [
 ]) assert.ok((await read(file)).includes(`ui\`${message}\``), `${file}: ${message}`);
 
 // A screen has one heading, and it is the screen's: the graph's goes away with the graph.
-assert.match(workspace, /\{!screen && <header className="graph-heading">/);
+// So does a view in the centre, whose heading then carries the way to the details panel.
+assert.match(workspace, /\{!screen && !centreView && <header className="graph-heading">/);
+assert.match(workspace, /const centreView = Boolean\(diff \|\| fileHistory \|\| blame \|\| conflict\);/);
+assert.equal(workspace.match(/detailButton=\{detailButton\}/g).length, 3, 'the diff, file history and blame headings can open the details panel');
 for (const file of ['features/refs/RefsScreen.jsx', 'features/stash/StashScreen.jsx', 'features/reflog/ReflogScreen.jsx', 'features/tools/WorktreesScreen.jsx',
   'features/tools/SubmodulesScreen.jsx', 'features/tools/MaintenanceScreen.jsx', 'features/automations/AutomationsScreen.jsx', 'features/worktree/WorktreeScreen.jsx']) {
   assert.match(await read(`renderer/src/${file}`), /<ScreenTitle /, file);

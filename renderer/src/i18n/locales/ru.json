@@ -138,6 +138,7 @@
   "All repositories for your OS account. Local settings take priority.": "Все репозитории вашей учётной записи ОС. Локальные настройки имеют приоритет.",
   "All tabs": "Все вкладки",
   "All types": "Все типы",
+  "All worktrees": "Все worktree",
   "Allow": "Разрешить",
   "Allow agents to propose commits": "Разрешить агентам предлагать commit",
   "Allowed signers file": "Файл разрешённых подписантов",
@@ -339,6 +340,7 @@
   "Check out {0} as a new branch…": "Checkout {0} как новой branch…",
   "Checked out at the pinned commit {0}.": "Checkout выполнен на закреплённом commit {0}.",
   "Checked out at {0}, not at the pinned {1}.": "Checkout выполнен на {0}, а не на закреплённом {1}.",
+  "Checked out in worktree {0}": "Checkout в worktree {0}",
   "Checked out {0} with a detached HEAD.": "Выполнен checkout {0} с detached HEAD.",
   "Checked out {0}.": "Выполнен checkout {0}.",
   "Checking GitHub for a newer release…": "Поиск нового выпуска на GitHub…",
@@ -452,6 +454,7 @@
   "Close the tab": "Закрыть вкладку",
   "Close the {name} tab?": "Закрыть вкладку {name}?",
   "Close uncommitted changes": "Закрыть изменения без commit",
+  "Close worktree details": "Закрыть подробности worktree",
   "Close {0}": "Закрыть {0}",
   "Close {0} tab": "Закрыть вкладку {0}",
   "Close 🌱 Twig and reopen it as {0}": "Закрыть 🌱 Twig и открыть его снова как {0}",
@@ -1974,6 +1977,7 @@
   "Show the commit": "Показать commit",
   "Show the folder each command ran in": "Показывать папку, в которой выполнялась каждая команда",
   "Show the uncommitted files in the details panel": "Показать файлы без commit в панели подробностей",
+  "Show what this worktree changed": "Показать, что изменилось в этом worktree",
   "Show workspace-demo": "Показать workspace-demo",
   "Show {0} as": "Показывать {0} как",
   "Showing {0} of {1} lines.": "Показано {0} из {1} строк.",
@@ -2661,6 +2665,7 @@
   "View output for {0}": "Показать вывод: {0}",
   "View the diff; leave Git unchanged": "Посмотреть diff; Git не меняется",
   "Violet": "Фиолетовый",
+  "WORKTREE": "WORKTREE",
   "Wait for Undo to finish": "Дождитесь окончания отмены",
   "Wait for the SSH action to finish": "Дождитесь окончания действия SSH",
   "Wait for the action to finish": "Дождитесь окончания действия",
@@ -3287,6 +3292,12 @@
     "few": "Из других worktree ждут ещё {n} предложения. Следующее откроется, когда вы ответите на это.",
     "many": "Из других worktree ждут ещё {n} предложений. Следующее откроется, когда вы ответите на это.",
     "other": "Из других worktree ждут ещё {n} предложения. Следующее откроется, когда вы ответите на это."
+  },
+  "{n} more worktree|{n} more worktrees": {
+    "one": "Ещё {n} worktree",
+    "few": "Ещё {n} worktree",
+    "many": "Ещё {n} worktree",
+    "other": "Ещё {n} worktree"
   },
   "{n} new commit is made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.|{n} new commits are made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.": {
     "one": "На {target} появится {n} новый commit, отменяющий один выбранный commit (от новых к старым). Из истории ничего не удаляется. Если возникнет конфликт, Git остановится там, а на панели появятся «Продолжить», «Пропустить» и «Прервать».",

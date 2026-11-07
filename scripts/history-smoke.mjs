@@ -101,8 +101,20 @@ try {
   const backBox = await centreHeading.getByRole('button', { name: 'Back to history', exact: true }).boundingBox();
   const pathBox = await centreHeading.locator('code').first().boundingBox();
   assert.ok(backBox.x < pathBox.x, 'Back to history comes before the path');
+  // One heading: the graph's row leaves with the graph, and when the window is too
+  // narrow for the details panel, the way to it is in the row that stays.
+  assert.equal(await page.locator('.graph-heading').count(), 0, 'one heading above a diff');
+  const zoom = factor => app.evaluate(({ BrowserWindow }, value) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(value), factor);
+  await zoom(2);
+  await page.locator('.commit-detail').waitFor({ state: 'detached' });
+  await centreHeading.getByRole('button', { name: 'Show commit details' }).click();
+  await page.locator('.commit-detail').waitFor();
+  assert.equal(await centreHeading.getByRole('button', { name: 'Show commit details' }).count(), 0, 'the button leaves once the panel is open');
+  await zoom(1);
+  await page.waitForFunction(() => innerWidth >= 900);
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
   await list.waitFor();
+  await page.locator('.graph-heading').waitFor();
   assert.equal(await openFileRow.getAttribute('aria-pressed'), 'false', 'closing the diff drops the highlight');
   // File history: the changed-file context menu lists every commit that touched
   // it. hello.txt changed twice — once at the root, once at the tip.
@@ -115,6 +127,7 @@ try {
   const fileDiff = page.getByRole('region', { name: 'File diff', exact: true });
   await fileDiff.getByText('+Hello real history', { exact: true }).waitFor();
   assert.ok(await fileHistory.isVisible());
+  assert.equal(await page.locator('.graph-heading').count(), 0, 'one heading above a file history');
   assert.equal(await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).count(), 0);
   await fileHistory.getByRole('listitem').last().getByRole('button').focus();
   await page.keyboard.press('Enter');
@@ -345,8 +358,19 @@ try {
     const diffBox = await fileDiff.boundingBox();
     assert.ok(diffBox.x >= historyBox.x + historyBox.width, 'File changes stay beside the history');
   }
-  await fileDiff.getByRole('button', { name: 'Go to commit', exact: true }).click();
+  // The hash above the file's changes is a button too: it looks like one under the
+  // pointer, says where it leads, and goes to the commit.
+  const hashLink = fileDiff.locator('button.commit-hash-link');
+  assert.match(await hashLink.innerText(), /^[0-9a-f]{8}$/);
+  assert.equal(await hashLink.getAttribute('title'), 'Go to commit');
+  const hashFill = () => hashLink.evaluate(node => getComputedStyle(node).backgroundColor);
+  const restingFill = await hashFill();
+  await hashLink.hover();
+  await page.waitForFunction(fill => getComputedStyle(document.querySelector('.commit-hash-link')).backgroundColor !== fill, restingFill);
+  await hashLink.focus();
+  await page.keyboard.press('Enter');
   await page.getByRole('heading', { name: 'Root fixture', exact: true }).waitFor();
+  assert.equal(await fileHistory.count(), 0, 'the hash leaves the file history for the graph');
   await page.locator('.real-branch[title^="refs/heads/main"]').click();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
   // A ref in the sidebar jumps to its commit even when that commit is already

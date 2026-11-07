@@ -100,9 +100,10 @@ for (const [name, file] of [['panel', panel], ['staging', staging]]) {
 }
 assert.match(await source('features/diff/FileTree.jsx'), /useMemo\(\(\) => extensionOptions/, 'the type choices are counted once per list');
 const board = await source('features/tools/WorktreesScreen.jsx');
-assert.match(board, /const ReviewFiles = memo\(/, 'opening a file does not draw the review again');
+const reviewFiles = await source('features/tools/ReviewFiles.jsx');
+assert.match(reviewFiles, /const ReviewFiles = memo\(/, 'opening a file does not draw the review again');
 assert.match(board, /const CompareFiles = memo\(/);
-assert.equal(board.match(/useBudget\(files\)/g).length, 2, 'both lists of the board keep the budget');
+assert.equal(`${board}${reviewFiles}`.match(/useBudget\(files\)/g).length, 2, 'both lists of the board keep the budget');
 assert.match(await source('features/refs/RefsScreen.jsx'), /budget\.shown\.map/, 'the refs screen keeps the budget');
 const consoleView = await source('app/Console.jsx');
 assert.match(consoleView, /const ConsoleEntry = memo\(/, 'a console row keeps its render while its entry is the same');

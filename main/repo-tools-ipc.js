@@ -10,7 +10,7 @@ import { MAINTENANCE_TASKS } from './git/maintenance-plan.js';
 import { checkPatch, exportName, exportPatches, inspectPatch, readPatchFile, validateExport } from './git/patches.js';
 import { loadSubmodules, submoduleDirectory, updateSubmodules } from './git/submodules.js';
 import { addWorktree, agentBranch, canonicalFolder, checkAgentFolder, findWorktree, folderName, linkedCheckouts, loadWorktrees, pruneWorktrees, removeWorktree, suggestWorktreePath } from './git/worktrees.js';
-import { compareWorktrees, excludeAgentFolder, finishWorktree, loadWorktreeBoard, loadWorktreeCompareDiff, loadWorktreeFileDiff, loadWorktreeReview, planSquash,
+import { compareWorktrees, excludeAgentFolder, finishWorktree, loadGraphWorktrees, loadWorktreeBoard, loadWorktreeCompareDiff, loadWorktreeFileDiff, loadWorktreeReview, planSquash,
   squashWorktree } from './git/worktree-board.js';
 import { validateOid } from './git/commit.js';
 import { validateRefName } from './git/refs-ops.js';
@@ -106,11 +106,14 @@ export function registerRepoToolsIpc(getWindow, entryUrl, { repositories, journa
   /** The board: every worktree with its changes, how far it is from the base, and a waiting proposal. */
   /** `fresh` reads every worktree; without it, only those whose HEAD or branch moved since the last read. */
   const boards = new Map();
-  handler('worktrees:board', 2, (options, fresh) => {
+  const boardRequest = (options, fresh) => {
     if (typeof fresh !== 'boolean') throw new TypeError('Invalid worktree request');
     if (!boards.has(options.cwd)) boards.set(options.cwd, new Map());
-    return loadWorktreeBoard({ ...options, pending: pendingProposals(), agents: connectedAgents(), known: boards.get(options.cwd), fresh });
-  });
+    return { ...options, pending: pendingProposals(), agents: connectedAgents(), known: boards.get(options.cwd), fresh };
+  };
+  handler('worktrees:board', 2, (options, fresh) => loadWorktreeBoard(boardRequest(options, fresh)));
+  /** The same board for the rows above the graph: no Git at all in a repository without linked worktrees. */
+  handler('worktrees:graph', 2, (options, fresh) => loadGraphWorktrees(boardRequest(options, fresh)));
   /**
    * The folder a new worktree for `branch` would get — next to the main one,
    * inside a folder the person picks, or, for an agent, in the main

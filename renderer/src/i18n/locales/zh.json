@@ -132,6 +132,7 @@
   "All repositories for your OS account. Local settings take priority.": "你的操作系统账户下的所有仓库。本地设置优先。",
   "All tabs": "所有选项卡",
   "All types": "所有类型",
+  "All worktrees": "所有 worktree",
   "Allow": "允许",
   "Allow agents to propose commits": "允许 agent 提议 commit",
   "Allowed signers file": "Allowed signers 文件",
@@ -327,6 +328,7 @@
   "Check out {0} as a new branch…": "将 {0} checkout 为新 branch…",
   "Checked out at the pinned commit {0}.": "checkout 在固定的 commit {0}。",
   "Checked out at {0}, not at the pinned {1}.": "checkout 在 {0}，而不是固定的 {1}。",
+  "Checked out in worktree {0}": "已在 worktree {0} 中 checkout",
   "Checked out {0} with a detached HEAD.": "已以 detached HEAD checkout {0}。",
   "Checked out {0}.": "已 checkout {0}。",
   "Checking GitHub for a newer release…": "正在 GitHub 上检查更新的版本…",
@@ -428,6 +430,7 @@
   "Close the tab": "关闭选项卡",
   "Close the {name} tab?": "关闭 {name} 选项卡？",
   "Close uncommitted changes": "关闭未 commit 的更改",
+  "Close worktree details": "关闭 worktree 详情",
   "Close {0}": "关闭 {0}",
   "Close {0} tab": "关闭 {0} 选项卡",
   "Close 🌱 Twig and reopen it as {0}": "关闭 🌱 Twig 并以 {0} 重新打开",
@@ -1857,6 +1860,7 @@
   "Show the commit": "显示该 commit",
   "Show the folder each command ran in": "显示每条命令的运行文件夹",
   "Show the uncommitted files in the details panel": "在详情面板中显示未 commit 的文件",
+  "Show what this worktree changed": "显示此 worktree 的更改",
   "Show workspace-demo": "显示 workspace-demo",
   "Show {0} as": "将 {0} 显示为",
   "Showing {0} of {1} lines.": "显示 {1} 行中的 {0} 行。",
@@ -2466,6 +2470,7 @@
   "View output for {0}": "查看 {0} 的输出",
   "View the diff; leave Git unchanged": "查看 diff；不改动 Git",
   "Violet": "紫色",
+  "WORKTREE": "WORKTREE",
   "Wait for Undo to finish": "请等待撤销完成",
   "Wait for the SSH action to finish": "请等待 SSH 操作完成",
   "Wait for the action to finish": "请等待操作完成",
@@ -2957,6 +2962,9 @@
   },
   "{n} more proposal is waiting from other worktrees. The next one opens when you answer this one.|{n} more proposals are waiting from other worktrees. The next one opens when you answer this one.": {
     "other": "还有 {n} 个来自其他 worktree 的提议在等待。回复此提议后会打开下一个。"
+  },
+  "{n} more worktree|{n} more worktrees": {
+    "other": "还有 {n} 个 worktree"
   },
   "{n} new commit is made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.|{n} new commits are made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.": {
     "other": "将在 {target} 上创建 {n} 个新 commit，每个撤销一个所选 commit，从最新的开始。不会从历史中移除任何内容。如果某个发生冲突，Git 会在那里停止，横幅会提供“继续”“跳过”和“中止”。"

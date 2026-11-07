@@ -134,6 +134,7 @@
   "All repositories for your OS account. Local settings take priority.": "Todos los repositorios de la cuenta del sistema. Los ajustes locales tienen prioridad.",
   "All tabs": "Todas las pestañas",
   "All types": "Todos los tipos",
+  "All worktrees": "Todos los worktrees",
   "Allow": "Permitir",
   "Allow agents to propose commits": "Permitir que los agentes propongan commits",
   "Allowed signers file": "Archivo de firmantes permitidos",
@@ -331,6 +332,7 @@
   "Check out {0} as a new branch…": "Hacer checkout de {0} como branch nuevo…",
   "Checked out at the pinned commit {0}.": "Con checkout en el commit fijado {0}.",
   "Checked out at {0}, not at the pinned {1}.": "Con checkout en {0}, no en el {1} fijado.",
+  "Checked out in worktree {0}": "Con checkout en el worktree {0}",
   "Checked out {0} with a detached HEAD.": "Checkout de {0} hecho con detached HEAD.",
   "Checked out {0}.": "Checkout de {0} hecho.",
   "Checking GitHub for a newer release…": "Buscando en GitHub una versión más reciente…",
@@ -436,6 +438,7 @@
   "Close the tab": "Cerrar la pestaña",
   "Close the {name} tab?": "¿Cerrar la pestaña {name}?",
   "Close uncommitted changes": "Cerrar cambios sin commit",
+  "Close worktree details": "Cerrar detalles del worktree",
   "Close {0}": "Cerrar {0}",
   "Close {0} tab": "Cerrar la pestaña {0}",
   "Close 🌱 Twig and reopen it as {0}": "Cerrar 🌱 Twig y volver a abrirlo como {0}",
@@ -1896,6 +1899,7 @@
   "Show the commit": "Mostrar el commit",
   "Show the folder each command ran in": "Mostrar la carpeta en la que se ejecutó cada comando",
   "Show the uncommitted files in the details panel": "Mostrar los archivos sin commit en el panel de detalles",
+  "Show what this worktree changed": "Mostrar qué cambió en este worktree",
   "Show workspace-demo": "Mostrar workspace-demo",
   "Show {0} as": "Mostrar {0} como",
   "Showing {0} of {1} lines.": "Se muestran {0} de {1} líneas.",
@@ -2531,6 +2535,7 @@
   "View output for {0}": "Ver la salida de {0}",
   "View the diff; leave Git unchanged": "Ver el diff sin cambiar nada en Git",
   "Violet": "Violeta",
+  "WORKTREE": "WORKTREE",
   "Wait for Undo to finish": "Esperar a que termine Deshacer",
   "Wait for the SSH action to finish": "Esperar a que termine la acción SSH",
   "Wait for the action to finish": "Esperar a que termine la acción",
@@ -3067,6 +3072,10 @@
   "{n} more proposal is waiting from other worktrees. The next one opens when you answer this one.|{n} more proposals are waiting from other worktrees. The next one opens when you answer this one.": {
     "one": "Hay {n} propuesta más esperando de otros worktrees. La siguiente se abre al responder a esta.",
     "other": "Hay {n} propuestas más esperando de otros worktrees. La siguiente se abre al responder a esta."
+  },
+  "{n} more worktree|{n} more worktrees": {
+    "one": "{n} worktree más",
+    "other": "{n} worktrees más"
   },
   "{n} new commit is made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.|{n} new commits are made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.": {
     "one": "Se crea {n} commit nuevo en {target} que deshace un commit seleccionado, del más reciente al más antiguo. No se elimina nada del historial. Si uno entra en conflicto, Git se detiene allí y el aviso ofrece Continuar, Omitir y Abortar.",

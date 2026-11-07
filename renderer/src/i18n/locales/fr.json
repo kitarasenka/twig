@@ -134,6 +134,7 @@
   "All repositories for your OS account. Local settings take priority.": "Tous les dépôts de votre compte système. Les réglages locaux ont la priorité.",
   "All tabs": "Tous les onglets",
   "All types": "Tous les types",
+  "All worktrees": "Tous les worktrees",
   "Allow": "Autoriser",
   "Allow agents to propose commits": "Autoriser les agents à proposer des commits",
   "Allowed signers file": "Fichier des signataires autorisés",
@@ -331,6 +332,7 @@
   "Check out {0} as a new branch…": "Checkout de {0} comme nouvelle branch…",
   "Checked out at the pinned commit {0}.": "Checkout sur le commit épinglé {0}.",
   "Checked out at {0}, not at the pinned {1}.": "Checkout sur {0}, pas sur le commit épinglé {1}.",
+  "Checked out in worktree {0}": "Checkout dans le worktree {0}",
   "Checked out {0} with a detached HEAD.": "Checkout de {0} effectué en detached HEAD.",
   "Checked out {0}.": "Checkout de {0} effectué.",
   "Checking GitHub for a newer release…": "Recherche d’une version plus récente sur GitHub…",
@@ -436,6 +438,7 @@
   "Close the tab": "Fermer l’onglet",
   "Close the {name} tab?": "Fermer l’onglet {name} ?",
   "Close uncommitted changes": "Fermer les modifications sans commit",
+  "Close worktree details": "Fermer les détails du worktree",
   "Close {0}": "Fermer {0}",
   "Close {0} tab": "Fermer l’onglet {0}",
   "Close 🌱 Twig and reopen it as {0}": "Fermez 🌱 Twig et rouvrez-le en version {0}",
@@ -1896,6 +1899,7 @@
   "Show the commit": "Afficher le commit",
   "Show the folder each command ran in": "Afficher le dossier dans lequel chaque commande s’est exécutée",
   "Show the uncommitted files in the details panel": "Afficher les fichiers sans commit dans le panneau de détails",
+  "Show what this worktree changed": "Afficher ce qui a changé dans ce worktree",
   "Show workspace-demo": "Afficher workspace-demo",
   "Show {0} as": "Afficher {0} en",
   "Showing {0} of {1} lines.": "Affichage de {0} lignes sur {1}.",
@@ -2531,6 +2535,7 @@
   "View output for {0}": "Voir la sortie de {0}",
   "View the diff; leave Git unchanged": "Voir le diff ; Git reste inchangé",
   "Violet": "Violet",
+  "WORKTREE": "WORKTREE",
   "Wait for Undo to finish": "Attendez la fin de Défaire",
   "Wait for the SSH action to finish": "Attendez la fin de l’action SSH",
   "Wait for the action to finish": "Attendez la fin de l’action",
@@ -3067,6 +3072,10 @@
   "{n} more proposal is waiting from other worktrees. The next one opens when you answer this one.|{n} more proposals are waiting from other worktrees. The next one opens when you answer this one.": {
     "one": "{n} autre proposition attend depuis d’autres worktrees. La suivante s’ouvre quand vous répondez à celle-ci.",
     "other": "{n} autres propositions attendent depuis d’autres worktrees. La suivante s’ouvre quand vous répondez à celle-ci."
+  },
+  "{n} more worktree|{n} more worktrees": {
+    "one": "{n} worktree de plus",
+    "other": "{n} worktrees de plus"
   },
   "{n} new commit is made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.|{n} new commits are made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.": {
     "one": "{n} nouveau commit est créé sur {target}, chacun annulant un commit sélectionné, du plus récent au plus ancien. Rien n’est retiré de l’historique. En cas de conflit, Git s’arrête là et le bandeau propose Continuer, Passer et Interrompre.",

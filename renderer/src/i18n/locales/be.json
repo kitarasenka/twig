@@ -138,6 +138,7 @@
   "All repositories for your OS account. Local settings take priority.": "Усе рэпазіторыі вашага ўліковага запісу АС. Лакальныя налады маюць прыярытэт.",
   "All tabs": "Усе ўкладкі",
   "All types": "Усе тыпы",
+  "All worktrees": "Усе worktree",
   "Allow": "Дазволіць",
   "Allow agents to propose commits": "Дазволіць агентам прапаноўваць commit",
   "Allowed signers file": "Файл дазволеных падпісантаў",
@@ -339,6 +340,7 @@
   "Check out {0} as a new branch…": "Checkout {0} як новы branch…",
   "Checked out at the pinned commit {0}.": "Checkout на замацаваным commit {0}.",
   "Checked out at {0}, not at the pinned {1}.": "Checkout на {0}, а не на замацаваным {1}.",
+  "Checked out in worktree {0}": "Checkout у worktree {0}",
   "Checked out {0} with a detached HEAD.": "Зроблены checkout {0} з detached HEAD.",
   "Checked out {0}.": "Зроблены checkout {0}.",
   "Checking GitHub for a newer release…": "Пошук новага выпуску на GitHub…",
@@ -452,6 +454,7 @@
   "Close the tab": "Закрыць укладку",
   "Close the {name} tab?": "Закрыць укладку {name}?",
   "Close uncommitted changes": "Закрыць змены без commit",
+  "Close worktree details": "Закрыць падрабязнасці worktree",
   "Close {0}": "Закрыць {0}",
   "Close {0} tab": "Закрыць укладку {0}",
   "Close 🌱 Twig and reopen it as {0}": "Закрыць 🌱 Twig і адкрыць зноў як {0}",
@@ -1974,6 +1977,7 @@
   "Show the commit": "Паказаць commit",
   "Show the folder each command ran in": "Паказваць папку, у якой выконвалася кожная каманда",
   "Show the uncommitted files in the details panel": "Паказаць файлы без commit у панэлі падрабязнасцей",
+  "Show what this worktree changed": "Паказаць, што змянілася ў гэтым worktree",
   "Show workspace-demo": "Паказаць workspace-demo",
   "Show {0} as": "Паказваць {0} як",
   "Showing {0} of {1} lines.": "Паказана {0} з {1} радкоў.",
@@ -2661,6 +2665,7 @@
   "View output for {0}": "Паглядзець вывад для {0}",
   "View the diff; leave Git unchanged": "Паглядзець diff; Git не мяняецца",
   "Violet": "Фіялетавы",
+  "WORKTREE": "WORKTREE",
   "Wait for Undo to finish": "Пачакайце, пакуль скончыцца адмена",
   "Wait for the SSH action to finish": "Пачакайце, пакуль скончыцца дзеянне SSH",
   "Wait for the action to finish": "Пачакайце, пакуль дзеянне скончыцца",
@@ -3287,6 +3292,12 @@
     "few": "Яшчэ {n} прапановы чакаюць з іншых worktree. Наступная адкрыецца, калі вы адкажаце на гэтую.",
     "many": "Яшчэ {n} прапаноў чакаюць з іншых worktree. Наступная адкрыецца, калі вы адкажаце на гэтую.",
     "other": "Яшчэ {n} прапановы чакаюць з іншых worktree. Наступная адкрыецца, калі вы адкажаце на гэтую."
+  },
+  "{n} more worktree|{n} more worktrees": {
+    "one": "Яшчэ {n} worktree",
+    "few": "Яшчэ {n} worktree",
+    "many": "Яшчэ {n} worktree",
+    "other": "Яшчэ {n} worktree"
   },
   "{n} new commit is made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.|{n} new commits are made on {target}, each undoing one selected commit, newest first. Nothing is removed from history. If one conflicts, Git stops there and the banner offers Continue, Skip and Abort.": {
     "one": "На {target} будзе створаны {n} новы commit, кожны адмяняе адзін выбраны commit, ад навейшых. З гісторыі нічога не выдаляецца. Калі ўзнікне канфлікт, Git спыніцца там, а банер прапануе «Працягнуць», «Прапусціць» і «Перапыніць».",

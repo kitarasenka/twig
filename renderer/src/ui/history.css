@@ -4,7 +4,7 @@
   --col-branch: 140px; --col-message: 300px; --col-author: 100px; --col-date: 104px;
   --table-min-width: calc(var(--col-branch) + var(--graph-width) + var(--col-message) + var(--col-author) + var(--col-date) + var(--space-3) * 2); }
 .real-history.col-resizing { cursor: col-resize; user-select: none; }
-.real-history-columns, .real-commit-row { display: grid; grid-template-columns: var(--col-branch) var(--graph-width) var(--col-message) var(--col-author) var(--col-date) minmax(0, 1fr); align-items: center; padding-inline: var(--space-3); }
+.real-history-columns, .real-commit-row, .worktree-lane-row { display: grid; grid-template-columns: var(--col-branch) var(--graph-width) var(--col-message) var(--col-author) var(--col-date) minmax(0, 1fr); align-items: center; padding-inline: var(--space-3); }
 .real-history-columns { color: var(--muted); font-size: var(--text-xs); min-height: 34px; border-bottom: 1px solid var(--border); align-items: stretch; min-width: var(--table-min-width); }
 .real-history-columns > span { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; padding-inline: var(--space-2); }
 .col-resize { position: absolute; top: 0; bottom: 0; right: -6px; width: 11px; z-index: 2; cursor: col-resize; touch-action: none; }
@@ -20,8 +20,8 @@
 .real-commit-row { position: absolute; width: 100%; font-size: var(--text-sm); cursor: pointer; }
 /* A row with more refs than fit on one line grows instead of hiding them
    behind a count: the badges wrap and the row gets the height back. */
-.real-commit-row .ref-cell { align-self: stretch; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; padding-block: var(--space-1); }
-.real-commit-row .ref-line { display: flex; align-items: center; gap: var(--space-1); max-width: 100%; min-width: 0; overflow: hidden; }
+.real-commit-row .ref-cell, .worktree-lane-row .ref-cell { align-self: stretch; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; padding-block: var(--space-1); }
+.real-commit-row .ref-line, .worktree-lane-row .ref-line { display: flex; align-items: center; gap: var(--space-1); max-width: 100%; min-width: 0; overflow: hidden; }
 .real-commit-row:hover { background: var(--surface-hover); }
 /* Selection is a ring, not only a tint: a mark tints the row too, and a green
    mark on a selected row used to look like plain selection. */
@@ -30,7 +30,7 @@
 .real-commit-row.new-day { box-shadow: inset 0 1px var(--border); }
 .real-commit-row.new-day.selected { box-shadow: inset 0 0 0 1px var(--accent), inset 2px 0 var(--accent); }
 .real-commit-row .ref-line > svg { color: var(--accent); }
-.real-commit-row .date-cell, .real-commit-row .author-col { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.real-commit-row .date-cell, .real-commit-row .author-col, .worktree-lane-row .date-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The lanes are drawn at their full width (--graph-content) inside a cell that
    clips them: a graph column narrower than its lanes scrolls sideways
    (--graph-scroll) instead of drawing over the message column. */
@@ -227,6 +227,13 @@
 .file-history-entry[aria-pressed='true'] { background: var(--accent-bg); box-shadow: inset 3px 0 var(--accent); }
 .file-history-detail { display: flex; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); }
 .file-history-diff-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
+.commit-hash-link { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 28px; padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--accent); cursor: pointer; }
+.commit-hash-link code { color: inherit; }
+.commit-hash-link svg { flex: none; width: 14px; height: 14px; transition: transform .12s ease-out; }
+.commit-hash-link:hover { border-color: var(--accent); background: var(--accent-bg); }
+.commit-hash-link:hover svg { transform: translateX(2px); }
+.commit-hash-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .commit-hash-link svg { transition: none; } .commit-hash-link:hover svg { transform: none; } }
 .file-history-entry > code { color: var(--accent); font-size: var(--text-xs); }
 .file-history-subject { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .file-history-meta { color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
@@ -295,7 +302,7 @@
 .worktree-file code { color: var(--accent); }
 @media (max-width: 1250px) {
   .real-history { --table-min-width: calc(var(--col-branch) + var(--graph-width) + var(--col-message) + var(--col-date) + var(--space-2) * 2); }
-  .real-history-columns, .real-commit-row { grid-template-columns: var(--col-branch) var(--graph-width) var(--col-message) var(--col-date) minmax(0, 1fr); padding-inline: var(--space-2); }
+  .real-history-columns, .real-commit-row, .worktree-lane-row { grid-template-columns: var(--col-branch) var(--graph-width) var(--col-message) var(--col-date) minmax(0, 1fr); padding-inline: var(--space-2); }
   .real-history-columns > .author-col { display: none; }
 }
 
@@ -446,6 +453,27 @@
 /* Where HEAD is when it is not the top row: a dashed line in its own lane on the
    far left, from the top of the graph to HEAD's node. */
 .real-lane path.head-link { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 3 3; }
+/* The other worktrees: rows on the commit columns, above the commits, each with a dashed lane to its commit. */
+.real-lane path.worktree-link { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.real-lane circle.worktree-node { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 2 2; }
+.real-lane circle.worktree-node.connected { fill: var(--accent); stroke: var(--accent); stroke-dasharray: none; }
+.worktree-strip { flex: none; min-width: var(--table-min-width); border-bottom: 1px solid var(--border); }
+.worktree-lane-row { width: 100%; min-height: 0; gap: 0; padding-block: 0; border: 0; border-radius: 0; background: none; color: var(--text); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
+.worktree-lane-row:hover { background: var(--surface-hover); }
+.worktree-lane-row.selected { background: var(--accent-bg); box-shadow: inset 0 0 0 1px var(--accent), inset 2px 0 var(--accent); }
+.worktree-lane-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.worktree-lane-row .commit-subject { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.worktree-lane-row .commit-subject strong { flex: none; font-weight: 600; }
+.worktree-lane-words { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.worktree-lane-row .tool-badge { flex: none; }
+.worktree-lane-more .commit-subject { color: var(--muted); }
+.worktree-detail .detail-content { display: flex; flex-direction: column; gap: var(--space-2); }
+.worktree-detail .detail-content p { margin: 0; font-size: var(--text-sm); }
+.worktree-detail .commit-subject-heading { margin: 0; }
+.worktree-detail-badges { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.worktree-detail .tool-actions { justify-content: flex-start; }
+.worktree-detail .board-commits { padding-inline: 0; }
+.worktree-detail .stash-files { max-height: none; }
 /* The branch HEAD is on: filled, first on its row and next to the sprout. */
 .ref-badge.current-ref { background: var(--accent); color: var(--bg); font-weight: 600; }
 .commit-subject-heading { font-size: var(--text-lg); line-height: 1.35; overflow-wrap: anywhere; }

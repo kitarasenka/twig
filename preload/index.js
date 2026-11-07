@@ -81,6 +81,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   pruneWorktrees: (id) => ipcRenderer.invoke('worktrees:prune', id),
   openWorktree: (id, path) => ipcRenderer.invoke('worktrees:open', id, path),
   getWorktreeBoard: (id, fresh = true) => ipcRenderer.invoke('worktrees:board', id, fresh),
+  getGraphWorktrees: (id, fresh = true) => ipcRenderer.invoke('worktrees:graph', id, fresh),
   getWorktreeReview: (id, path) => ipcRenderer.invoke('worktrees:review', id, path),
   getWorktreeFileDiff: (id, path, file, untracked = false) => ipcRenderer.invoke('worktrees:file-diff', id, path, file, untracked),
   planWorktreeSquash: (id, path) => ipcRenderer.invoke('worktrees:squash-plan', id, path),

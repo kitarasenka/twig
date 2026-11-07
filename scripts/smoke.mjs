@@ -59,7 +59,7 @@ try {
     'exportPatches', 'choosePatch', 'applyPatchCommits', 'applyPatchFiles',
     'getSubmodules', 'updateSubmodules', 'openSubmodule',
     'getWorktrees', 'planWorktree', 'addWorktree', 'removeWorktree', 'pruneWorktrees', 'openWorktree',
-    'getDiscards', 'restoreDiscard', 'getWorktreeBoard', 'getWorktreeReview', 'getWorktreeFileDiff', 'planWorktreeSquash', 'squashWorktree', 'finishWorktree',
+    'getDiscards', 'restoreDiscard', 'getWorktreeBoard', 'getGraphWorktrees', 'getWorktreeReview', 'getWorktreeFileDiff', 'planWorktreeSquash', 'squashWorktree', 'finishWorktree',
     'compareWorktrees', 'getWorktreeCompareDiff', 'onMcpAgents',
     'getTagDetails', 'getCoAuthors', 'addIgnoreRule', 'getRepositoryStats', 'runMaintenance'].sort());
   const security = await app.evaluate(({ BrowserWindow }) => {

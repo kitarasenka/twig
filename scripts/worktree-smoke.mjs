@@ -252,6 +252,7 @@ try {
   // the commit form on screen, from above the form), its cross is big enough to hit,
   // and it leaves by itself.
   const pushNote = page.locator('.note-stack .operation-note').filter({ hasText: 'Push finished.' });
+  await pushNote.evaluate(node => Promise.all(node.getAnimations().map(animation => animation.finished))); // it is measured where it comes to rest
   const [noteBox, floorBox] = await Promise.all([pushNote.boundingBox(), page.locator('.commit-box').boundingBox()]);
   assert.ok(noteBox.y + noteBox.height <= floorBox.y && floorBox.y - (noteBox.y + noteBox.height) < 24, 'the note sits right above the form');
   const dismissBox = await pushNote.getByRole('button', { name: 'Dismiss', exact: true }).boundingBox();

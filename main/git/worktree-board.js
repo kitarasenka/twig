@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { runGit } from './exec.js';
@@ -223,6 +223,22 @@ export async function loadWorktreeBoard({ cwd, log, pending = new Set(), agents 
     return card;
   });
   return { base, main: main?.path ?? null, worktrees };
+}
+
+/** False when the `.git` folder here records no linked worktree. A `.git` file means this is one: Git is asked. */
+async function mayHaveWorktrees(cwd) {
+  const info = await lstat(path.join(cwd, '.git')).catch(() => null);
+  if (!info?.isDirectory()) return true;
+  return (await readdir(path.join(cwd, '.git', 'worktrees')).catch(() => [])).length > 0;
+}
+
+/**
+ * The board, for the rows above the graph. The graph reads this on every
+ * refresh and most repositories have no worktree, so those run no Git for it.
+ * @param {Parameters<typeof loadWorktreeBoard>[0]} options
+ */
+export async function loadGraphWorktrees(options) {
+  return await mayHaveWorktrees(options.cwd) ? loadWorktreeBoard(options) : { base: null, main: null, worktrees: [] };
 }
 
 /** The worktree the screen named, as Git lists it now, with the main one beside it. */

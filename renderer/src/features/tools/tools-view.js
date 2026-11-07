@@ -11,7 +11,7 @@ import { mark, t, tn } from '../../i18n/i18n.js';
 const short = oid => (oid ? oid.slice(0, 7) : '');
 
 /** The last part of a folder path, on any platform. */
-export const folderLabel = folder => String(folder).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || folder;
+export { folderLabel } from './folder-label.js';
 
 /** What a submodule's checkout is, in words. */
 export function submoduleState(entry) {
@@ -119,6 +119,9 @@ export function boardBadges(card) {
   return [card.forged && mark('.git leads elsewhere'), card.main && mark('Main'), card.current && mark('This tab'), card.agent && mark('Agent'), card.connected && mark('Agent connected'),
     card.proposal && mark('Commit proposed'), card.integrated && mark('Done'), card.locked && mark('Locked'), card.prunable && mark('Folder missing')].filter(Boolean);
 }
+
+/** The same in the graph, where every row is a worktree and this tab has none: only a connected agent is marked. */
+export const graphBadges = card => boardBadges(card).filter(badge => badge !== 'Agent' && badge !== 'This tab');
 
 /** Why the worktree cannot be squashed into the base from its card, or undefined. */
 export function squashReason(card, base, busy = false) {

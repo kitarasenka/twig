@@ -42,8 +42,9 @@ export function parseWorktreeList(output) {
 export async function loadWorktrees({ cwd, log }) {
   const result = await runGit({ cwd, log, argv: ['worktree', 'list', '--porcelain', '-z'], operation: 'Read worktrees' });
   if (result.code !== 0) throw new Error(ui`Git could not list the worktrees.`);
-  const here = path.resolve(cwd);
-  return parseWorktreeList(result.stdout).map(worktree => ({ ...worktree, current: path.resolve(worktree.path) === here }));
+  // Git prints folders resolved; a repository opened through a symlink (/var on macOS) is still this one.
+  const here = canonicalFolder(cwd);
+  return parseWorktreeList(result.stdout).map(worktree => ({ ...worktree, current: canonicalFolder(worktree.path) === here }));
 }
 
 export const canonicalFolder = folder => { try { return realpathSync.native(folder); } catch { return path.resolve(folder); } };
