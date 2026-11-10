@@ -413,6 +413,26 @@ try {
   await uncommitted.getByRole('button', { name: 'Open staging', exact: true }).click();
   await page.getByText(/Working tree · 0 staged, 1 not staged/).waitFor();
   await page.getByRole('button', { name: 'Back to history', exact: true }).click();
+  // Back goes to where staging was opened from: the uncommitted changes, not the newest commit.
+  await uncommitted.waitFor();
+
+  // A commit deep in the history: a screen and Back to history return to it, in its place in the graph.
+  await list.evaluate(node => { node.scrollTop = 2400; });
+  await page.waitForFunction(() => document.querySelector('[role="listbox"][aria-label="Commit history"] [aria-posinset="80"]'));
+  const deepId = await list.locator('[aria-posinset="90"]').getAttribute('id');
+  await page.locator(`#${deepId}`).click();
+  await page.waitForFunction(id => document.getElementById(id)?.getAttribute('aria-selected') === 'true', deepId);
+  await page.locator('.real-branch', { hasText: 'Stashes' }).first().click();
+  await page.getByRole('button', { name: 'Back to history', exact: true }).click();
+  await page.waitForFunction(id => document.getElementById(id)?.getAttribute('aria-selected') === 'true', deepId);
+  const placed = await page.evaluate(id => {
+    const row = document.getElementById(id).getBoundingClientRect();
+    const box = document.querySelector('[role="listbox"][aria-label="Commit history"]').getBoundingClientRect();
+    return row.top >= box.top && row.bottom <= box.bottom;
+  }, deepId);
+  assert.ok(placed, 'the commit chosen before the screen is selected again and in view');
+  await list.evaluate(node => { node.scrollTop = 0; });
+  await page.locator(`#commit-${tip}`).click();
   await page.getByRole('heading', { name: 'Real history 🌱', exact: true }).waitFor();
 
   // Local commit marks: a colour and a note kept in userData, drawn over the

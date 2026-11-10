@@ -11,7 +11,7 @@ import { createBoardRefresh } from '../../renderer/src/features/tools/board-refr
 import { UndoService } from '../../main/undo.js';
 import { createToolContext } from '../../main/mcp/context.js';
 import { checkoutRoot, commonDir } from '../../main/mcp/context.js';
-import { boardBadges, changesLine, compareCell, compareChoices, connectedLine, finishCommands, launchCommand, progressLine, squashReason } from '../../renderer/src/features/tools/tools-view.js';
+import { boardBadges, changesLine, compareCell, compareChoices, connectedLine, finishCommands, finishable, launchCommand, progressLine, squashReason } from '../../renderer/src/features/tools/tools-view.js';
 import { waitingLine } from '../../renderer/src/features/proposal/proposal-view.js';
 
 const A = 'a'.repeat(40);
@@ -67,6 +67,10 @@ assert.equal(progressLine({ ahead: 2, behind: 1, integrated: null }, 'main'), '2
 assert.equal(progressLine({ ahead: 1, behind: 0, integrated: 'squashed' }, 'main'), 'Squashed into main');
 assert.equal(progressLine({ ahead: 0, behind: 3, integrated: 'merged' }, 'main'), 'Merged into main');
 assert.equal(progressLine({ main: true, ahead: null }, 'main'), '');
+assert.equal(progressLine({ ahead: 0, behind: 2, integrated: null, empty: true }, 'main'), 'No commits yet', 'a fresh worktree is not merged work');
+assert.deepEqual(boardBadges({ agent: true, ahead: 0, integrated: null, empty: true }), ['Agent'], 'and not Done');
+assert.equal(progressLine({ ahead: 3, behind: 2, integrated: 'squashed', forge: true }, 'main'), 'Squashed into main');
+assert.equal(finishable({ empty: true }), true); assert.equal(finishable({ integrated: 'merged' }), true); assert.equal(finishable({ ahead: 2 }), false);
 assert.deepEqual(boardBadges({ agent: true, proposal: true, integrated: 'squashed' }), ['Agent', 'Commit proposed', 'Done']);
 assert.match(squashReason({ main: true }, 'main'), /base/);
 assert.match(squashReason({ branch: 'agent/x', ahead: 0 }, 'main'), /No commits ahead/);
@@ -116,6 +120,11 @@ try {
   assert.equal(await git(['status', '--porcelain']), '', 'the main checkout does not list the agent folder');
   assert.deepEqual(await excludeAgentFolder({ cwd, log }), { added: false }, 'and the rule is added once');
   assert.equal(await suggestWorktreePath({ main: cwd, branch: agentBranch('fix-login'), agent: true }), `${folder}-2`, 'a taken name is numbered');
+
+  // Fresh, before the agent commits: nothing ahead, but not merged — its reflog only has "Created from".
+  const started = (await loadWorktreeBoard({ cwd, log })).worktrees.find(entry => entry.path === folder);
+  assert.deepEqual([started.ahead, started.integrated, started.empty, progressLine(started, 'main')], [0, null, true, 'No commits yet'], 'a fresh worktree is not "Merged into main"');
+  assert.ok(!boardBadges(started).includes('Done'));
 
   // The agent works: two commits, then uncommitted edits and a new file.
   await writeFile(path.join(folder, 'app.txt'), 'one\nTWO\nthree\n'); await git(['commit', '-am', 'feat: shout two'], folder);
@@ -341,10 +350,53 @@ try {
   await assert.rejects(stat(folder), /ENOENT/);
   assert.equal((await runGit({ cwd, log, argv: ['rev-parse', '--verify', '--quiet', 'refs/heads/agent/fix-login'] })).code, 1, 'the branch is gone');
   assert.equal(await git(['for-each-ref', 'refs/twig/']), '', 'and so is the squash bookkeeping');
-  // A branch merged the ordinary way counts as done too.
+  // A branch with no commit of its own is not merged work; once it has one and main merges it, it is.
+  assert.equal((await loadWorktreeBoard({ cwd, log })).worktrees.find(entry => entry.path === sibling).empty, true);
+  await writeFile(path.join(sibling, 'side.txt'), 'side\n'); await git(['add', '.'], sibling); await git(['commit', '-m', 'feat: side'], sibling);
   await git(['merge', '-q', '--no-edit', 'side']);
-  assert.equal((await loadWorktreeBoard({ cwd, log })).worktrees.find(entry => entry.path === sibling).integrated, 'merged');
+  const merged = (await loadWorktreeBoard({ cwd, log })).worktrees.find(entry => entry.path === sibling);
+  assert.deepEqual([merged.integrated, merged.empty], ['merged', undefined], 'a branch merged the ordinary way counts as done');
   assert.equal((await finishWorktree({ cwd, log, folder: sibling })).ok, true);
+
+  // --- merged on a forge: squash, rebase, and only part of it --------------------------------------
+  {
+    const make = async (name, files) => {
+      const place = path.join(root, `forge-${name}`);
+      await git(['worktree', 'add', '-q', '-b', `agent/${name}`, place, 'main']);
+      for (const [file, text] of files) { await writeFile(path.join(place, file), text); await git(['add', '.'], place); await git(['commit', '-q', '-m', `feat: ${file}`], place); }
+      return place;
+    };
+    const squashed = await make('squashed', [['s1.txt', 's1\n'], ['s2.txt', 's2\n']]);
+    const rebased = await make('rebased', [['r1.txt', 'r1\n'], ['r2.txt', 'r2\n']]);
+    const partly = await make('partly', [['p1.txt', 'p1\n'], ['p2.txt', 'p2\n']]);
+    const untouched = await make('untouched', [['u1.txt', 'u1\n']]);
+    // main moves on first, then takes the branches the way a forge does: no merge commit, new commits.
+    await writeFile(path.join(cwd, 'later.txt'), 'later\n'); await git(['add', '.']); await git(['commit', '-q', '-m', 'docs: later']);
+    await git(['merge', '-q', '--squash', 'agent/squashed']); await git(['commit', '-q', '-m', 'feat: squashed (#1)']);
+    const rebasedTip = await git(['rev-parse', 'agent/rebased']);
+    await git(['cherry-pick', `${rebasedTip}~1`, rebasedTip]);
+    await git(['cherry-pick', `${await git(['rev-parse', 'agent/partly'])}~1`]);
+    const before = log.list().length;
+    const cards = new Map((await loadWorktreeBoard({ cwd, log })).worktrees.map(entry => [entry.path, entry]));
+    assert.deepEqual([cards.get(squashed).integrated, cards.get(squashed).forge], ['squashed', true], 'a squash merged on a forge is in main');
+    assert.deepEqual([cards.get(rebased).integrated, cards.get(rebased).forge], ['merged', true], 'so is a rebase merge, every commit by its patch id');
+    assert.equal(cards.get(partly).integrated, null, 'one commit of two is not the work in main');
+    assert.equal(cards.get(untouched).integrated, null, 'and a branch main never took is not either');
+    assert.equal(cards.get(squashed).ahead, 2, 'the branch keeps its own commits');
+    const reads = log.list().slice(before);
+    assert.ok(!reads.some(entry => entry.code !== 0 && entry.code !== null), 'the forge probes leave nothing that looks failed');
+    assert.ok(reads.some(entry => entry.argv.includes('patch-id')), 'the forge was asked');
+    const again = log.list().length;
+    await loadWorktreeBoard({ cwd, log, known: new Map(), fresh: true });
+    assert.ok(!log.list().slice(again).some(entry => /patch-id/.test(entry.argv.join(' '))), 'the answer is kept until the base or the branch moves');
+    assert.equal((await finishWorktree({ cwd, log, folder: squashed })).ok, true, 'and the worktree and branch can be removed');
+    assert.equal((await runGit({ cwd, log, argv: ['rev-parse', '--verify', '--quiet', 'refs/heads/agent/squashed'] })).code, 1);
+    assert.equal((await finishWorktree({ cwd, log, folder: partly })).ok, false, 'a branch with work not in main keeps its branch');
+    // A fresh branch can go with its worktree: it has no commit to lose.
+    const empty = path.join(root, 'forge-empty');
+    await git(['worktree', 'add', '-q', '-b', 'agent/empty', empty, 'main']);
+    assert.equal((await finishWorktree({ cwd, log, folder: empty })).ok, true);
+  }
 } finally { await rm(root, { recursive: true, force: true }); }
 
-console.log('Worktree board checks passed: words and commands, agent folder and its exclude rule, board counts and divergence, review since the fork point, squash with Undo, conflict and hook roll back, MCP worktree resolution and a forged .git file, two worktrees compared, connected agents, finish.');
+console.log('Worktree board checks passed: words and commands, agent folder and its exclude rule, board counts and divergence, review since the fork point, squash with Undo, conflict and hook roll back, MCP worktree resolution and a forged .git file, two worktrees compared, connected agents, finish, a fresh worktree is not merged, squash and rebase merges done on a forge.');

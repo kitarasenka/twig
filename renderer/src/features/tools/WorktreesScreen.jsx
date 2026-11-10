@@ -11,7 +11,7 @@ import { showAllFiles } from '../diff/FileList.jsx';
 import ReviewFiles from './ReviewFiles.jsx';
 import { createBoardRefresh } from './board-refresh.js';
 import { boardBadges, changesLine, compareCell, compareChoices, connectedLine, finishCommands, folderLabel, launchCommand, progressLine, squashReason,
-  worktreeLine, worktreeRemoveCommand, worktreeRemoveReason } from './tools-view.js';
+  worktreeLine, worktreeRemoveCommand, worktreeRemoveReason, finishable } from './tools-view.js';
 import { failureText, t, tn, tr } from '../../i18n/i18n.js';
 import { tx } from '../../i18n/rich.js';
 
@@ -160,7 +160,9 @@ export default function WorktreesScreen({ repository, platform, busy, refreshKey
   function confirmFinish(entry) {
     onDialog({
       type: 'confirm', title: t`Remove ${folderLabel(entry.path)} and ${entry.branch}`, command: finishCommands(entry.path, entry.branch),
-      consequence: t`Its work is in ${board.base}, so the folder ${entry.path} and the branch ${entry.branch} go. Git refuses if the worktree has uncommitted files.`,
+      consequence: entry.empty
+        ? t`${entry.branch} has no commit of its own, so the folder ${entry.path} and the branch go. Git refuses if the worktree has uncommitted files.`
+        : t`Its work is in ${board.base}, so the folder ${entry.path} and the branch ${entry.branch} go. Git refuses if the worktree has uncommitted files.`,
       confirmLabel: t('Remove worktree and branch'),
       onConfirm: () => void run(() => window.twig.finishWorktree(repository.id, entry.path), result => {
         if (result.workspace) onWorkspace(result.workspace);
@@ -233,7 +235,7 @@ export default function WorktreesScreen({ repository, platform, busy, refreshKey
             {!card.main && <Button icon={GitMerge} className="primary" reason={squashReason(card, base, Boolean(reason))} onClick={() => void openSquash(card)}>{base ? t`Squash into ${base}…` : t('Squash into base…')}</Button>}
             <Button icon={ExternalLink} reason={card.current ? t('This worktree is open in this tab') : card.prunable ? t('Its folder is gone') : card.bare ? t('A bare repository has no files to show') : undefined}
               onClick={() => void onOpen(card.path)}>{t('Open as tab')}</Button>
-            {card.integrated
+            {finishable(card)
               ? <Button icon={Trash2} className="danger quiet" reason={worktreeRemoveReason(card, Boolean(reason))} onClick={() => confirmFinish(card)}>{t('Remove worktree and branch…')}</Button>
               : <Button icon={Trash2} className="danger quiet" reason={worktreeRemoveReason(card, Boolean(reason))} onClick={() => confirmRemove(card)}>{t('Remove…')}</Button>}
           </div>

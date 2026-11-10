@@ -148,16 +148,92 @@ export async function readDivergence({ cwd, log, base, branches, together = null
 }
 
 /**
- * Whether `branch`'s work is already in `base`: merged (nothing ahead), or
- * squashed by 🌱 Twig at the tip it still has. A squash done elsewhere (a
- * forge's squash merge) is not recognised.
+ * Branches whose reflog says they never moved since they were made — a fresh
+ * worktree's branch, with no commit of its own yet — out of `entries` (each
+ * `{ branch, head }`). One `git log -g` for all of them; a branch without a
+ * reflog is left out, so it reads as before (merged once nothing is ahead).
+ * @returns {Promise<Set<string>>}
  */
-async function integration({ cwd, log, base, branch, tip, records, counts: { ahead, behind } }) {
-  if (ahead === 0) return { ahead, behind, integrated: 'merged' };
+export async function unmovedBranches(cwd, log, entries) {
+  const unmoved = new Set();
+  if (!entries.length) return unmoved;
+  const output = await read(cwd, log, ['log', '-g', '--format=%gD%x00%H', ...entries.map(entry => heads(entry.branch)), '--'], 'Read whether worktree branches have commits');
+  const seen = new Map();
+  for (const line of output.split('\n').filter(Boolean)) {
+    const [selector, oid] = line.split('\0');
+    const name = selector.slice('refs/heads/'.length, selector.lastIndexOf('@{'));
+    seen.set(name, (seen.get(name) ?? new Set()).add(oid));
+  }
+  for (const entry of entries) {
+    const oids = seen.get(entry.branch);
+    if (oids?.size === 1 && oids.has(entry.head)) unmoved.add(entry.branch);
+  }
+  return unmoved;
+}
+
+// A forge's squash or rebase merge leaves the branch's commits behind and its
+// changes in the base. Read once per (base tip, branch tip): the answer cannot
+// change until one of them moves, and the board reads every few seconds.
+const forgeAnswers = new Map();
+const PATCH_OPTIONS = ['--no-color', '--no-ext-diff', '--no-textconv', '--no-renames', '-U3', '--src-prefix=a/', '--dst-prefix=b/'];
+/** How many of the base's newest commits a forge merge is looked for in. */
+export const FORGE_LOOKBACK = 200;
+/** A branch with more commits than this is not compared one commit at a time. */
+const FORGE_COMMITS = 50;
+
+/**
+ * Whether the base already holds `tip`'s work, merged on a forge: 'merged'
+ * when every commit of the branch has a commit with the same patch id among
+ * the base's newest ones (a rebase merge), 'squashed' when the branch's whole
+ * change since the fork point has one (a squash merge), else null. Patch ids
+ * (`git patch-id --stable`) ignore line numbers and whitespace, so a base
+ * that moved elsewhere in the same files still matches; a squash that had to
+ * resolve conflicts does not. Writes nothing to the repository.
+ */
+async function mergedOnForge({ cwd, log, baseTip, tip, ahead }) {
+  const key = `${cwd}\0${baseTip}\0${tip}`;
+  if (forgeAnswers.has(key)) return forgeAnswers.get(key);
+  let answer = null;
+  try {
+    const [base, branch] = [validateOid(baseTip), validateOid(tip)];
+    const total = await read(cwd, log, ['diff', ...PATCH_OPTIONS, `${base}...${branch}`, '--'], 'Read a worktree branch as one change');
+    const theirs = await read(cwd, log, ['log', '-p', '--no-merges', ...PATCH_OPTIONS, '--format=commit %H', `--max-count=${FORGE_LOOKBACK}`, base, '--not', branch, '--'], 'Read the newest commits of the base');
+    const own = ahead > 1 && ahead <= FORGE_COMMITS
+      ? await read(cwd, log, ['log', '-p', '--no-merges', ...PATCH_OPTIONS, '--format=commit %H', branch, '--not', base, '--'], 'Read the commits of a worktree branch') : '';
+    const result = await runGit({ cwd, log, argv: ['patch-id', '--stable'], stdin: total + theirs + own, operation: 'Compare a worktree branch with the base' });
+    if (result.code === 0) {
+      const inBase = new Set(theirs.split('\n').filter(line => line.startsWith('commit ')).map(line => line.slice(7).trim()));
+      const ids = result.stdout.split('\n').filter(Boolean).map(line => line.split(' '));
+      const baseIds = new Set(ids.filter(([, oid]) => inBase.has(oid)).map(([id]) => id));
+      const whole = ids.find(([, oid]) => /^0+$/.test(oid))?.[0];
+      const ownIds = ahead === 1 ? (whole ? [whole] : []) : ids.filter(([, oid]) => !inBase.has(oid) && !/^0+$/.test(oid)).map(([id]) => id);
+      if (ownIds.length === ahead && ownIds.every(id => baseIds.has(id))) answer = 'merged';
+      else if (whole && baseIds.has(whole)) answer = 'squashed';
+    }
+  } catch { answer = null; }
+  if (forgeAnswers.size >= 500) forgeAnswers.delete(forgeAnswers.keys().next().value);
+  forgeAnswers.set(key, answer);
+  return answer;
+}
+
+/**
+ * Whether `branch`'s work is already in `base`: merged (nothing ahead),
+ * squashed by 🌱 Twig at the tip it still has, or merged on a forge by squash
+ * or rebase (`forge`). A branch in `unmoved` has nothing ahead because it has
+ * no commit yet: `empty`, not merged. `baseTip` is the base's commit; without
+ * it the forge is not asked.
+ */
+async function integration({ cwd, log, base, branch, tip, records, counts: { ahead, behind }, unmoved = new Set(), baseTip = null }) {
+  if (ahead === 0) return unmoved.has(branch) ? { ahead, behind, integrated: null, empty: true } : { ahead, behind, integrated: 'merged' };
   const record = records.get(branch);
   if (record?.squash && record.tip === tip) {
     const missing = (await read(cwd, log, ['rev-list', '--count', record.squash, '--not', heads(base), '--'], 'Read whether a squashed branch is in the base')).trim();
     if (missing === '0') return { ahead, behind, integrated: 'squashed', squash: record.squash };
+  }
+  // Only a base that moved since the fork point can hold the branch's changes.
+  if (behind > 0 && baseTip) {
+    const forge = await mergedOnForge({ cwd, log, baseTip, tip, ahead });
+    if (forge) return { ahead, behind, integrated: forge, forge: true };
   }
   return { ahead, behind, integrated: null };
 }
@@ -206,6 +282,9 @@ export async function loadWorktreeBoard({ cwd, log, pending = new Set(), agents 
   const times = await commitTimes(cwd, log, list.filter(entry => !entry.prunable && !entry.bare).map(entry => entry.head));
   const compared = entry => !entry.prunable && !entry.bare && !entry.main && base && entry.branch && entry.branch !== base;
   const divergence = await readDivergence({ cwd, log, base, branches: list.filter(compared).map(entry => entry.branch) });
+  // Nothing ahead is either merged or not started yet: only those branches' reflogs are read.
+  const unmoved = await unmovedBranches(cwd, log, list.filter(entry => compared(entry) && divergence.get(entry.branch)?.ahead === 0));
+  const baseTip = base ? main.head : null;
   for (const folder of known.keys()) if (!list.some(entry => entry.path === folder)) known.delete(folder);
   const worktrees = await limited(list, 3, async entry => {
     const { git, ...shown } = entry;
@@ -219,7 +298,7 @@ export async function loadWorktreeBoard({ cwd, log, pending = new Set(), agents 
     card.changes = work.changes;
     if (work.edited !== null && (card.lastActivity === null || work.edited > card.lastActivity)) card.lastActivity = work.edited;
     const counts = compared(entry) ? divergence.get(entry.branch) : null;
-    if (counts) Object.assign(card, await integration({ cwd, log, base, branch: entry.branch, tip: entry.head, records, counts }));
+    if (counts) Object.assign(card, await integration({ cwd, log, base, branch: entry.branch, tip: entry.head, records, counts, unmoved, baseTip }));
     return card;
   });
   return { base, main: main?.path ?? null, worktrees };
@@ -405,16 +484,20 @@ export async function squashWorktree({ cwd, log, folder, message, branchOid, bas
 /**
  * Removes a worktree whose work is in the base, and its branch with it. Git
  * refuses while the worktree has uncommitted files; the branch is deleted
- * with -D only because its changes are known to be in the base (merged, or
- * squashed by 🌱 Twig at the same tip).
+ * with -D only because its changes are known to be in the base (merged,
+ * squashed by 🌱 Twig at the same tip, merged on a forge) or because it has
+ * no commit of its own.
  */
 export async function finishWorktree({ cwd, log, folder }) {
   const { entry, base } = await agentWorktree({ cwd, log, folder });
   if (!entry.branch || !base) return { ok: false, message: ui`This worktree is not on a branch next to a base branch.` };
   const records = await readSquashRecords(cwd, log);
   const counts = (await readDivergence({ cwd, log, base, branches: [entry.branch] })).get(entry.branch);
-  const state = await integration({ cwd, log, base, branch: entry.branch, tip: entry.head, records, counts });
-  if (!state.integrated) return { ok: false, message: ui`${entry.branch} has work that is not in ${base} yet. Squash it first, or remove only the worktree.` };
+  const unmoved = counts.ahead === 0 ? await unmovedBranches(cwd, log, [entry]) : new Set();
+  const baseTip = (await read(cwd, log, ['rev-parse', '--verify', `${heads(base)}^{commit}`], 'Read the base branch')).trim();
+  const state = await integration({ cwd, log, base, branch: entry.branch, tip: entry.head, records, counts, unmoved, baseTip });
+  // A branch with no commit of its own loses nothing with its worktree either.
+  if (!state.integrated && !state.empty) return { ok: false, message: ui`${entry.branch} has work that is not in ${base} yet. Squash it first, or remove only the worktree.` };
   const removed = await removeWorktree({ cwd, log, path: entry.path });
   if (!removed.ok) return removed;
   const deleted = await runGit({ cwd, log, argv: buildDeleteBranchArgv(entry.branch, true), operation: `Delete branch ${entry.branch}` });

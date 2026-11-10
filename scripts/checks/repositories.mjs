@@ -8,6 +8,7 @@ import { RepositoryStore } from '../../main/store.js';
 import { createRepositoryService } from '../../main/git/repository.js';
 import { changeRemote, loadRemotes, parseRemotes, validateRepositoryUrl } from '../../main/git/remotes.js';
 import { cloneRepository, validateCloneName } from '../../main/git/clone.js';
+import { cloneFolderName } from '../../renderer/src/features/settings/clone-name.js';
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'twig-repositories-'));
 try {
@@ -50,6 +51,12 @@ try {
   for (const url of ['--upload-pack=bad', 'ext::sh bad', 'https://user:secret@host/repo', 'https://host/repo?token=secret', 'ssh://host/repo\ninvalid']) assert.throws(() => validateRepositoryUrl(url), TypeError);
   for (const url of ['git@github.com:team/repo.git', 'ssh://git@host/team/repo', 'https://host/team/repo', cwd]) assert.equal(validateRepositoryUrl(url), url);
   for (const name of ['../escape', '/absolute', 'C:\\escape', 'CON.txt', 'aux', 'repo.', 'repo/child']) assert.throws(() => validateCloneName(name), TypeError);
+  // The Clone dialog names the folder after the address, the way git clone does, and only with a name main accepts.
+  for (const [url, name] of [['https://github.com/team/app.git', 'app'], ['git@host:team/app.git', 'app'], ['https://host/team/repo/', 'repo'], ['ssh://git@host:22/a/b.git/', 'b'],
+    ['https://host/a/b?x=1', 'b'], ['git@host:repo.git', 'repo'], ['/local/path/x', 'x']]) {
+    assert.equal(cloneFolderName(url), name, url); assert.equal(validateCloneName(name), name);
+  }
+  for (const url of ['', 'https://host', 'git@host:', 'ssh://git@host:22', 'https://h/a/con.git', 'https://h/a/.hidden', 42]) assert.equal(cloneFolderName(url), '', String(url));
   const before = log.list().length;
   await assert.rejects(changeRemote({ ...options, action: 'add', name: '--upload-pack', url: bare }), TypeError);
   assert.equal(log.list().length, before, 'invalid input must never reach Git');

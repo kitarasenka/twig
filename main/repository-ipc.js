@@ -47,7 +47,7 @@ export function registerRepositoryIpc(getWindow, entryUrl, { journal, repositori
     const choice = await dialog.showOpenDialog(getWindow(), { title: nt('Choose parent folder for clone'), properties: ['openDirectory', 'createDirectory'] });
     if (choice.canceled || !choice.filePaths[0]) return null;
     destination = { token: randomUUID(), path: choice.filePaths[0], expires: Date.now() + 15 * 60 * 1000 };
-    return { token: destination.token, path: destination.path };
+    return { token: destination.token, path: destination.path, expires: destination.expires };
   });
   register('clone:start', 3, async (token, name, url) => {
     if (typeof token !== 'string' || token !== destination?.token || destination.expires < Date.now()) throw new TypeError(ui`Choose the destination folder again.`);

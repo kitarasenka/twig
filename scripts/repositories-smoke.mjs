@@ -33,9 +33,28 @@ try {
   const clone = page.getByRole('dialog', { name: 'Clone repository' });
   await clone.getByLabel('Repository URL').waitFor();
   assert.equal(await page.evaluate(() => document.activeElement?.closest('label')?.textContent.startsWith('Repository URL')), true, 'Clone opens in its address field');
-  await clone.getByRole('textbox', { name: 'Repository URL', exact: true }).fill(bare);
-  await clone.getByRole('textbox', { name: 'New folder name', exact: true }).fill('twig-clone');
+  // The folder name follows the address, as git clone names it.
+  const missing = path.join(root, 'missing.git');
+  await clone.getByRole('textbox', { name: 'Repository URL', exact: true }).fill(missing);
+  assert.equal(await clone.getByRole('textbox', { name: 'New folder name', exact: true }).inputValue(), 'missing');
   await clone.getByRole('button', { name: 'Choose parent folder', exact: true }).click();
+  // A clone that fails says why in the dialog, and Show output (which closes it) keeps the form.
+  await clone.getByRole('button', { name: 'Clone and open', exact: true }).click();
+  await clone.getByRole('alert').waitFor();
+  assert.match(await clone.getByLabel('What Git said').innerText(), /missing\.git|does not exist|not appear to be a git repository/);
+  await clone.getByRole('button', { name: 'Show output', exact: true }).click();
+  await clone.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Clone repository', exact: true }).click();
+  await clone.getByLabel('Repository URL').waitFor();
+  assert.equal(await clone.getByRole('textbox', { name: 'Repository URL', exact: true }).inputValue(), missing, 'the address is still there');
+  assert.equal(await clone.getByRole('textbox', { name: 'New folder name', exact: true }).inputValue(), 'missing');
+  assert.equal(await clone.locator('.manager-path').innerText(), root, 'and so is the parent folder');
+  assert.ok(await clone.getByLabel('What Git said').isVisible(), 'and what Git said');
+  await clone.getByRole('textbox', { name: 'Repository URL', exact: true }).fill(bare);
+  assert.equal(await clone.getByRole('textbox', { name: 'New folder name', exact: true }).inputValue(), 'remote');
+  await clone.getByRole('textbox', { name: 'New folder name', exact: true }).fill('twig-clone');
+  await clone.getByRole('textbox', { name: 'Repository URL', exact: true }).fill(`${bare}/`);
+  assert.equal(await clone.getByRole('textbox', { name: 'New folder name', exact: true }).inputValue(), 'twig-clone', 'a name the person typed stays');
   await mkdir('artifacts', { recursive: true });
   await page.setViewportSize({ width: 1000, height: 640 });
   await page.screenshot({ path: 'artifacts/m5-clone.png', animations: 'disabled' });

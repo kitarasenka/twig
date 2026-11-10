@@ -61,7 +61,8 @@ try {
   assert.equal(await strip.locator('.worktree-lane-row').count(), 2);
   assert.match(await row('auth').innerText(), /agent\/auth/);
   assert.match(await row('auth').innerText(), /2 files not committed · \+1 −1 \(1 new\) · 1 commit ahead of main · 2 behind/);
-  assert.match(await row('fresh').innerText(), /Nothing uncommitted · Merged into main/);
+  assert.match(await row('fresh').innerText(), /Nothing uncommitted · No commits yet/, 'a fresh worktree is not merged work');
+  assert.doesNotMatch(await row('fresh').innerText(), /Done/);
   const columns = selector => page.locator(selector).first().evaluate(node => {
     const box = cell => node.querySelector(cell).getBoundingClientRect();
     return { lanes: box('.lane-cell').left, width: box('.lane-cell').width, subject: box('.commit-subject').left };

@@ -106,6 +106,8 @@ export function changesLine(changes) {
 /** Where a worktree's branch stands against the base, in one line, or ''. */
 export function progressLine(card, base) {
   if (!base || card.main || card.ahead === null || card.ahead === undefined) return '';
+  // Nothing ahead of a branch that never moved: a fresh worktree, not merged work.
+  if (card.empty) return t('No commits yet');
   if (card.integrated === 'merged') return t`Merged into ${base}`;
   if (card.integrated === 'squashed') return t`Squashed into ${base}`;
   if (card.behind) {
@@ -133,6 +135,9 @@ export function squashReason(card, base, busy = false) {
   if (!card.ahead) return t`No commits ahead of ${base} yet. Commit in the worktree first`;
   return undefined;
 }
+
+/** True when Remove worktree and branch is safe: its work is in the base, or it has none. */
+export const finishable = card => Boolean(card.integrated || card.empty);
 
 /** The two commands "Remove worktree and branch" runs. */
 export function finishCommands(path, branch) {

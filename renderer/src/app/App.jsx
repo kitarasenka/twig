@@ -139,6 +139,8 @@ export default function App() {
   const [leasePush, setLeasePush] = useState(null);
   // Where a missing repository turned out to be, for the person to confirm.
   const [locatePlan, setLocatePlan] = useState(null);
+  // What the Clone dialog was holding: Show output closes it to reach the console.
+  const [cloneDraft, setCloneDraft] = useState(null);
   const [publishRemotes, setPublishRemotes] = useState([]);
   const [divergence, setDivergence] = useState({ ahead: 0, behind: 0, upstream: null });
   const [stashCount, setStashCount] = useState(null);
@@ -919,7 +921,7 @@ export default function App() {
       {dialog === 'SSH' && <SshSettings entries={entries} onBusyChange={setDialogBusy} onConsole={showManagerOutput} />}
       {dialog === 'Git profile' && <GitProfile repository={repositoryActive ? repository : null} onConsole={() => { setDialog(null); showConsole(); }} />}
       {dialog === 'Repositories' && <Repositories workspace={workspace} onWorkspace={acceptWorkspace} onBusyChange={setDialogBusy} onConsole={showManagerOutput} onOpen={async () => { await openRepository(); setDialog(null); }} onClone={() => setDialog('Clone repository')} />}
-      {dialog === 'Clone repository' && <CloneRepository entries={entries} onWorkspace={acceptWorkspace} onBusyChange={setDialogBusy} onConsole={showManagerOutput} />}
+      {dialog === 'Clone repository' && <CloneRepository entries={entries} onWorkspace={acceptWorkspace} onBusyChange={setDialogBusy} onConsole={showManagerOutput} draft={cloneDraft} onDraft={setCloneDraft} />}
       {dialog === 'Remotes' && repository && <Remotes repository={repository} entries={entries} onBusyChange={setDialogBusy} onConsole={showManagerOutput} onChanged={async () => {
         await refreshRepository();
         setRemoteRevisions(current => ({ ...current, [repositoryId]: (current[repositoryId] || 0) + 1 }));

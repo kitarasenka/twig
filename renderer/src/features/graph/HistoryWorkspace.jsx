@@ -1158,6 +1158,19 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
     }
     setDetail(true); setDiff(null); setFileHistory(null); diffRequest.current++;
   }, [selected, selection, leaveCentre]);
+  // Back to history returns to where the person was before the screen — the
+  // commit (or uncommitted changes, or a worktree row) and its place in the
+  // graph — and only falls back to the newest commit when that one is gone.
+  const lastPlace = useRef(null);
+  useEffect(() => { if (selected && !SCREENS.includes(selected)) lastPlace.current = selected; }, [selected]);
+  const backToHistory = useCallback(() => {
+    const place = lastPlace.current;
+    if (isCommitSelection(place) && dataRef.current.oids.has(place)) {
+      choose(place);
+      setReveal(previous => ({ oid: place, seq: (previous?.seq || 0) + 1 }));
+    } else if (place && !isCommitSelection(place)) choose(place);
+    else choose(dataRef.current.commits[0]?.oid || null);
+  }, [choose]);
   // A selection made in the graph lets the sidebar close what it kept open.
   const selectInGraph = useCallback((oid, options) => { setTreeKept(NO_KEYS); choose(oid, options); }, [choose]);
 
@@ -1624,25 +1637,25 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
           void reload(); onRepositoryChanged?.();
         }} />}
       {!conflict && screen === 'branches' && <RefsScreen repository={repository} refs={data.refs} headBranch={headBranch} busy={working}
-        onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} />}
+        onConsole={onConsole} onBack={backToHistory} onPerform={perform} onDialog={setDialog} />}
       {!conflict && screen === 'stashes' && <StashScreen repository={repository} busy={working}
-        onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} />}
+        onConsole={onConsole} onBack={backToHistory} onPerform={perform} onDialog={setDialog} />}
       {!conflict && screen === 'reflog' && <ReflogScreen repository={repository} refs={data.refs} headBranch={headBranch} operation={operation} busy={working}
-        onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onPerform={perform} onDialog={setDialog} onJump={oid => void jump(oid)} />}
+        onConsole={onConsole} onBack={backToHistory} onPerform={perform} onDialog={setDialog} onJump={oid => void jump(oid)} />}
       {!conflict && screen === 'worktree' && <WorktreeScreen repository={repository} operation={operation} onConsole={onConsole} onChanged={({ history = false } = {}) => { if (history) void reload(); void refreshOperation(); onRepositoryChanged?.(); }}
-        runAutomation={runAutomation} refreshKey={refreshRequest} onResolveConflict={setConflict} onBack={() => choose(data.commits[0]?.oid || null)} />}
+        runAutomation={runAutomation} refreshKey={refreshRequest} onResolveConflict={setConflict} onBack={backToHistory} />}
       {!conflict && screen === 'worktrees' && <WorktreesScreen repository={repository} platform={platform} busy={working} refreshKey={`${toolsRefresh}:${branchTips}`} focus={boardFocus}
-        onBack={() => choose(data.commits[0]?.oid || null)} onNew={branch => openWorktreeDialog(branch)} onNewAgent={() => openWorktreeDialog(null, true)}
+        onBack={backToHistory} onNew={branch => openWorktreeDialog(branch)} onNewAgent={() => openWorktreeDialog(null, true)}
         onOpen={folder => openTab(() => window.twig.openWorktree(repository.id, folder))}
         onDialog={setDialog} onWorkspace={next => onWorkspace?.(next)} onConsole={onConsole}
         onChanged={({ history = false } = {}) => { if (history) void reload(); void refreshOperation(); onRepositoryChanged?.(); }} />}
       {!conflict && screen === 'submodules' && <SubmodulesScreen repository={repository} busy={working} refreshKey={toolsRefresh}
-        onBack={() => choose(data.commits[0]?.oid || null)} onOpen={folder => openTab(() => window.twig.openSubmodule(repository.id, folder))}
+        onBack={backToHistory} onOpen={folder => openTab(() => window.twig.openSubmodule(repository.id, folder))}
         onDialog={setDialog} onChanged={() => onRepositoryChanged?.()} onConsole={onConsole} />}
       {!conflict && screen === 'maintenance' && <MaintenanceScreen repository={repository} busy={working}
-        onBack={() => choose(data.commits[0]?.oid || null)} onDialog={setDialog} onConsole={onConsole} />}
+        onBack={backToHistory} onDialog={setDialog} onConsole={onConsole} />}
       {!conflict && screen === 'automations' && <AutomationsScreen repository={repository} refreshKey={automationRefresh} busy={working || Boolean(execution)}
-        onConsole={onConsole} onBack={() => choose(data.commits[0]?.oid || null)} onChanged={() => setAutomationRefresh(value => value + 1)}
+        onConsole={onConsole} onBack={backToHistory} onChanged={() => setAutomationRefresh(value => value + 1)}
         onRunEvent={(event, options) => void runAutomation(event, options)} />}
       {!conflict && !screen && blame && <BlameView repository={repository} seed={blame} onConsole={onConsole} detailButton={detailButton}
         onBack={closeBlame} onJump={oid => { closeBlame(); void jump(oid); }} onSelect={setBlameSel} />}
