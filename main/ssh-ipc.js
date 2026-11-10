@@ -25,4 +25,10 @@ export function registerSshIpc(getWindow, entryUrl, { journal }) {
     try { return await ssh.testConnection(target, connection.signal); } finally { connection = null; }
   }, true);
   register('ssh:cancel', 0, () => { connection?.abort(); return true; });
+  register('ssh:add-host', 3, (key, host, digest) => ssh.addHost(key, host, digest), true);
+  register('ssh:scan-host', 1, async target => {
+    connection = new AbortController();
+    try { return await ssh.scanHost(target, connection.signal); } finally { connection = null; }
+  }, true);
+  register('ssh:trust-host', 1, ssh.trustHost, true);
 }

@@ -35,6 +35,14 @@ let gate = null;
  */
 export function setGitGate(check) { gate = check; }
 
+let askpassBroker = null;
+/**
+ * Where an action the person started asks what Git or ssh wants to know
+ * (`main/askpass.js`). Unset in the Node checks: nothing asks there.
+ * @param {?{ open: (options: { operation: string, cwd: string }) => { env: Record<string, string>, close: () => void } }} broker
+ */
+export function setAskpassBroker(broker) { askpassBroker = broker; }
+
 const askGate = (cwd, argv) => gate(cwd, { explicit: argv[0].startsWith('--git-dir=') }).catch(error => ({ refused: error.message }));
 
 function validArguments(argv) {
@@ -56,11 +64,16 @@ function validArguments(argv) {
  * in a folder from an archive would run it. A partial clone the person accepted
  * gets its objects as usual (`lazyFetch`).
  */
-function gitEnvironment(env, lazyFetch = false) {
+function gitEnvironment(env, lazyFetch = false, asking = null) {
   const environment = {
     ...process.env, GIT_OPTIONAL_LOCKS: '0', ...env, ELECTRON_RUN_AS_NODE: '1', GIT_TERMINAL_PROMPT: '0',
     GIT_ASKPASS: `"${process.execPath}" "${askpass}"`, GIT_NO_LAZY_FETCH: '1'
   };
+  // Only the one process `prompt` opened may reach the window, whatever was
+  // inherited or passed in `env`.
+  delete environment.TWIG_ASKPASS_SOCKET;
+  delete environment.TWIG_ASKPASS_TOKEN;
+  if (asking) Object.assign(environment, asking);
   if (lazyFetch) delete environment.GIT_NO_LAZY_FETCH;
   return environment;
 }
@@ -88,11 +101,14 @@ function gitEnvironment(env, lazyFetch = false) {
  * -1, `truncated`, the reason in stderr): most of what comes back here is parsed
  * as a whole, and half of a NUL-separated list must not pass for all of it.
  * `ungated` is for the check of a repository's settings itself.
+ * `prompt` is for network actions the person started: when Git or ssh needs a
+ * username, password, passphrase or a host-key answer, 🌱 Twig asks in its
+ * window (`setAskpassBroker`). Everything else answers nothing, as before.
  * @param {{ argv: string[], cwd: string, log: import('../command-log.js').CommandLog,
  *   operation?: string, stdin?: ?string, signal?: ?AbortSignal, env?: ?Record<string, string>,
- *   binary?: boolean, maxBytes?: ?number, ungated?: boolean }} options
+ *   binary?: boolean, maxBytes?: ?number, ungated?: boolean, prompt?: boolean }} options
  */
-export async function runGit({ argv, cwd, log, operation = 'Git command', stdin = null, signal = null, env = null, binary = false, maxBytes = null, ungated = false }) {
+export async function runGit({ argv, cwd, log, operation = 'Git command', stdin = null, signal = null, env = null, binary = false, maxBytes = null, ungated = false, prompt = false }) {
   if (!validArguments(argv) || typeof cwd !== 'string' || !cwd) throw new TypeError('Invalid Git command');
   if (stdin !== null && typeof stdin !== 'string') throw new TypeError('Invalid Git command');
   if (env !== null && (typeof env !== 'object' || Object.values(env).some(value => typeof value !== 'string'))) {
@@ -115,6 +131,7 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
     return binary ? { ...refusal, stdout: Buffer.alloc(0), truncated: false } : refusal;
   }
   const limit = maxBytes ?? (binary ? Infinity : MAX_TEXT_OUTPUT);
+  const asking = prompt && askpassBroker ? askpassBroker.open({ operation, cwd }) : null;
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
@@ -127,6 +144,7 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
     const finish = async (code) => {
       if (settled) return;
       settled = true;
+      asking?.close();
       if (signal && abort) signal.removeEventListener('abort', abort);
       const result = { argv: command, cwd, code, stdout, stderr, cancelled, ms: Math.round(performance.now() - started), startedAt };
       if (binary) {
@@ -146,7 +164,7 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
     };
     let child;
     try {
-      child = spawn('git', command, { cwd, shell: false, windowsHide: true, env: gitEnvironment(env, verdict?.lazyFetch) });
+      child = spawn('git', command, { cwd, shell: false, windowsHide: true, env: gitEnvironment(env, verdict?.lazyFetch, asking?.env) });
     } catch (error) {
       stderr = error.message;
       void log.output(id, 'stderr', stderr).finally(() => void finish(-1));
@@ -164,6 +182,9 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
         cancelled = true;
         stderr += 'Cancelled in 🌱 Twig.\n';
         void log.output(id, 'stderr', 'Cancelled in 🌱 Twig.\n');
+        // The askpass program Git started holds Git's stderr open while it
+        // waits for an answer: its question goes first, or 'close' never comes.
+        asking?.close();
         child.kill();
       };
       if (signal.aborted) abort();
@@ -195,6 +216,8 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
       addError(error.message);
       void finish(-1);
     });
+    // Git is gone: a question it left on screen has no one to answer to.
+    child.once('exit', () => asking?.close());
     child.once('close', (code) => { void finish(truncated ? -1 : code ?? -1); });
   });
 }

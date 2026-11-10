@@ -149,7 +149,7 @@ export async function runSync({ cwd, log, mode, branch = null, remote = null, si
   }
   const refused = await refusedRemote({ cwd, log });
   if (refused) return { ok: false, cancelled: false, message: refused, reason: refused };
-  const result = await runGit({ argv, cwd, log, operation: LABELS[mode], signal });
+  const result = await runGit({ argv, cwd, log, operation: LABELS[mode], signal, prompt: true });
   if (result.cancelled) return { ok: false, cancelled: true, message: CANCELLED[mode] };
   if (result.code !== 0) {
     const refusal = await readRefusal({ cwd, log, mode, branch, stderr: result.stderr }).catch(() => null);
@@ -210,7 +210,7 @@ export async function pushRef({ cwd, log, remote, ref, remove = false, signal = 
   if (!configured) throw new Error(ui`This remote is not configured any more. Reload the list.`);
   for (const address of [...configured.urls, ...configured.pushUrls]) validateRepositoryUrl(address);
   const operation = `${remove ? 'Delete on' : 'Push to'} ${remote}: ${ref}`;
-  const result = await runGit({ cwd, log, argv, signal, operation });
+  const result = await runGit({ cwd, log, argv, signal, operation, prompt: true });
   if (result.cancelled) {
     return { ok: false, cancelled: true, message: remove ? ui`Delete on ${remote}: ${ref} was cancelled.` : ui`Push to ${remote}: ${ref} was cancelled.` };
   }

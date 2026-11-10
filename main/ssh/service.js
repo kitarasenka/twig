@@ -1,8 +1,10 @@
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import { runSsh } from './exec.js';
+import { createTokenRegistry } from '../token-registry.js';
 import { ui } from '../../renderer/src/i18n/i18n.js';
 
 const digest = content => createHash('sha256').update(content).digest('hex');
@@ -79,6 +81,84 @@ export function validationCopy(content) {
     return line;
   }).join('\n');
 }
+
+/** A host name as it can go into a Host line, ssh-keyscan or known_hosts: no patterns, no spaces. */
+const HOST_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62})(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}))*$/;
+export function validHostName(value) {
+  return typeof value === 'string' && value.length <= 253 && HOST_NAME.test(value);
+}
+
+const configWords = rest => {
+  const words = []; let word = ''; let quote = false;
+  for (const character of rest) {
+    if (character === '"') { quote = !quote; continue; }
+    if (!quote && /[ \t]/.test(character)) { if (word) { words.push(word); word = ''; } continue; }
+    if (!quote && character === '#' && !word) break;
+    word += character;
+  }
+  if (word) words.push(word);
+  return words;
+};
+
+/**
+ * Where a Host block for `host` that uses `identity` (`~/.ssh/<file>`) goes in
+ * an SSH config, or that one is there already. OpenSSH takes the first value
+ * it reads for most options, so the block goes before the first Host or Match
+ * line — ahead of a catch-all `Host *` — and after the global lines at the top,
+ * which would otherwise end up inside it. `IdentitiesOnly` keeps ssh to this
+ * key; `AddKeysToAgent` (and with Apple's ssh `UseKeychain`) asks for the
+ * passphrase once, not on every push.
+ * @returns {{ already: boolean, content: string, block: string }}
+ */
+export function sshHostPlan(content, host, identity, { keychain = false } = {}) {
+  if (!validHostName(host)) throw new TypeError(ui`Enter a host name such as github.com.`);
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.length ? content.split(/\r?\n/) : [];
+  let patterns = null; let first = -1;
+  const home = identity.replace(/^~\//, '');
+  for (const [index, line] of lines.entries()) {
+    const { word, rest } = configKeyword(line);
+    if (word === 'host' || word === 'match') {
+      if (first < 0) first = index;
+      patterns = word === 'host' ? configWords(rest).map(pattern => pattern.toLowerCase()) : null;
+      continue;
+    }
+    if (word === 'identityfile' && patterns?.includes(host.toLowerCase())) {
+      const [value = ''] = configWords(rest);
+      if (value === identity || value === `%d/${home}` || value.endsWith(`/${home}`)) return { already: true, content, block: '' };
+    }
+  }
+  const body = [`Host ${host}`, `  IdentityFile ${identity}`, '  IdentitiesOnly yes', '  AddKeysToAgent yes'];
+  if (keychain) body.push('  UseKeychain yes');
+  const block = body.join(eol);
+  if (first < 0) {
+    const before = lines.length && lines.at(-1) === '' ? lines.slice(0, -1) : lines;
+    const head = before.length ? `${before.join(eol)}${eol}${eol}` : '';
+    return { already: false, content: `${head}${block}${eol}`, block };
+  }
+  const next = [...lines.slice(0, first), ...body, '', ...lines.slice(first)];
+  return { already: false, content: next.join(eol), block };
+}
+
+/**
+ * What ssh-keyscan printed: one `host type key` line per key, `#` comments.
+ * Each key's fingerprint is computed here, the way ssh prints it.
+ */
+export function parseKeyscan(output) {
+  const keys = [];
+  for (const line of String(output).split('\n')) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length < 3 || fields[0].startsWith('#')) continue;
+    try {
+      const info = publicKeyInfo(`${fields[1]} ${fields[2]}`);
+      if (!keys.some(key => key.key === fields[2])) keys.push({ type: fields[1], key: fields[2], fingerprint: info.fingerprint });
+    } catch { /* a line that is not a key is not trusted */ }
+  }
+  return keys;
+}
+
+/** The name known_hosts gives a host: bare on port 22, `[host]:port` otherwise. */
+export const knownHostsName = (host, port) => (port === 22 ? host : `[${host}]:${port}`);
 
 export function createSshService({ home, log }) {
   const directory = path.join(home, '.ssh'); const configFile = path.join(directory, 'config');
@@ -164,5 +244,109 @@ export function createSshService({ home, log }) {
     const config = await readConfig();
     return runSsh({ executable: 'ssh', argv: ['-T', '-F', config.exists ? configFile : process.platform === 'win32' ? 'NUL' : '/dev/null', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=10', target], cwd: home, log, signal });
   }
-  return { keys, generate, secureKey, readConfig, saveConfig, testConnection };
+  /** One journal entry for a file 🌱 Twig writes itself, shaped like a command. */
+  async function journaled({ argv, operation, output = '', run }) {
+    const id = randomUUID(); const startedAt = new Date().toISOString(); const started = performance.now();
+    await log.start({ id, executable: '🌱 Twig', argv, cwd: directory, startedAt, operation });
+    try {
+      const value = await run();
+      if (output) await log.output(id, 'stdout', output);
+      await log.finish(id, { code: 0, stdout: output, stderr: '', cancelled: false, ms: Math.round(performance.now() - started), startedAt });
+      return value;
+    } catch (error) {
+      await log.output(id, 'stderr', `${error.message}\n`);
+      await log.finish(id, { code: 1, stdout: '', stderr: error.message, cancelled: false, ms: Math.round(performance.now() - started), startedAt });
+      throw error;
+    }
+  }
+  /**
+   * A Host block that makes ssh use a key 🌱 Twig listed for one host. ssh
+   * tries id_ed25519 and a few other names by itself, never a key called
+   * anything else, and a key it does not try never reaches the Git host.
+   */
+  async function addHost(key, host, expected) {
+    leaf(key);
+    if (!key.endsWith('.pub') || typeof expected !== 'string') throw new TypeError(ui`Choose a listed public key.`);
+    if (!validHostName(host)) throw new TypeError(ui`Enter a host name such as github.com.`);
+    await regular(path.join(directory, key)); await regular(path.join(directory, key.slice(0, -4)));
+    const identity = `~/.ssh/${key.slice(0, -4)}`;
+    const config = await readConfig();
+    if (config.digest !== expected) throw new Error(ui`SSH config changed outside 🌱 Twig. Reload before saving.`);
+    let plan = sshHostPlan(config.content, host, identity, { keychain: process.platform === 'darwin' });
+    if (plan.already) return { ...config, already: true, backup: null };
+    // UseKeychain is Apple's: an ssh from elsewhere on PATH (Homebrew) refuses
+    // the whole file over it, and Git would run that same ssh.
+    const save = () => journaled({ argv: ['add', 'Host', host, 'to', configFile], operation: 'Add a Host to the SSH config', output: `${plan.block}\n`,
+      run: () => saveConfig(plan.content, expected) });
+    let saved;
+    try { saved = await save(); } catch (error) {
+      if (!/usekeychain/i.test(error.message)) throw error;
+      plan = sshHostPlan(config.content, host, identity);
+      saved = await save();
+    }
+    return { ...saved, already: false };
+  }
+  const scans = createTokenRegistry();
+  const knownHosts = path.join(directory, 'known_hosts');
+  /**
+   * Which host and port `target` reaches, as `ssh -G` resolves it from the
+   * config (a copy where Match exec cannot run), then the keys that host
+   * offers right now and whether known_hosts already has them. Trusting comes
+   * after the person compared the fingerprints, by the token this returns.
+   */
+  async function scanHost(target, signal) {
+    if (typeof target !== 'string' || target.length > 255 || !/^[A-Za-z0-9][A-Za-z0-9_.@-]*$/.test(target)) throw new TypeError(ui`Enter an SSH host alias or user@host.`);
+    const config = await readConfig();
+    let host = target.includes('@') ? target.slice(target.lastIndexOf('@') + 1) : target; let port = 22;
+    const temporary = await mkdtemp(path.join(os.tmpdir(), 'twig-ssh-scan-'));
+    try {
+      const check = path.join(temporary, 'config'); await writeFile(check, validationCopy(config.content), { mode: 0o600 });
+      const resolved = await runSsh({ executable: 'ssh', argv: ['-G', '-F', check, target], cwd: home, log, quiet: true, signal, operation: 'Read where an SSH host points' });
+      if (resolved.code === 0) {
+        const named = resolved.stdout.match(/^hostname (\S+)$/m)?.[1]; const number = Number(resolved.stdout.match(/^port (\d+)$/m)?.[1]);
+        if (named) host = named;
+        if (Number.isInteger(number) && number > 0 && number < 65536) port = number;
+      }
+    } finally { await rm(temporary, { recursive: true, force: true }); }
+    if (!validHostName(host)) throw new Error(ui`This host name cannot be checked here.`);
+    const scanned = await runSsh({ executable: 'ssh-keyscan', argv: ['-T', '10', '-p', String(port), host], cwd: home, log, signal });
+    if (scanned.cancelled) return { host, port, keys: [], state: 'cancelled' };
+    const keys = parseKeyscan(scanned.stdout);
+    if (!keys.length) return { host, port, keys, state: 'unreachable' };
+    const name = knownHostsName(host, port);
+    let known = [];
+    if (await regular(knownHosts, true)) {
+      const found = await runSsh({ executable: 'ssh-keygen', argv: ['-F', name, '-f', knownHosts], cwd: home, log, signal, operation: 'Read known SSH hosts' });
+      known = found.code === 0 ? parseKeyscan(found.stdout) : [];
+    }
+    const state = !known.length ? 'unknown' : keys.some(key => known.some(item => item.key === key.key)) ? 'known' : 'changed';
+    const view = keys.map(({ type, fingerprint }) => ({ type, fingerprint }));
+    if (state !== 'unknown') return { host, port, keys: view, state };
+    return { host, port, keys: view, state, token: scans.add(home, { host, port, keys }) };
+  }
+  /** Append the keys the person saw to known_hosts, once, without touching what is there. */
+  async function trustHost(token) {
+    let entry;
+    try { entry = scans.take(home, token); } catch { throw new TypeError(ui`Check the host again.`); }
+    const { host, port, keys } = entry;
+    await ensureDirectory();
+    const info = await regular(knownHosts, true);
+    const before = info ? await readFile(knownHosts, 'utf8') : '';
+    const name = knownHostsName(host, port);
+    const fresh = keys.filter(key => !before.includes(` ${key.key}`));
+    if (!fresh.length) return { host, port, added: 0 };
+    const next = `${before}${before && !before.endsWith('\n') ? '\n' : ''}${fresh.map(key => `${name} ${key.type} ${key.key}`).join('\n')}\n`;
+    await journaled({ argv: ['append', knownHosts, name], operation: 'Trust an SSH host key',
+      output: `${fresh.map(key => `${name} ${key.type} ${key.fingerprint}`).join('\n')}\n`, run: async () => {
+        const temporary = await mkdtemp(path.join(directory, '.twig-known-'));
+        try {
+          const file = path.join(temporary, 'known_hosts'); await writeFile(file, next, { mode: 0o600 });
+          const now = await regular(knownHosts, true);
+          if ((now ? await readFile(knownHosts, 'utf8') : '') !== before) throw new Error(ui`known_hosts changed outside 🌱 Twig. Check the host again.`);
+          await rename(file, knownHosts); await chmod(knownHosts, 0o600);
+        } finally { await rm(temporary, { recursive: true, force: true }); }
+      } });
+    return { host, port, added: fresh.length };
+  }
+  return { keys, generate, secureKey, readConfig, saveConfig, testConnection, addHost, scanHost, trustHost };
 }

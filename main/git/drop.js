@@ -81,7 +81,7 @@ export async function runDrop({ cwd, log, request, signal = null }) {
       }
     }
     started = true;
-    const result = await runGit({ cwd, log, argv, signal, env: buildEditorEnv({ gitDir }), operation: `Drag and drop: ${request.action}` });
+    const result = await runGit({ cwd, log, argv, signal, env: buildEditorEnv({ gitDir }), prompt: true, operation: `Drag and drop: ${request.action}` });
     if (result.code !== 0 || result.cancelled) return finish({ ok: false, cancelled: result.cancelled, message: result.cancelled ? ui`Cancelled. Any completed branch switch is kept.` : ui`The operation did not finish. Show output in the console.` });
   }
   return finish({ ok: true, message: null });

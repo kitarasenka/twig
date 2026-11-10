@@ -24,7 +24,7 @@ export async function cloneRepository({ parent, name, url, log, signal }) {
   }
   try {
     if (signal?.aborted) return { ok: false, cancelled: true, path: target };
-    const result = await runGit({ cwd, log, argv: ['clone', '--progress', '--', url, target], signal, operation: 'Clone repository' });
+    const result = await runGit({ cwd, log, argv: ['clone', '--progress', '--', url, target], signal, operation: 'Clone repository', prompt: true });
     if (result.cancelled) return { ok: false, cancelled: true, path: target };
     if (result.code !== 0) throw new Error(ui`Clone did not finish. Show output in the console. Any remaining files are kept at the chosen destination.`);
     return { ok: true, cancelled: false, path: target };

@@ -11,6 +11,7 @@ import { registerProfileIpc } from './profile-ipc.js';
 import { registerRepositoryIpc } from './repository-ipc.js';
 import { registerUndoIpc } from './undo-ipc.js';
 import { registerSshIpc } from './ssh-ipc.js';
+import { registerAskpassIpc } from './askpass-ipc.js';
 import { registerMarksIpc } from './marks-ipc.js';
 import { registerAutomationsIpc } from './automations-ipc.js';
 import { registerConsoleIpc } from './console-ipc.js';
@@ -81,6 +82,8 @@ export function registerIpc(getWindow, entryUrl, { journal, repositories, trust,
   registerMarksIpc(getWindow, entryUrl, { repositories, marks });
   registerAutomationsIpc(getWindow, entryUrl, { repositories, journal, automations, runs: automationRuns, loginPath: automationPath, bumper });
   registerSshIpc(getWindow, entryUrl, { journal });
+  // A push, pull or clone the person started asks in the window for what Git needs.
+  void registerAskpassIpc(getWindow, entryUrl);
   registerRepositoryIpc(getWindow, entryUrl, { journal, repositories, undo });
   registerProfileIpc(getWindow, entryUrl, { journal, repositories, stateDir: app.getPath('userData') });
   registerHistoryIpc(getWindow, entryUrl, { journal, repositories });
