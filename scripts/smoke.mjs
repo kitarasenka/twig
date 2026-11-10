@@ -61,7 +61,8 @@ try {
     'getWorktrees', 'planWorktree', 'addWorktree', 'removeWorktree', 'pruneWorktrees', 'openWorktree',
     'getDiscards', 'restoreDiscard', 'getWorktreeBoard', 'getGraphWorktrees', 'getWorktreeReview', 'getWorktreeFileDiff', 'planWorktreeSquash', 'squashWorktree', 'finishWorktree',
     'compareWorktrees', 'getWorktreeCompareDiff', 'onMcpAgents',
-    'getTagDetails', 'getCoAuthors', 'addIgnoreRule', 'getRepositoryStats', 'runMaintenance'].sort());
+    'getTagDetails', 'getCoAuthors', 'addIgnoreRule', 'getRepositoryStats', 'runMaintenance',
+    'removeGitLock', 'countDetachedCommits'].sort());
   const security = await app.evaluate(({ BrowserWindow }) => {
     const prefs = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
     return { sandbox: prefs.sandbox, contextIsolation: prefs.contextIsolation, nodeIntegration: prefs.nodeIntegration };

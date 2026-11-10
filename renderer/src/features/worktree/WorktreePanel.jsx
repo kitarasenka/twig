@@ -98,7 +98,10 @@ export default function WorktreePanel({ summary, branch, unborn = false, open, a
         : summaryLabel(summary)}</p>
       {conflicts > 0 && <p className="worktree-panel-conflicts" role="status">
         {tn(conflicts, '{n} file has a conflict to resolve before this can be committed.', '{n} files have conflicts to resolve before this can be committed.')}</p>}
-      {error && <div className="history-error worktree-panel-error" role="alert">{error}
+      {error && <div className="history-error worktree-panel-error" role="alert">
+        <span>{typeof error === 'string' ? error : error.text}
+          {typeof error === 'object' && error.detail && <small className="note-detail">{error.detail}</small>}</span>
+        {typeof error === 'object' && error.actions?.map(action => <button key={action.label} onClick={action.run}>{action.label}</button>)}
         <button onClick={onConsole}>{t('Show output')}</button>
         <button onClick={onDismissError} aria-label={t('Dismiss')}>×</button></div>}
       <div className="worktree-panel-actions">

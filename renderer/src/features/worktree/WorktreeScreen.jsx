@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Check, FilePenLine, FilePlus2, Minus, Plus, Trash2, Undo2, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, FilePenLine, FilePlus2, GitBranch, Minus, Plus, Trash2, Undo2, Users, X } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import ScreenTitle from '../../ui/ScreenTitle.jsx';
 import Menu from '../../ui/Menu.jsx';
@@ -11,12 +11,13 @@ import { ALL_TYPES, baseName, matchesFile, readFileView, writeFileView } from '.
 import StageDiff from './StageDiff.jsx';
 import CoAuthors from './CoAuthors.jsx';
 import { BUMP_CHOICES, bumpLabel } from '../automations/version-bump.js';
-import { ConfirmDialog } from '../ops/dialogs.jsx';
+import { ConfirmDialog, NameDialog } from '../ops/dialogs.jsx';
 import { discardDialog } from './discard-dialog.js';
 import { readCommitDraft, writeCommitDraft } from './commit-draft.js';
 import { isMenuKey } from '../../app/shortcuts.js';
 import { finishFirst } from '../../../../main/git/operation-words.js';
 import { failureText, t, tn, tr } from '../../i18n/i18n.js';
+import { failureNote } from '../../app/failure-note.js';
 
 const EMPTY = { staged: [], unstaged: [], untracked: [], branch: null };
 function draftStorage() { try { return localStorage; } catch { return null; } }
@@ -174,11 +175,15 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
       if (after) setNotice(after);
       setError('');
     } catch (failure) {
-      setError(failureText(failure, t('Git refused this operation.')));
+      // What Git said, in words where the case is known: a lock, who you are, a hook, a signature.
+      setError(failureNote(failure, t('Git refused this operation.'), { repositoryId: repository.id }));
     } finally { setBusy(false); }
   }
 
   const unborn = Boolean(tree.branch?.unborn);
+  // A commit made here belongs to no branch: said before it is made, with the way to give it one.
+  const detached = Boolean(tree.branch?.detached && tree.branch?.oid);
+  const [naming, setNaming] = useState(false);
   const conflicts = tree.unstaged.filter(entry => entry.status === 'U').length;
   /**
    * A bulk action is refused where the per-file buttons still work: `git add`
@@ -323,7 +328,16 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
       <ScreenTitle title={t`Working tree · ${tree.staged.length} staged, ${tree.unstaged.length + tree.untracked.length} not staged`} />
       {unborn && <span className="pill">{t('First commit')}</span>}
     </header>
-    {error && <div className="history-error" role="alert">{error}<button onClick={onConsole}>{t('Show output')}</button></div>}
+    {error && <div className="history-error" role="alert">
+      <span>{typeof error === 'string' ? error : error.text}
+        {typeof error === 'object' && error.detail && <small className="note-detail">{error.detail}</small>}</span>
+      {typeof error === 'object' && error.actions?.map(action => <button key={action.label} onClick={action.run}>{action.label}</button>)}
+      <button onClick={onConsole}>{t('Show output')}</button></div>}
+    {detached && <div className="detached-strip" role="status">
+      <AlertTriangle aria-hidden="true" />
+      <span>{t('HEAD is detached: a new commit will not be on any branch. Checking out a branch later leaves it to the reflog.')}</span>
+      <Button icon={GitBranch} reason={busy ? t('Git is working') : undefined} onClick={() => setNaming(true)}>{t('Create branch here…')}</Button>
+    </div>}
     {notice && <p className="worktree-notice" role="status">{notice}</p>}
     <div className="worktree-body">
       <div className="worktree-lists">
@@ -408,6 +422,12 @@ export default function WorktreeScreen({ repository, operation = null, runAutoma
       </div>
     </form>
     {confirm && <ConfirmDialog {...confirm} onClose={() => setConfirm(null)} />}
+    {naming && <NameDialog title={t`Create a branch at ${(tree.branch?.oid || '').slice(0, 7)}`} label={t('Branch name')} placeholder="feature/short-description"
+      confirmLabel={t('Create branch')} onClose={() => setNaming(false)}
+      onConfirm={({ name }) => guard(async () => {
+        const result = await window.twig.createBranch(repository.id, name, tree.branch.oid, true);
+        if (!result.ok) throw result;
+      }, t`Branch ${name} created and checked out.`, false, true)} />}
     {rowMenu && <Menu x={rowMenu.x} y={rowMenu.y} label={t`Actions for ${rowMenu.path}`} onClose={() => setRowMenu(null)}
       items={ignoreMenuItems({ path: rowMenu.path, reason: busy ? t('Git is working') : undefined, run: choice => void ignore(rowMenu.path, choice) })} />}
   </div>;

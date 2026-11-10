@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
 const askpass = fileURLToPath(new URL('./askpass.cjs', import.meta.url));
 // `log.showSignature` set by the person would make every `log` and `show` print
@@ -26,6 +27,18 @@ export const MAX_TEXT_OUTPUT = 128 * 1024 * 1024;
 const MAX_STDERR = 1024 * 1024;
 
 let gate = null;
+
+// How many Git processes 🌱 Twig has running, by working directory: a lock
+// left in `.git` is not removed while one of them may be holding it.
+const running = new Map();
+/** Whether 🌱 Twig is running Git in this folder or below it right now. */
+export function gitRunningIn(folder) {
+  for (const cwd of running.keys()) {
+    const relative = path.relative(folder, cwd);
+    if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) return true;
+  }
+  return false;
+}
 /**
  * What `main/repository-trust.js` decides before each Git process: a `cwd` in a
  * repository whose settings changed since the person accepted them is refused
@@ -127,6 +140,8 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
     const finish = async (code) => {
       if (settled) return;
       settled = true;
+      const left = (running.get(cwd) || 1) - 1;
+      if (left > 0) running.set(cwd, left); else running.delete(cwd);
       if (signal && abort) signal.removeEventListener('abort', abort);
       const result = { argv: command, cwd, code, stdout, stderr, cancelled, ms: Math.round(performance.now() - started), startedAt };
       if (binary) {
@@ -145,6 +160,7 @@ export async function runGit({ argv, cwd, log, operation = 'Git command', stdin 
       void log.output(id, 'stderr', text);
     };
     let child;
+    running.set(cwd, (running.get(cwd) || 0) + 1);
     try {
       child = spawn('git', command, { cwd, shell: false, windowsHide: true, env: gitEnvironment(env, verdict?.lazyFetch) });
     } catch (error) {

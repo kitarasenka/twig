@@ -13,7 +13,6 @@ import { WorktreeRefIcon, worktreeRefTitle } from './worktree-ref.jsx';
 import { branchWorktrees, isWorktreeSelection, selectedFolder, worktreeSelection } from './worktree-lanes.js';
 import { useGraphWorktrees } from './useGraphWorktrees.js';
 import { folderLabel } from '../tools/folder-label.js';
-import WorktreeScreen from '../worktree/WorktreeScreen.jsx';
 import WorktreePanel from '../worktree/WorktreePanel.jsx';
 import { conflictCount, summarizeStatus } from '../worktree/worktree-summary.js';
 import { pruneConflictDrafts, unsavedConflicts } from '../conflicts/conflict-drafts.js';
@@ -51,11 +50,15 @@ import lazyScreen from '../../ui/lazy-screen.jsx';
 import useMediaQuery from '../../ui/useMediaQuery.js';
 import { failureText, formatDateTime, t, tn, tr } from '../../i18n/i18n.js';
 import { tx } from '../../i18n/rich.js';
+import { failureNote } from '../../app/failure-note.js';
 import { finishFirst, stepNote } from '../../../../main/git/operation-words.js';
 
 // Opened rarely: loaded the first time they are shown, not with the window.
 const ConflictEditor = lazyScreen(() => import('../conflicts/ConflictEditor.jsx'));
 const ReflogScreen = lazyScreen(() => import('../reflog/ReflogScreen.jsx'));
+// The staging screen opens from Open staging: out of the main bundle, which sits at Vite's 500 KB line.
+const WorktreeScreen = lazyScreen(() => import('../worktree/WorktreeScreen.jsx'));
+const LeaveDetachedDialog = lazyScreen(() => import('../ops/LeaveDetachedDialog.jsx'));
 const WorktreesScreen = lazyScreen(() => import('../tools/WorktreesScreen.jsx'));
 const WorktreeDetail = lazyScreen(() => import('../tools/WorktreeDetail.jsx'));
 const SubmodulesScreen = lazyScreen(() => import('../tools/SubmodulesScreen.jsx'));
@@ -575,7 +578,8 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       // Git does with divergent work. The banner below says so in full, so
       // there is no note to add and no reason to throw the console open; that
       // is reserved for a command that genuinely could not run.
-      if (!result.ok && (!state || state.kind === 'none')) { setNote({ text: tr(result.message) || t('The operation did not finish.'), failed: true }); }
+      // What Git said comes with it (`reason`): a lock, who you are, a hook, a key — in words, with the way out.
+      if (!result.ok && (!state || state.kind === 'none')) setNote(failureNote(result, t('The operation did not finish.'), { repositoryId: repository.id }));
       if (state && state.conflicts.length === 0) setConflict(null);
       await reload({ select: result.ok ? select : null });
       // Success is reported once the graph shows it: "Branch deleted" next to
@@ -584,11 +588,11 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       onRepositoryChanged?.();
       return result;
     } catch (failure) {
-      setNote({ text: failureText(failure, t('The operation failed.')), failed: true });
+      setNote(failureNote(failure, t('The operation failed.'), { repositoryId: repository.id }));
       await refreshOperation();
       return null;
     } finally { setWorking(false); }
-  }, [reload, refreshOperation, onRepositoryChanged]);
+  }, [reload, refreshOperation, onRepositoryChanged, repository.id]);
 
   /**
    * `git lfs pull`: downloads the LFS content of checked-out files in place of
@@ -735,7 +739,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       createBranch: () => setDialog({
         type: 'name', title: t`Create a branch at ${short}`, label: t('Branch name'), placeholder: 'feature/short-description',
         confirmLabel: t('Create branch'), extra: t('Check it out straight away'),
-        onConfirm: ({ name, checked }) => perform(() => window.twig.createBranch(repository.id, name, commit.oid, checked), t`Branch ${name} created.`, { select: commit.oid })
+        onConfirm: ({ name, checked }) => { const create = () => perform(() => window.twig.createBranch(repository.id, name, commit.oid, checked), t`Branch ${name} created.`, { select: commit.oid }); if (checked) void leavingDetached(create); else void create(); }
       }),
       createTag: () => setDialog({
         type: 'name', title: t`Create a tag at ${short}`, label: t('Tag name'), placeholder: 'v1.0.0',
@@ -805,7 +809,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       checkoutRemote: ref => setDialog({
         type: 'name', title: t`Check out ${ref.name}`, label: t('Local branch name'),
         placeholder: ref.name.slice(ref.name.indexOf('/') + 1), confirmLabel: t('Create and check out'),
-        onConfirm: ({ name }) => performGated(null, 'post-checkout', () => window.twig.createBranch(repository.id, name, ref.target, true), t`Checked out ${name}.`, { select: ref.target })
+        onConfirm: ({ name }) => leavingDetached(() => performGated(null, 'post-checkout', () => window.twig.createBranch(repository.id, name, ref.target, true), t`Checked out ${name}.`, { select: ref.target }))
       }),
       deleteRemoteBranch: ref => {
         const split = splitRemoteRef(ref.fullName, remotes.map(item => item.name));
@@ -853,8 +857,33 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
   }
 
   function confirmIfDirty({ title, command, consequence, confirmLabel, run }) {
-    if (!dirty) { run(); return; }
-    setDialog({ type: 'confirm', title, command, consequence, confirmLabel, onConfirm: run });
+    void leavingDetached(() => {
+      if (!dirty) { run(); return; }
+      setDialog({ type: 'confirm', title, command, consequence, confirmLabel, onConfirm: run });
+    });
+  }
+
+  /**
+   * A checkout away from a detached HEAD that holds commits no branch, tag or
+   * remote branch reaches asks first: afterwards they show only in the reflog.
+   * Main counts them; with none, or HEAD on a branch, `run` goes ahead at once.
+   */
+  async function leavingDetached(run) {
+    const oid = repository.status?.branch?.oid;
+    if (!repository.status?.branch?.detached || !oid) { run(); return; }
+    const count = await window.twig.countDetachedCommits(repository.id).catch(() => 0);
+    if (!count) { run(); return; }
+    setDialog({ type: 'leave-detached', count, oid, run });
+  }
+  function branchBeforeLeaving({ oid, run }) {
+    setDialog({
+      type: 'name', title: t`Create a branch at ${oid.slice(0, 7)}`, label: t('Branch name'), placeholder: 'feature/short-description',
+      confirmLabel: t('Create branch'),
+      onConfirm: async ({ name }) => {
+        const result = await perform(() => window.twig.createBranch(repository.id, name, oid, false), t`Branch ${name} created.`);
+        if (result?.ok) run();
+      }
+    });
   }
 
   // `done` is the whole sentence: "Path copied." takes its own gender in each language.
@@ -891,7 +920,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       createBranchFrom: item => setDialog({
         type: 'name', title: t`Create a branch from ${item.name}`, label: t('Branch name'), placeholder: 'feature/short-description',
         confirmLabel: t('Create branch'), extra: t('Check it out straight away'),
-        onConfirm: ({ name, checked }) => perform(() => window.twig.createBranch(repository.id, name, item.target, checked), t`Branch ${name} created.`, { select: item.target })
+        onConfirm: ({ name, checked }) => { const create = () => perform(() => window.twig.createBranch(repository.id, name, item.target, checked), t`Branch ${name} created.`, { select: item.target }); if (checked) void leavingDetached(create); else void create(); }
       }),
       createTagAt: () => base.createTag(),
       createBranchAtHead: () => commitHandlers({ oid: headOid, parents: [] }).createBranch(),
@@ -1298,7 +1327,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       if (open?.section) await openWorktreeFile({ path: open.file }, open.section);
       setNote(describe(outcome));
     } catch (failure) {
-      setStagingError(failureText(failure, t('Git refused this operation.')));
+      setStagingError(failureNote(failure, t('Git refused this operation.'), { repositoryId: repository.id }));
     } finally { setStaging(false); }
   }
   const conflicts = conflictCount(summary);
@@ -1731,6 +1760,8 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       onRun={request => { setDropDialog(null); setDropRunning(true);
         void perform(() => window.twig.runDrop(repository.id, request), t('Drag and drop action finished.')).finally(() => setDropRunning(false)); }} />}
     {dialog?.type === 'confirm' && <ConfirmDialog {...dialog} onClose={() => setDialog(null)} />}
+    {dialog?.type === 'leave-detached' && <LeaveDetachedDialog count={dialog.count} oid={dialog.oid} onClose={() => setDialog(null)}
+      onLeave={dialog.run} onBranch={() => branchBeforeLeaving(dialog)} />}
     {dialog?.type === 'name' && <NameDialog {...dialog} onClose={() => setDialog(null)} />}
     {dialog?.type === 'message' && <MessageDialog {...dialog} onClose={() => setDialog(null)} />}
     {dialog?.type === 'upstream' && <UpstreamDialog branch={dialog.branch} current={dialog.current} candidates={dialog.candidates}

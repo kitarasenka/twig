@@ -227,7 +227,8 @@ export function createI18n() {
     /** The message of a failure from IPC, in the current language, or the fallback. */
     failureText(failure, fallback = '') {
       const raw = typeof failure === 'string' ? failure : failure?.message;
-      const text = typeof raw === 'string' ? raw.replace(ELECTRON_PREFIX, '').replace(/^Error:\s*/, '').trim() : '';
+      // What Git said rides after this mark (main/git/failure.js); it is not part of the sentence.
+      const text = typeof raw === 'string' ? raw.split('\u0000twig:detail\u0000')[0].replace(ELECTRON_PREFIX, '').replace(/^Error:\s*/, '').trim() : '';
       return text ? api.tr(text) : fallback;
     },
 

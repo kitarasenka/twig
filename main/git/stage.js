@@ -3,6 +3,7 @@ import { copyFile, rm, stat, utimes } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { runGit } from './exec.js';
+import { gitReason } from './commit-ops.js';
 import { buildPatch } from './patch-builder.js';
 import { loadWorktree } from './worktree.js';
 import { loadOperationState } from './operation-state.js';
@@ -25,7 +26,11 @@ function validatePath(file) {
 
 async function mutate({ cwd, log, argv, operation, failed, stdin = null }) {
   const result = await runGit({ argv, cwd, log, operation, stdin });
-  if (result.code !== 0) throw new Error(failed);
+  if (result.code !== 0) {
+    const error = new Error(failed);
+    error.detail = gitReason(result);
+    throw error;
+  }
   return result;
 }
 

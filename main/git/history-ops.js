@@ -1,6 +1,7 @@
 import { runGit } from './exec.js';
 import { rebaseTodoCommands } from './config-risk.js';
 import { validateOid } from './commit.js';
+import { gitReason } from './commit-ops.js';
 import { validateRefName } from './refs-ops.js';
 import { buildEditorEnv } from './rebase.js';
 import { ui, uiN } from '../../renderer/src/i18n/i18n.js';
@@ -111,7 +112,7 @@ const LABELS = {
 async function run({ cwd, log, gitDir, argv, operation, failed, messagesFile = null }) {
   const result = await runGit({ argv, cwd, log, operation, env: buildEditorEnv({ gitDir, messagesFile }) });
   if (result.code === 0) return { ok: true, message: null };
-  return { ok: false, message: failed };
+  return { ok: false, message: failed, reason: gitReason(result) };
 }
 
 /** @param {{ cwd: string, log: object, gitDir: string, revision: string, noFf?: boolean }} options */
