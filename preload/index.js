@@ -193,6 +193,8 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   stashAction: (id, action, index, expectedOid, name = null) => ipcRenderer.invoke('stash:action', id, action, index, expectedOid, name),
   getDivergence: (id, branch = null) => ipcRenderer.invoke('sync:divergence', id, branch),
   runSync: (id, mode, branch = null, remote = null) => ipcRenderer.invoke('sync:run', id, mode, branch, remote),
+  removeGitLock: (id, file) => ipcRenderer.invoke('git:remove-lock', id, file),
+  countDetachedCommits: id => ipcRenderer.invoke('git:detached-commits', id),
   cancelSync: (id) => ipcRenderer.invoke('sync:cancel', id),
   runDrop: (id, request) => ipcRenderer.invoke('sync:drop', id, request),
   pushRef: (id, remote, ref, remove = false) => ipcRenderer.invoke('sync:push-ref', id, remote, ref, remove),

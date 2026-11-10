@@ -16,6 +16,7 @@ import { CONSOLE_FLUSH_MS, applyConsoleUpdates } from './console-entries.js';
 import { keepUnchangedRepositories } from './workspace-identity.js';
 import { moveClosedTab, readClosedTabs, startRepositoryId, writeClosedTabs } from './closed-tabs.js';
 import { PULL_COMMANDS, needsPullChoice, syncOutcome } from './sync-view.js';
+import { FAILURE_ACTION, FAILURE_DIALOGS } from './failure-note.js';
 import { fetchExplanation, fetchStatusLine, intervalLabel, pullTitle } from './background-fetch-view.js';
 import { autoCheckExplanation, installVerb, percent, toolbarUpdate, updateStatusLine } from './update-view.js';
 import HistoryWorkspace from '../features/graph/HistoryWorkspace.jsx';
@@ -34,6 +35,7 @@ import { syncRunning, syncWait } from './sync-words.js';
 
 // Opened rarely: loaded the first time they are shown, not with the window.
 const GitProfile = lazyScreen(() => import('../features/settings/GitProfile.jsx'));
+const RemoveLockDialog = lazyScreen(() => import('./RemoveLockDialog.jsx'));
 const Repositories = lazyScreen(() => import('../features/settings/Repositories.jsx'));
 const CloneRepository = lazyScreen(() => import('../features/settings/CloneRepository.jsx'));
 const Remotes = lazyScreen(() => import('../features/settings/Remotes.jsx'));
@@ -141,6 +143,8 @@ export default function App() {
   // A folder with no repository the person may start one in, and the Push with lease to confirm.
   const [initPlan, setInitPlan] = useState(null);
   const [leasePush, setLeasePush] = useState(null);
+  // A lock Git left in .git that a failure note offered to remove: { repositoryId, lock }.
+  const [lockRequest, setLockRequest] = useState(null);
   // Where a missing repository turned out to be, for the person to confirm.
   const [locatePlan, setLocatePlan] = useState(null);
   // What the Clone dialog was holding: Show output closes it to reach the console.
@@ -193,6 +197,17 @@ export default function App() {
     || workspace?.repositories.find(item => item.id === workspace.activeId) || null;
   const sandboxId = workspace?.repositories.find(item => item.sandbox)?.id || null;
   const repositoryActive = active.startsWith('repository:');
+
+  // A button in a failure note anywhere (failure-note.js): open the dialog that fixes it, or ask about a lock.
+  useEffect(() => {
+    const listener = event => {
+      const detail = event.detail || {};
+      if (FAILURE_DIALOGS.includes(detail.dialog)) setDialog(detail.dialog);
+      else if (typeof detail.lock === 'string' && typeof detail.repositoryId === 'string') setLockRequest({ lock: detail.lock, repositoryId: detail.repositoryId });
+    };
+    window.addEventListener(FAILURE_ACTION, listener);
+    return () => window.removeEventListener(FAILURE_ACTION, listener);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -370,12 +385,12 @@ export default function App() {
   }
   /** The words of `syncOutcome` with its modes turned into buttons. */
   function syncNoteFor(result, mode) {
-    const outcome = syncOutcome(result, { mode, branch: branchName, upstream: divergence.upstream });
+    const outcome = syncOutcome(result, { mode, branch: branchName, upstream: divergence.upstream, repositoryId: repository.id });
     if (typeof outcome === 'string') return outcome;
     const note = { ...outcome, text: t`${repository.name}: ${outcome.text}` };
     if (!note.actions) return note;
     const labels = { 'pull-rebase': t('Pull with rebase'), 'pull-merge': t('Pull and merge'), 'push-force': t('Push with lease…') };
-    return { ...note, actions: note.actions.map(action => ({ label: labels[action],
+    return { ...note, actions: note.actions.map(action => (typeof action !== 'string' ? action : { label: labels[action],
       run: () => (action === 'push-force' ? setLeasePush({ command: result.refusal.lease }) : void runSync(action)) })) };
   }
   function pull() {
@@ -941,6 +956,8 @@ export default function App() {
     {initPlan && <ConfirmDialog title={t('Create a repository here?')} danger={false} command={initPlan.command} confirmLabel={t('Create repository')}
       consequence={t`${initPlan.path} has no Git repository yet. Git adds a .git folder there; your files are not changed and nothing is committed.`}
       onConfirm={() => void createRepository()} onClose={() => setInitPlan(null)} />}
+    {lockRequest && <RemoveLockDialog request={lockRequest} onClose={() => setLockRequest(null)}
+      onDone={text => setSyncNote(text, lockRequest.repositoryId)} />}
     {leasePush && <ConfirmDialog title={t('Push with lease')} command={leasePush.command} confirmLabel={t('Push with lease')}
       consequence={t`The remote branch is replaced with ${branchName || 'this branch'}, and the commits only it holds are gone from there. Git refuses if somebody pushed since your last fetch.`}
       onConfirm={() => void runSync('push-force')} onClose={() => setLeasePush(null)} />}

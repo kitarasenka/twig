@@ -1,5 +1,6 @@
 import { runGit } from './exec.js';
 import { validateOid } from './commit.js';
+import { gitReason } from './commit-ops.js';
 import { ui } from '../../renderer/src/i18n/i18n.js';
 
 /**
@@ -87,7 +88,12 @@ export function buildDeleteTagArgv(name) {
 
 async function mutate({ cwd, log, argv, operation, failed, stdin = null }) {
   const result = await runGit({ argv, cwd, log, operation, stdin });
-  if (result.code !== 0) throw new Error(failed);
+  if (result.code !== 0) {
+    const error = new Error(failed);
+    // What Git said, for the window to show under the sentence (main/git/failure.js).
+    error.detail = gitReason(result);
+    throw error;
+  }
   return result;
 }
 

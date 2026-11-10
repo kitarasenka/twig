@@ -1,10 +1,11 @@
 // What the window says after a pull or a push that did not go through, and the
 // way out it offers. Git's own wording stays in the console: `refusal.kind`,
-// read in main, picks the sentence here. Only the translator is imported, so
-// Vite and the Node check both load this module.
+// read in main, picks the sentence here. Only the translator and the failure
+// words are imported, so Vite and the Node check both load this module.
 
 import { t, tr } from '../i18n/i18n.js';
 import { syncFinished } from './sync-words.js';
+import { failureNote } from './failure-note.js';
 
 /** Shown in the Pull dialog; the check holds them against `buildSyncArgv`. */
 export const PULL_COMMANDS = { 'pull-merge': ['pull', '--no-rebase'], 'pull-rebase': ['pull', '--rebase'] };
@@ -36,17 +37,18 @@ function refusalWords(refusal, { branch, upstream }) {
  * The note for a finished `runSync`. `actions` are the modes to offer, in order:
  * `push-force` only when this branch rewrote what the remote holds.
  * @param {{ ok: boolean, cancelled: boolean, message: ?string, reason?: string, refusal?: ?object }} result
- * @param {{ mode: string, branch: ?string, upstream: ?string }} context
- * @returns {{ text: string, failed: boolean, detail?: string, actions?: string[] } | string}
+ * @param {{ mode: string, branch: ?string, upstream: ?string, repositoryId?: ?string }} context
+ * @returns {{ text: string, failed: boolean, detail?: string, actions?: (string|{ label: string, run: () => void })[] } | string}
  */
-export function syncOutcome(result, { mode, branch, upstream }) {
+export function syncOutcome(result, { mode, branch, upstream, repositoryId = null }) {
   if (result.ok) return syncFinished(mode);
   if (result.cancelled) return { text: tr(result.message), failed: false };
   // The banner above the history carries it from here: this is a conflict, not a failure.
   if (result.refusal?.kind === 'stopped') return { text: t('The pull stopped on a conflict. The banner above the history shows what to resolve.'), failed: false };
   const words = result.refusal ? refusalWords(result.refusal, { branch, upstream }) : null;
   if (words) return { ...words, failed: true, detail: result.refusal.kind === 'remote' ? result.reason : undefined };
-  return { text: tr(result.message), failed: true, detail: result.reason };
+  // Anything else: what Git said, in words where the case is known (a key, a password, a lock, the network).
+  return failureNote(result, tr(result.message), { repositoryId });
 }
 
 /** Pull only fast-forwards, so a branch that moved on both sides is asked about first. */

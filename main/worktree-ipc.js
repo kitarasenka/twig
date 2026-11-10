@@ -13,6 +13,8 @@ import { loadStashDiff, loadStashes, loadStashFiles, runStashAction } from './gi
 import { loadDivergence, pushRef, runSync } from './git/sync.js';
 import { runDrop, validateDropRequest } from './git/drop.js';
 import { ui } from '../renderer/src/i18n/i18n.js';
+import { carryDetail, countDetachedCommits, removeLock } from './git/failure.js';
+import { gitRunningIn } from './git/exec.js';
 
 /**
  * Working-tree and synchronisation channels.
@@ -39,8 +41,9 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
       const kind = channel === 'stash:action' && ['apply', 'pop'].includes(args[1]) ? `stash:${args[1]}`
         : channel.startsWith('worktree:discard') ? 'worktree:discard' : channel === 'discard:restore' ? 'worktree:restore-discard' : channel;
       const parameters = kind !== channel ? [args[2]] : args.slice(1);
-      return ['worktree:read', 'worktree:diff', 'worktree:untracked-diff', 'worktree:co-authors', 'discard:list', 'stash:list', 'stash:files', 'stash:diff', 'sync:divergence', 'sync:cancel', 'sync:run', 'sync:push-ref', 'sync:drop'].includes(channel)
-        ? run() : undo.perform(repo.path, kind, parameters, run);
+      // What Git said rides along with a failure, for the window to put in words (main/git/failure.js).
+      return Promise.resolve(['worktree:read', 'worktree:diff', 'worktree:untracked-diff', 'worktree:co-authors', 'discard:list', 'stash:list', 'stash:files', 'stash:diff', 'sync:divergence', 'sync:cancel', 'sync:run', 'sync:push-ref', 'sync:drop', 'git:remove-lock', 'git:detached-commits'].includes(channel)
+        ? run() : undo.perform(repo.path, kind, parameters, run)).catch(error => { throw carryDetail(error); });
     });
   }
 
@@ -175,6 +178,18 @@ export function registerWorktreeIpc(getWindow, entryUrl, { repositories, journal
     return commitWithBump({ request, repo: { id: options.repoId, path: options.cwd }, choice: bump, bumper, commit: createCommit });
   });
   handler('worktree:co-authors', 1, options => loadCoAuthors(options));
+
+  /**
+   * A `*.lock` file Git left behind, named by Git's own message. The person
+   * was asked first (another program may hold it); main still checks the path
+   * is a lock of this repository and that 🌱 Twig is not running Git there.
+   */
+  handler('git:remove-lock', 2, (options, file) => {
+    if (typeof file !== 'string' || file.length > 32768) throw new TypeError('Invalid lock path');
+    return removeLock({ ...options, file, busy: undo.isBusy(options.cwd) || gitRunningIn(options.cwd) });
+  });
+  /** How many commits only the detached HEAD holds, asked before checking out something else. */
+  handler('git:detached-commits', 1, options => countDetachedCommits(options));
 
   handler('stash:push', 3, (options, includeUntracked, message) => {
     if (typeof includeUntracked !== 'boolean' || typeof message !== 'string' || message.length > 4096) throw new Error('Invalid stash request');

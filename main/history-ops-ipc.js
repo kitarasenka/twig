@@ -10,6 +10,7 @@ import { loadConflict, markResolved, restoreConflict, saveResolution, settleDele
 import { moveBranch } from './git/reflog.js';
 import { applyPatch } from './git/patches.js';
 import { ui } from '../renderer/src/i18n/i18n.js';
+import { carryDetail } from './git/failure.js';
 import { finishFirst } from './git/operation-words.js';
 
 /**
@@ -34,8 +35,8 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
       if (!repo || !repo.available) throw new Error(ui`Repository is unavailable`);
       if (!gitDirs.has(repo.path)) gitDirs.set(repo.path, await resolveGitDir({ cwd: repo.path, log: journal }));
       const run = () => read({ cwd: repo.path, log: journal, gitDir: gitDirs.get(repo.path) }, ...args.slice(1));
-      return ['ops:state', 'bisect:state', 'conflict:read'].includes(channel)
-        ? run() : undo.perform(repo.path, channel, args.slice(1), run);
+      return Promise.resolve(['ops:state', 'bisect:state', 'conflict:read'].includes(channel)
+        ? run() : undo.perform(repo.path, channel, args.slice(1), run)).catch(error => { throw carryDetail(error); });
     });
   }
 
@@ -57,7 +58,7 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
       outcome = await run();
     } catch (error) {
       if (error instanceof TypeError) throw error;
-      outcome = { ok: false, message: error.message };
+      outcome = { ok: false, message: error.message, reason: error.detail, hooks: error.hooks };
     }
     const state = await loadOperationState(options);
     if (state.kind === 'none') await clearPlan({ stateDir, cwd: options.cwd });

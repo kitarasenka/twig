@@ -4,6 +4,10 @@ import { validateOid } from './commit.js';
 import { coAuthorArgv, missingCoAuthors } from './co-author-trailer.js';
 import { parseStatusV2 } from './status-parser.js';
 import { ui } from '../../renderer/src/i18n/i18n.js';
+import { presentHooks } from './failure.js';
+
+// The hooks `git commit` runs that can refuse it, in the order it runs them.
+const COMMIT_HOOKS = ['pre-commit', 'prepare-commit-msg', 'commit-msg'];
 
 /** Commit creation and the stash, i.e. local writes that move HEAD or shelve work. */
 
@@ -98,8 +102,14 @@ export async function createCommit({ cwd, log, message, amend = false, expectedH
       throw new Error(ui`The branch moved since the last commit was read. Refresh and try again.`);
     }
   }
-  await mutate({ cwd, log, argv, stdin: message, operation: amend ? 'Amend the last commit' : 'Commit',
-    failed: amend ? ui`Amend the last commit failed. See the command console.` : ui`Commit failed. See the command console.` });
+  try {
+    await mutate({ cwd, log, argv, stdin: message, operation: amend ? 'Amend the last commit' : 'Commit',
+      failed: amend ? ui`Amend the last commit failed. See the command console.` : ui`Commit failed. See the command console.` });
+  } catch (error) {
+    // Which hooks could have stopped it: the window says so when nothing else explains the failure.
+    error.hooks = await presentHooks({ cwd, log, names: COMMIT_HOOKS }).catch(() => []);
+    throw error;
+  }
   return check.warnings;
 }
 

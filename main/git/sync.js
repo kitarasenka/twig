@@ -10,6 +10,7 @@ import { BACKGROUND_FETCH_ARGV } from '../background-fetch.js';
 import { pushArgv, readPushPlan } from './push-plan.js';
 import { redactCredentials } from './redact.js';
 import { ui } from '../../renderer/src/i18n/i18n.js';
+import { presentHooks } from './failure.js';
 
 /**
  * Network operations. Each one takes an AbortSignal because the brief
@@ -153,7 +154,9 @@ export async function runSync({ cwd, log, mode, branch = null, remote = null, si
   if (result.cancelled) return { ok: false, cancelled: true, message: CANCELLED[mode] };
   if (result.code !== 0) {
     const refusal = await readRefusal({ cwd, log, mode, branch, stderr: result.stderr }).catch(() => null);
-    return { ok: false, cancelled: false, message: FAILED[mode], reason: gitReason(result), refusal };
+    // A push the remote never answered may have been stopped by the pre-push hook.
+    const hooks = mode.startsWith('push') && !refusal ? await presentHooks({ cwd, log, names: ['pre-push'] }).catch(() => []) : [];
+    return { ok: false, cancelled: false, message: FAILED[mode], reason: gitReason(result), refusal, hooks };
   }
   return { ok: true, cancelled: false, message: null };
 }
