@@ -51,7 +51,7 @@ try {
     'watchRepository', 'onRepositoryChange', 'getReflog', 'moveBranchTo',
     'getBackgroundFetch', 'setBackgroundFetch', 'getBackgroundFetchStatus', 'onBackgroundFetch',
     'getMcpSettings', 'setMcpEnabled', 'reportUiContext', 'setMcpCommitsAllowed', 'getCommitProposal', 'decideCommitProposal', 'getCommitProposalFile', 'onCommitProposal', 'onCommitProposalStep', 'getBumpPlan',
-    'getSshKeys', 'getSshConfig', 'generateSshKey', 'saveSshConfig', 'testSshConnection', 'cancelSshConnection', 'secureSshKey',
+    'getSshKeys', 'getSshConfig', 'generateSshKey', 'saveSshConfig', 'testSshConnection', 'cancelSshConnection', 'secureSshKey', 'addSshHost', 'scanSshHost', 'trustSshHost', 'getAskpassPrompt', 'answerAskpass', 'onAskpassPrompt',
     'getAutomationConfig', 'saveAutomationConfig', 'trustAutomations', 'runAutomation', 'cancelAutomation', 'getAutomationRuns', 'getAutomationRun', 'onAutomationStep',
     'runConsoleCommand', 'clearConsole', 'getEditor', 'setEditor', 'openInEditor', 'revealFile',
     'discardFile', 'discardAll', 'discardSelection',

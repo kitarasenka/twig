@@ -96,7 +96,7 @@ export async function changeRemote({ cwd, log, action, name, url = null, expecte
   if (signal?.aborted) return { ok: false, cancelled: true };
   const argv = action === 'fetch' ? ['fetch', '--progress', '--prune', '--', name]
     : ['remote', action, '--', name, ...(['add', 'set-url'].includes(action) ? [url] : [])];
-  const result = await runGit({ cwd, log, argv, signal, operation: `${action === 'fetch' ? 'Fetch and prune' : `Remote ${action}`}: ${name}` });
+  const result = await runGit({ cwd, log, argv, signal, prompt: action === 'fetch', operation: `${action === 'fetch' ? 'Fetch and prune' : `Remote ${action}`}: ${name}` });
   if (result.cancelled) return { ok: false, cancelled: true };
   if (result.code !== 0) throw new Error(ui`Git could not finish the remote action. Show output in the console.`);
   return { ok: true, cancelled: false };

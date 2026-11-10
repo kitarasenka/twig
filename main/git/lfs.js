@@ -88,7 +88,7 @@ export async function loadLfsStatus({ cwd, log }) {
  * @param {{ cwd: string, log: object, signal?: ?AbortSignal }} options
  */
 export async function pullLfs({ cwd, log, signal = null }) {
-  const result = await runGit({ cwd, log, signal, argv: ['lfs', 'pull'], operation: 'Download Git LFS files' });
+  const result = await runGit({ cwd, log, signal, argv: ['lfs', 'pull'], operation: 'Download Git LFS files', prompt: true });
   if (signal?.aborted) return { ok: false, cancelled: true, message: ui`Git LFS download cancelled.` };
   if (result.code !== 0) return { ok: false, cancelled: false, message: ui`git lfs pull did not finish. Show output in the console.` };
   return { ok: true, cancelled: false, message: null };

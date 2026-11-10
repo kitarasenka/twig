@@ -101,7 +101,7 @@ export function buildSubmoduleUpdateArgv(paths = null, { recursive = false } = {
 /** @param {{ cwd: string, log: object, paths?: ?string[], recursive?: boolean, signal?: ?AbortSignal }} options */
 export async function updateSubmodules({ cwd, log, paths = null, recursive = false, signal = null }) {
   const argv = buildSubmoduleUpdateArgv(paths, { recursive });
-  const result = await runGit({ cwd, log, argv, signal, operation: paths?.length === 1 ? `Update submodule ${paths[0]}` : 'Update submodules' });
+  const result = await runGit({ cwd, log, argv, signal, prompt: true, operation: paths?.length === 1 ? `Update submodule ${paths[0]}` : 'Update submodules' });
   if (signal?.aborted) return { ok: false, cancelled: true, message: ui`Submodule update cancelled.` };
   if (result.code !== 0) return { ok: false, cancelled: false, message: ui`git submodule update did not finish. Show output in the console.` };
   return { ok: true, cancelled: false, message: null };

@@ -40,6 +40,7 @@ const Remotes = lazyScreen(() => import('../features/settings/Remotes.jsx'));
 const SshSettings = lazyScreen(() => import('../features/settings/SshSettings.jsx'));
 const McpSettings = lazyScreen(() => import('../features/settings/McpSettings.jsx'));
 const CommitProposalDialog = lazyScreen(() => import('../features/proposal/CommitProposalDialog.jsx'));
+const AskpassDialog = lazyScreen(() => import('../features/askpass/AskpassDialog.jsx'));
 
 const UNAVAILABLE = mark('Connect a repository to use this action');
 // What `dialog` holds: an English name compared in code and shown, translated, as the title.
@@ -96,6 +97,9 @@ export default function App() {
   // the dialog's view, its progress and a failure to show before closing.
   const [proposal, setProposal] = useState(null);
   const [proposalRun, setProposalRun] = useState({ running: false, step: null, failure: '' });
+  // What Git or ssh asks during the person's push, pull or clone: main holds the question.
+  const [askpass, setAskpass] = useState(null);
+  useEffect(() => { window.twig.getAskpassPrompt().then(setAskpass).catch(() => {}); return window.twig.onAskpassPrompt(setAskpass); }, []);
   const [fetchStatus, setFetchStatus] = useState(null);
   const [fetchError, setFetchError] = useState('');
   const [diffPrefs, setDiffPrefs] = useDiffPrefs();
@@ -930,6 +934,7 @@ export default function App() {
     {proposal && <CommitProposalDialog key={proposal.id} view={proposal} running={proposalRun.running} step={proposalRun.step} failure={proposalRun.failure} invalid={proposalRun.invalid}
       onDecide={decision => void decideProposal(decision)} onClose={closeProposal}
       onStopAgents={() => void window.twig.setMcpCommitsAllowed(false).then(setMcpSettings).catch(() => {})} />}
+    {askpass && <AskpassDialog key={askpass.id} view={askpass} />}
     {pushGate && <ExecutionPanel event="pre-push" label={t('Before Push')} phase="pre" steps={pushGate.steps} result={pushGate.result}
       blocked={pushGate.blocked} onClose={() => (pushGate.result ? closePushGate(false) : cancelPushGate())} onRetry={() => closePushGate(false)}
       onRunAgain={() => { const resolve = pushGateResolve.current; pushGateResolve.current = null; void runPushGate(pushGate.remote).then(resolve); }} onBypass={() => closePushGate(false, true)} />}

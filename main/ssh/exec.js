@@ -1,10 +1,11 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
-export async function runSsh({ executable, argv, cwd, log, stdin = '', signal, quiet = false }) {
-  if (!['ssh', 'ssh-keygen'].includes(executable) || !Array.isArray(argv) || argv.some(value => typeof value !== 'string')) throw new TypeError('Invalid SSH command');
+export async function runSsh({ executable, argv, cwd, log, stdin = '', signal, quiet = false, operation = null }) {
+  if (!['ssh', 'ssh-keygen', 'ssh-keyscan'].includes(executable) || !Array.isArray(argv) || argv.some(value => typeof value !== 'string')) throw new TypeError('Invalid SSH command');
   const id = randomUUID(); const startedAt = new Date().toISOString(); const started = performance.now();
-  await log.start({ id, executable, argv, cwd, startedAt, operation: executable === 'ssh-keygen' ? 'Generate SSH key' : 'SSH command' });
+  const label = operation ?? (executable === 'ssh-keygen' ? 'Generate SSH key' : executable === 'ssh-keyscan' ? 'Check SSH host keys' : 'SSH command');
+  await log.start({ id, executable, argv, cwd, startedAt, operation: label });
   return new Promise((resolve, reject) => {
     let stdout = ''; let stderr = ''; let cancelled = false; let failure;
     const child = spawn(executable, argv, { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32',

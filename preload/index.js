@@ -23,6 +23,17 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   saveSshConfig: (content, digest) => ipcRenderer.invoke('ssh:save-config', content, digest),
   testSshConnection: target => ipcRenderer.invoke('ssh:test', target),
   cancelSshConnection: () => ipcRenderer.invoke('ssh:cancel'),
+  addSshHost: (key, host, digest) => ipcRenderer.invoke('ssh:add-host', key, host, digest),
+  scanSshHost: target => ipcRenderer.invoke('ssh:scan-host', target),
+  trustSshHost: token => ipcRenderer.invoke('ssh:trust-host', token),
+  getAskpassPrompt: () => ipcRenderer.invoke('askpass:current'),
+  answerAskpass: (id, answer) => ipcRenderer.invoke('askpass:answer', id, answer),
+  onAskpassPrompt: listener => {
+    if (typeof listener !== 'function') throw new TypeError('Invalid askpass listener');
+    const callback = (_event, view) => listener(view);
+    ipcRenderer.on('askpass:prompt', callback);
+    return () => ipcRenderer.removeListener('askpass:prompt', callback);
+  },
   getUndoState: id => ipcRenderer.invoke('undo:state', id),
   moveUndo: (id, direction) => ipcRenderer.invoke('undo:move', id, direction),
   onUndoUpdate: listener => {
