@@ -3,6 +3,8 @@ import { ArrowLeft, Check, FileX2, Info, Redo2, Save, Undo2 } from 'lucide-react
 import Button from '../../ui/Button.jsx';
 import { hasConflictMarkers, parseConflictFile, resolveRegion } from './conflict-parser.js';
 import { dropConflictDraft, readConflictDraft, writeConflictDraft } from './conflict-drafts.js';
+import { conflictSides, refNamer } from './side-labels.js';
+import { ConfirmDialog } from '../ops/dialogs.jsx';
 import { matchesShortcut } from '../../app/shortcuts.js';
 import { failureText, mark, t, tn, tr } from '../../i18n/i18n.js';
 
@@ -23,15 +25,16 @@ function chosenLines(region, pick) {
   return [...take(first), ...take('base'), ...take(second)];
 }
 
-function SideColumn({ name, title, lines, picked, onToggle }) {
+function SideColumn({ name, title, side, lines, picked, onToggle }) {
   // Git only writes the base into the markers under merge.conflictStyle=diff3
   // or zdiff3. Saying so beats an unexplained empty column, and the whole file
   // is still one click away below.
-  if (!lines) return <div className="conflict-column"><h5>{title}</h5>
+  const who = side && <span className="conflict-side-name" title={side.role}>{side.name}</span>;
+  if (!lines) return <div className="conflict-column"><h5>{title}{who}</h5>
     <p className="muted conflict-base-missing" title={t('Git writes the base into the markers only with merge.conflictStyle=zdiff3 (or diff3). The whole base file is below.')}>
       {t('Not in the markers')} <Info aria-label={t('Why the base is missing')} /></p></div>;
   return <div className={`conflict-column side-${name}`}>
-    <h5>{title}<small>{tn(lines.length, '{n} line', '{n} lines')}</small></h5>
+    <h5>{title}{who}<small>{tn(lines.length, '{n} line', '{n} lines')}</small></h5>
     {lines.length === 0 && <p className="muted">{t('Empty on this side.')}</p>}
     {lines.map((line, index) => <label key={index} className="conflict-line">
       <input type="checkbox" checked={picked.has(index)} onChange={() => onToggle(index)}
@@ -56,7 +59,7 @@ function SideColumn({ name, title, lines, picked, onToggle }) {
  * so going to another file, back to the history or to any other screen keeps
  * them; `onDraft` tells the workspace which files have one.
  */
-export default function ConflictEditor({ repositoryId, file, onBack, onResolved, onConsole, onDraft }) {
+export default function ConflictEditor({ repositoryId, file, operation = null, headBranch = null, refs, onBack, onResolved, onConsole, onDraft }) {
   const [data, setData] = useState(null);
   const [text, setText] = useState('');
   const [picks, setPicks] = useState([]);
@@ -65,6 +68,9 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmMarkers, setConfirmMarkers] = useState(false);
+  // The whole-side choice waiting for its confirmation: 'ours' or 'theirs'.
+  const [confirmSide, setConfirmSide] = useState(null);
+  const sides = useMemo(() => conflictSides(operation, { headBranch, refName: refNamer(refs) }), [operation, headBranch, refs]);
   // The file on disk moved on while a draft of it was waiting.
   const [diskChanged, setDiskChanged] = useState(false);
   const request = useRef(0);
@@ -94,6 +100,8 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
     else writeConflictDraft(repositoryId, file, { text, past, future, mtimeMs: data.mtimeMs, size: data.size });
     onDraft?.();
   }, [repositoryId, file, data, text, past, future, onDraft]);
+  // Typed or picked here and not saved: taking a whole side throws that away.
+  const edited = Boolean(data) && !data.binary && !data.deleted && (text !== (data.merged || '') || past.length > 0);
   function discardDraft() {
     setText(data.merged || ''); setPast([]); setFuture([]); setDiskChanged(false);
   }
@@ -171,7 +179,7 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
       const result = await window.twig.takeConflictSide(repositoryId, file, side);
       if (!result.ok) { setError(result.message ? tr(result.message) : t('Could not take that side.')); return; }
       dropConflictDraft(repositoryId, file);
-      onResolved(result.state);
+      onResolved(result.state, { side, name: sides[side].name });
     } catch (failure) {
       setError(failureText(failure, t('Could not take that side.')));
     } finally { setBusy(false); }
@@ -205,8 +213,9 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
         {!data?.deleted && <>
           <Button icon={Undo2} aria-label={t('Undo in the conflict editor')} reason={past.length === 0 ? t('Nothing to undo here') : undefined} onClick={undo} />
           <Button icon={Redo2} aria-label={t('Redo in the conflict editor')} reason={future.length === 0 ? t('Nothing to redo here') : undefined} onClick={redo} />
-          <Button onClick={() => whole('ours')} reason={busy ? t('Working') : undefined} title={t('Take our side in every conflict of this file')}>{t('Take all ours')}</Button>
-          <Button onClick={() => whole('theirs')} reason={busy ? t('Working') : undefined} title={t('Take their side in every conflict of this file')}>{t('Take all theirs')}</Button>
+          {['ours', 'theirs'].map(side => <Button key={side} onClick={() => setConfirmSide(side)} reason={busy ? t('Working') : undefined}
+            title={side === 'ours' ? t`Ours here is ${sides.ours.role}. The whole file becomes that version.` : t`Theirs here is ${sides.theirs.role}. The whole file becomes that version.`}>
+            {t`Take all of ${sides[side].name}`}</Button>)}
           <Button icon={Save} className="primary" onClick={() => save()} reason={busy || !data || data.binary ? busy ? t('Saving') : t('This file has no text to save') : undefined}>{t('Save and mark resolved')}</Button>
         </>}
       </div>
@@ -244,13 +253,13 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
           return <article key={region.index} className="conflict-region" aria-label={t`Conflict ${region.index + 1}`}>
             <h4>{t`Conflict ${region.index + 1}`}<small>{t`${region.oursLabel} vs ${region.theirsLabel}`}</small></h4>
             <div className="conflict-quick">
-              <Button onClick={() => apply(region.index, region.ours)}>{t('Take ours')}</Button>
-              <Button onClick={() => apply(region.index, region.theirs)}>{t('Take theirs')}</Button>
+              <Button onClick={() => apply(region.index, region.ours)} title={t`Keep the lines of ${sides.ours.name}: ${sides.ours.role}`}>{t('Take ours')}</Button>
+              <Button onClick={() => apply(region.index, region.theirs)} title={t`Keep the lines of ${sides.theirs.name}: ${sides.theirs.role}`}>{t('Take theirs')}</Button>
               <Button onClick={() => apply(region.index, [...region.ours, ...region.theirs])}>{t('Take both')}</Button>
               <Button onClick={() => apply(region.index, [])}>{t('Take neither')}</Button>
             </div>
             <div className="conflict-columns">
-              {SIDES.map(([name, title]) => <SideColumn key={name} name={name} title={t(title)} lines={region[name]}
+              {SIDES.map(([name, title]) => <SideColumn key={name} name={name} title={t(title)} side={sides[name]} lines={region[name]}
                 picked={pick[name]} onToggle={line => togglePick(region.index, name, line)} />)}
             </div>
             <div className="conflict-apply">
@@ -278,5 +287,15 @@ export default function ConflictEditor({ repositoryId, file, onBack, onResolved,
         <textarea id="conflict-result" value={text} spellCheck={false} onChange={event => commit(event.target.value)} />
       </div>
     </div>}
+    {confirmSide && <ConfirmDialog title={t`Take all of ${sides[confirmSide].name}`}
+      command={[['checkout', `--${confirmSide}`, '--', `:(literal)${file}`], ['add', '--', `:(literal)${file}`]]}
+      consequence={[
+        confirmSide === 'ours' ? t`${file} becomes the whole version of ${sides.ours.name} (${sides.ours.role}), and Git marks it resolved.`
+          : t`${file} becomes the whole version of ${sides.theirs.name} (${sides.theirs.role}), and Git marks it resolved.`,
+        edited ? t('Your unsaved edits in this editor are lost.') : null,
+        t('Until the operation is continued, Put the conflict back on the banner returns the markers.')
+      ].filter(Boolean).join(' ')}
+      confirmLabel={t('Take this side')} danger={edited}
+      onConfirm={() => void whole(confirmSide)} onClose={() => setConfirmSide(null)} />}
   </section>;
 }

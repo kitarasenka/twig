@@ -57,6 +57,28 @@ try {
   await page.getByRole('button', { name: 'Save pipeline', exact: true }).click();
   await page.locator('.pipeline-card').filter({ hasText: 'Protect main' }).waitFor();
 
+  // --- a draft outlives a click elsewhere; deleting asks first ------------
+  await page.getByLabel('Add from template').selectOption('js-ts');
+  await page.getByRole('group', { name: 'Pipeline' }).getByLabel('Name').fill('Draft kept');
+  await page.locator('.sidebar-nav button:visible', { hasText: 'Stashes' }).click();
+  await page.getByRole('region', { name: 'Automations', exact: true }).waitFor({ state: 'detached' }).catch(() => {});
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByText('Not saved yet. Leaving this screen keeps the draft until you save or cancel it.').waitFor();
+  assert.equal(await page.getByRole('group', { name: 'Pipeline' }).getByLabel('Name').inputValue(), 'Draft kept', 'the draft came back');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.locator('.pipeline-card').filter({ hasText: 'Protect main' }).waitFor();
+  await page.getByRole('button', { name: 'Duplicate Protect main', exact: true }).click();
+  const copy = page.locator('.pipeline-card').filter({ hasText: 'Protect main copy' });
+  await copy.waitFor();
+  await copy.getByRole('button', { name: 'Delete Protect main copy', exact: true }).click();
+  const deleting = page.getByRole('dialog', { name: 'Delete Protect main copy' });
+  await deleting.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await deleting.waitFor({ state: 'detached' });
+  assert.equal(await copy.count(), 1, 'Cancel deletes nothing');
+  await copy.getByRole('button', { name: 'Delete Protect main copy', exact: true }).click();
+  await deleting.getByRole('button', { name: 'Delete pipeline', exact: true }).click();
+  await copy.waitFor({ state: 'detached' });
+
   // --- manual run blocks on main -----------------------------------------
   await page.getByRole('button', { name: 'Run now', exact: true }).click();
   await page.getByText('Commit blocked').waitFor();

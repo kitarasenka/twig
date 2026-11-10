@@ -22,6 +22,10 @@ import { ui } from '../../renderer/src/i18n/i18n.js';
  * @property {?string} branch branch being rebased, from `head-name`
  * @property {string[]} conflicts paths Git reports as unmerged
  * @property {boolean} resolved true when the operation is stopped with nothing left conflicted
+ * @property {?string} onto rebase: the commit the branch is replayed onto
+ * @property {?string} incoming the commit being brought in: merged, picked, reverted or replayed
+ * @property {?string} incomingName merge: the branch or tag name from MERGE_MSG, when it names one
+ * @property {string[]} resolvedFiles paths resolved during this operation that `git checkout -m` can put back in conflict
  */
 
 const REBASE_DIRS = ['rebase-merge', 'rebase-apply'];
@@ -61,19 +65,40 @@ async function readRebase(gitDir) {
     const dir = path.join(gitDir, name);
     if (!await exists(dir)) continue;
     const am = name === 'rebase-apply' && await exists(path.join(dir, 'applying'));
-    const [step, total, headName] = await Promise.all([
+    const [step, total, headName, onto, stopped, rebaseHead] = await Promise.all([
       readTrimmed(path.join(dir, am ? 'next' : 'msgnum')),
       readTrimmed(path.join(dir, am ? 'last' : 'end')),
-      am ? null : readTrimmed(path.join(dir, 'head-name'))
+      am ? null : readTrimmed(path.join(dir, 'head-name')),
+      am ? null : readTrimmed(path.join(dir, 'onto')),
+      am ? null : readTrimmed(path.join(dir, 'stopped-sha')),
+      am ? null : readTrimmed(path.join(gitDir, 'REBASE_HEAD'))
     ]);
     return {
       kind: am ? 'am' : 'rebase',
       step: Number.isInteger(Number(step)) ? Number(step) : null,
       total: Number.isInteger(Number(total)) ? Number(total) : null,
-      branch: headName ? headName.replace(/^refs\/heads\//, '') : null
+      branch: headName ? headName.replace(/^refs\/heads\//, '') : null,
+      onto: oidOrNull(onto), incoming: oidOrNull(rebaseHead) || oidOrNull(stopped), incomingName: null
     };
   }
   return null;
+}
+
+const oidOrNull = text => (text && /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(text.split('\n')[0]) ? text.split('\n')[0] : null);
+
+/**
+ * The branch or tag a merge brings in, as Git wrote it into MERGE_MSG
+ * ("Merge branch 'feature' into main"). Only a plain ref-like name is taken;
+ * anything else is left for the short object id to describe.
+ */
+export function mergedName(message) {
+  const match = /^Merge (?:remote-tracking branch|branch|tag) '([^'\n]{1,255})'/.exec(message || '');
+  return match && ![...match[1]].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ? match[1] : null;
+}
+
+/** Paths `ls-files --resolve-undo -z` lists (`<mode> <oid> <stage>\t<path>`), once each. */
+export function parseResolveUndo(output) {
+  return [...new Set(output.split('\0').filter(Boolean).map(entry => entry.slice(entry.indexOf('\t') + 1)).filter(Boolean))];
 }
 
 /**
@@ -89,13 +114,23 @@ export async function loadOperationState({ cwd, log, gitDir = null, env = null }
     // A revert and a cherry-pick share the sequencer, so the marker file is
     // the only thing that distinguishes them.
     for (const [file, kind] of [['MERGE_HEAD', 'merge'], ['CHERRY_PICK_HEAD', 'cherry-pick'], ['REVERT_HEAD', 'revert']]) {
-      if (await exists(path.join(dir, file))) { head = { kind, step: null, total: null, branch: null }; break; }
+      const marker = await readTrimmed(path.join(dir, file));
+      if (marker === null) continue;
+      head = { kind, step: null, total: null, branch: null, onto: null, incoming: oidOrNull(marker),
+        incomingName: kind === 'merge' ? mergedName(await readTrimmed(path.join(dir, 'MERGE_MSG'))) : null };
+      break;
     }
   }
-  if (!head) return { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
+  if (!head) return { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false, onto: null, incoming: null, incomingName: null, resolvedFiles: [] };
 
-  const result = await runGit({ argv: ['status', '--porcelain=v2', '-z'], cwd, log, env, operation: 'Background: read conflicted files' });
+  const [result, undone] = await Promise.all([
+    runGit({ argv: ['status', '--porcelain=v2', '-z'], cwd, log, env, operation: 'Background: read conflicted files' }),
+    // What `git add` resolved during this operation: the index keeps the
+    // stages it replaced, which is what `git checkout -m` puts back.
+    runGit({ argv: ['ls-files', '--resolve-undo', '-z'], cwd, log, env, operation: 'Background: read resolved files' })
+  ]);
   if (result.code !== 0) throw new Error(ui`Git could not read the working tree.`);
   const conflicts = parseStatusV2(result.stdout).entries.filter(entry => entry.kind === 'unmerged').map(entry => entry.path);
-  return { ...head, conflicts, resolved: conflicts.length === 0 };
+  const resolvedFiles = undone.code === 0 ? parseResolveUndo(undone.stdout).filter(file => !conflicts.includes(file)) : [];
+  return { ...head, conflicts, resolved: conflicts.length === 0, resolvedFiles };
 }

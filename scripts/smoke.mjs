@@ -40,7 +40,7 @@ try {
     'applySelection', 'cancelSync', 'checkoutRef', 'cherryPick', 'compareCommits', 'copyText', 'createBranch',
     'checkForUpdate', 'getUpdateState', 'downloadUpdate', 'cancelUpdate', 'installUpdate', 'setAutoUpdateCheck', 'onUpdateState', 'createCommit', 'createTag', 'getAppInfo', 'getLanguage', 'setLanguage', 'getCommit', 'getCommitFiles', 'getConsoleEntries', 'getConsoleOutput',
     'getDivergence', 'getFileDiff', 'getImagePair', 'getFileText', 'getFileHistory', 'getGitProfile', 'getHistoryPage', 'getOperationState', 'getRebaseCandidates', 'getRefs',
-    'getWorkspace', 'checkGit', 'onWorkspaceUpdate', 'onRefreshKey', 'initRepository', 'chooseRepositoryLocation', 'locateRepository', 'settleConflictDeletion', 'getWorktreeDiff', 'markConflictResolved', 'searchHistory', 'mergeRevision', 'onConsoleUpdate', 'openRepository',
+    'getWorkspace', 'checkGit', 'onWorkspaceUpdate', 'onRefreshKey', 'initRepository', 'chooseRepositoryLocation', 'locateRepository', 'settleConflictDeletion', 'getWorktreeDiff', 'markConflictResolved', 'restoreConflict', 'searchHistory', 'mergeRevision', 'onConsoleUpdate', 'openRepository',
     'readConflict', 'readWorktree', 'rebaseOnto', 'resetTo', 'revertCommit', 'rewordCommit', 'runSequencer', 'runSync',
     'saveConflict', 'saveGitProfileValue', 'selectRepository', 'stageAll', 'stageFile', 'stashList', 'stashPop', 'stashPush', 'takeConflictSide',
     'getUntrackedDiff', 'applyUntrackedSelection', 'unstageAll', 'unstageFile', 'cancelClone', 'cancelRemote', 'changeRemote', 'chooseCloneDestination',

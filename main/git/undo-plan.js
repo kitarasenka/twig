@@ -82,6 +82,12 @@ export function buildUndoPlan(entry, direction) {
     // A reword always has a commit under it; only a first commit undoes to nothing.
     commands = undo && !before.head ? [['update-ref', '-d', 'HEAD', after.head]]
       : [reset('--soft', undo ? before.head : after.head)];
+  } else if (kind === 'ops:reset') {
+    // A soft reset moved only the branch; a mixed one also set the index to
+    // the target, which the chain records only when nothing was staged before
+    // it — then the same mixed reset back restores the index exactly.
+    if (!Array.isArray(args) || !['soft', 'mixed'].includes(args[0])) throw new TypeError('Invalid saved reset');
+    commands = [reset(`--${args[0]}`, validateOid(undo ? before.head : after.head))];
   } else if (['ops:merge', 'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am'].includes(kind)) {
     destructive = true; commands = [reset('--hard', undo ? before.head : after.head)];
   } else if (kind === 'refs:checkout') commands = [checkout(undo ? before : after)];
@@ -105,7 +111,7 @@ export function buildUndoPlan(entry, direction) {
 }
 
 /** The actions Undo can reverse; every other action that changes the repository ends the chain. */
-export const UNDOABLE_KINDS = Object.freeze(['worktree:discard', 'worktree:restore-discard', 'worktree:ignore', 'reflog:move-branch', 'refs:create-tag', 'worktree:commit', 'ops:reword', 'ops:merge',
+export const UNDOABLE_KINDS = Object.freeze(['worktree:discard', 'worktree:restore-discard', 'worktree:ignore', 'reflog:move-branch', 'refs:create-tag', 'worktree:commit', 'ops:reword', 'ops:reset', 'ops:merge',
   'ops:revert', 'ops:cherry-pick', 'ops:cherry-pick-many', 'ops:revert-many', 'patch:am', 'refs:checkout', 'refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply']);
 
 /** Actions that change only the index. An inverse that does not read the index survives them. */
@@ -135,6 +141,7 @@ const place = state => state.branch || short(state.head);
 const LABELS = {
   'worktree:commit': ({ after }) => [ui`Undo commit ${short(after.head)}`, ui`Redo commit ${short(after.head)}`],
   'ops:reword': ({ after }) => [ui`Undo the new message of ${short(after.head)}`, ui`Redo the new message of ${short(after.head)}`],
+  'ops:reset': ({ before, after }) => [ui`Undo the reset: back to ${short(before.head)}`, ui`Redo the reset to ${short(after.head)}`],
   'ops:merge': () => [ui`Undo the merge`, ui`Redo the merge`],
   'ops:revert': () => [ui`Undo the revert`, ui`Redo the revert`],
   'ops:revert-many': () => [ui`Undo the revert`, ui`Redo the revert`],
@@ -162,7 +169,6 @@ export function undoLabel(entry, direction) {
 }
 
 const ENDS_CHAIN = {
-  'ops:reset': ui`A reset moved the branch, which ends the Undo chain.`,
   'ops:sequencer': ui`Continuing or aborting an operation ends the Undo chain.`,
   'refs:delete-branch': ui`Deleting a branch ends the Undo chain.`,
   'refs:rename-branch': ui`Renaming a branch ends the Undo chain.`,
@@ -179,6 +185,11 @@ export function inverseReason(kind, before, after, args) {
     : args[0]?.startsWith('pull') ? ui`Pull may have integrated commits. Use an explicit Git operation to reverse it.`
       : ui`Push may have published commits. Use an explicit Git operation to reverse it.`;
   if (kind === 'ops:rebase') return ui`Rebase rewrites history and ends the Undo chain.`;
+  if (kind === 'ops:reset') {
+    if (args[0] === 'hard') return ui`A hard reset replaced the files, which Undo cannot bring back. The commits it left are still in Reflog.`;
+    if (!before.head || !after.head) return ui`There is no previous revision to restore.`;
+    if (args[0] === 'mixed' && before.staged) return ui`This reset unstaged changes, which Undo cannot put back in the index. The commits are still in Reflog.`;
+  }
   if (kind === 'submodules:update') return ui`Updating submodules moves their checkouts. Undo does not move them back.`;
   if (kind.startsWith('worktrees:')) return ui`Adding or removing a worktree ends the Undo chain.`;
   if (kind === 'patch:apply') return ui`A patch applied to the files ends the Undo chain. Its changes can be discarded like any other.`;

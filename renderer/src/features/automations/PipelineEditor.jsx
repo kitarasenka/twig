@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import { HOOK_EVENTS, eventPhase } from './event-labels.js';
@@ -113,8 +113,10 @@ function ActionRow({ action, index, count, phase, onChange, onRemove, onReorder 
 }
 
 /** Edits one pipeline. `validatePipeline` drives the live error list and the save gate. */
-export default function PipelineEditor({ pipeline, onSave, onCancel }) {
+export default function PipelineEditor({ pipeline, onSave, onCancel, onDraft }) {
   const [draft, setDraft] = useState(() => normalizePipeline(pipeline));
+  // Every change is handed up at once, so leaving the screen keeps it.
+  useEffect(() => { onDraft?.(draft); }, [draft, onDraft]);
   const phase = eventPhase(draft.event);
   const { valid, errors } = useMemo(() => validatePipeline(draft), [draft]);
   const patch = p => setDraft(current => ({ ...current, ...p }));

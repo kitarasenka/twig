@@ -98,6 +98,9 @@
 .operation-headline > svg { color: var(--danger); flex: none; }
 .operation-headline .muted { font-size: var(--text-xs); }
 .operation-actions { display: flex; gap: var(--space-2); margin-left: auto; }
+/* Abort sits apart from Continue and Skip: a slip of the pointer should not reach it. */
+.operation-actions .operation-abort { margin-left: var(--space-4); }
+.conflict-list .resolved-file svg { color: var(--accent); }
 .conflict-list { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0 var(--space-4) var(--space-2); list-style: none; }
 .conflict-list button { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2);
   background: var(--surface-raised); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -108,6 +111,8 @@
 
 dialog.wide { width: min(920px, calc(100vw - var(--space-8))); }
 .rebase-dialog { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.rebase-warnings { display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-sm); }
+.rebase-warnings .confirm-command { overflow-wrap: anywhere; white-space: pre-wrap; }
 .rebase-rows { display: flex; flex-direction: column; gap: var(--space-1); max-height: 52vh; overflow-y: auto; overflow-x: hidden; margin: 0; padding: 0; list-style: none; }
 .rebase-row { display: grid; grid-template-columns: auto auto 60px minmax(0, 1fr) minmax(180px, 240px); align-items: center; gap: var(--space-2);
   padding: var(--space-1) var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
@@ -153,6 +158,9 @@ dialog.wide { width: min(920px, calc(100vw - var(--space-8))); }
 .conflict-column h5 { display: flex; justify-content: space-between; gap: var(--space-2); margin: 0 0 var(--space-1);
   font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .conflict-column h5 small { font-weight: 400; }
+/* Who the side is in this operation: a branch or a commit, in its own case. */
+.conflict-side-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono); text-transform: none; letter-spacing: 0; color: var(--text); }
 .conflict-column .muted { font-size: var(--text-xs); }
 .side-ours h5 { color: var(--lane-mint); }
 .side-theirs h5 { color: var(--lane-cream); }

@@ -11,7 +11,7 @@ import {
 import { buildPushRefArgv } from '../../main/git/sync.js';
 import { pushRefCommand, splitRemoteRef } from '../../renderer/src/features/refs/remote-ref.js';
 import { buildEditorEnv, buildMessageMap, buildRebaseArgv, buildTodo, planDirectory } from '../../main/git/rebase.js';
-import { buildRebaseTodoArgv } from '../../main/git/history.js';
+import { buildRebaseTodoArgv, buildUnpublishedArgv } from '../../main/git/history.js';
 import { buildMarkResolvedArgv, buildStageContentArgv, buildTakeSideArgv } from '../../main/git/conflicts.js';
 import { buildRewordArgv } from '../../main/git/commit-ops.js';
 import { buildRewordPlan } from '../../renderer/src/features/ops/reword-plan.js';
@@ -94,6 +94,8 @@ assert.deepEqual(buildRebaseArgv({ oid: A }), ['rebase', A]);
 assert.deepEqual(buildRebaseArgv({ oid: A, interactive: true }), ['rebase', '--interactive', A]);
 assert.deepEqual(buildRebaseTodoArgv(A), ['log', '--reverse', '--topo-order', '--no-merges', '-z',
   '--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b', `${A}..HEAD`]);
+assert.deepEqual(buildUnpublishedArgv(A), ['rev-list', `${A}..HEAD`, '--not', '--remotes']);
+assert.throws(() => buildUnpublishedArgv('--all'), TypeError);
 
 // The plan never lands inside the repository being rebased.
 const plan = planDirectory('/state', '/repos/thing');
