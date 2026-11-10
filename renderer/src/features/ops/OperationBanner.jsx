@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, FileWarning } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileCheck2, FileWarning } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import { mark, t, tn } from '../../i18n/i18n.js';
 
@@ -28,7 +28,7 @@ const NOTHING_UNSAVED = new Set();
  * There is nothing to continue or abort, only files to resolve. `unsaved` names
  * the files with edits in the conflict editor that are not saved yet.
  */
-export default function OperationBanner({ state, busy, unsaved = NOTHING_UNSAVED, onStep, onOpenConflict }) {
+export default function OperationBanner({ state, busy, unsaved = NOTHING_UNSAVED, onStep, onOpenConflict, onRestoreConflict }) {
   if (!state || state.kind === 'none') return null;
   const inProgress = IN_PROGRESS[state.kind] ? t(IN_PROGRESS[state.kind]) : t`${state.kind} in progress`;
   const running = RUNNING[state.kind] ? t(RUNNING[state.kind]) : t`${state.kind} is running`;
@@ -45,14 +45,20 @@ export default function OperationBanner({ state, busy, unsaved = NOTHING_UNSAVED
           ? t('Nothing is conflicted any more. Continue to finish it.')
           : tn(state.conflicts.length, '{n} file still conflicted.', '{n} files still conflicted.')}</span>
       <div className="operation-actions">
-        {(STEPS[state.kind] || []).map(([step, text]) => <Button key={step} className={step === 'abort' ? 'danger quiet' : step === 'continue' ? 'primary' : 'secondary'}
+        {(STEPS[state.kind] || []).map(([step, text]) => <Button key={step} className={step === 'abort' ? 'danger quiet operation-abort' : step === 'continue' ? 'primary' : 'secondary'}
           reason={busy ? running : step === 'continue' && !state.resolved ? t('Resolve every conflict first') : undefined}
           onClick={() => onStep(step)}>{t(text)}</Button>)}
       </div>
     </div>
-    {state.conflicts.length > 0 && <ul className="conflict-list">
+    {(state.conflicts.length > 0 || state.resolvedFiles?.length > 0) && <ul className="conflict-list">
       {state.conflicts.map(file => <li key={file}>
         <button type="button" onClick={() => onOpenConflict(file)}><FileWarning aria-hidden="true" /><span>{file}</span><small>{unsaved.has(file) ? t('Unsaved edits') : t('Resolve')}</small></button>
+      </li>)}
+      {/* Resolved during this operation: Git still keeps the stages, so the conflict can come back. */}
+      {(state.resolvedFiles || []).map(file => <li key={`resolved:${file}`}>
+        <button type="button" className="resolved-file" disabled={busy} onClick={() => onRestoreConflict?.(file)}
+          title={t('Git still remembers this conflict. Put the markers back to resolve it again.')}>
+          <FileCheck2 aria-hidden="true" /><span>{file}</span><small>{t('Resolved · Put the conflict back')}</small></button>
       </li>)}
     </ul>}
   </section>;

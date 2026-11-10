@@ -195,6 +195,11 @@ export function buildRebaseTodoArgv(oid) {
   return ['log', '--reverse', '--topo-order', '--no-merges', '-z', `--format=${FORMAT}`, `${validateOid(oid)}..HEAD`];
 }
 
+/** The commits of a rebase range that no remote-tracking branch reaches. */
+export function buildUnpublishedArgv(oid) {
+  return ['rev-list', `${validateOid(oid)}..HEAD`, '--not', '--remotes'];
+}
+
 /** @param {{ cwd: string, log: import('../command-log.js').CommandLog, oid: string }} options */
 export async function loadRebaseCandidates({ cwd, log, oid }) {
   const result = await runGit({ argv: buildRebaseTodoArgv(oid), cwd, log, operation: 'Read commits to rebase' });
@@ -202,5 +207,10 @@ export async function loadRebaseCandidates({ cwd, log, oid }) {
   const commits = parseHistoryV1(result.stdout);
   if (commits.length === 0) throw new Error(ui`There is nothing between this commit and the current branch to rebase.`);
   if (commits.length > MAX_REBASE_ENTRIES) throw new Error(ui`That is ${commits.length} commits. 🌱 Twig edits a rebase plan of at most ${MAX_REBASE_ENTRIES}.`);
-  return commits;
+  // Which of them a remote already has: rewriting those needs a force push.
+  // Unknown (an unreadable answer) is left unmarked rather than guessed.
+  const local = await runGit({ argv: buildUnpublishedArgv(oid), cwd, log, operation: 'Read commits not on any remote' });
+  if (local.code !== 0) return commits;
+  const unpublished = new Set(local.stdout.split('\n').filter(Boolean));
+  return commits.map(commit => ({ ...commit, published: !unpublished.has(commit.oid) }));
 }

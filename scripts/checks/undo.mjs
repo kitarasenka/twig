@@ -12,7 +12,7 @@ import { finishFirst, stepNote } from '../../main/git/operation-words.js';
 import { syncFinished, syncRunning, syncWait } from '../../renderer/src/app/sync-words.js';
 import { createCommit, rewordHead, stashPop, stashPush } from '../../main/git/commit-ops.js';
 import { createBranch, checkout } from '../../main/git/refs-ops.js';
-import { merge, revert } from '../../main/git/history-ops.js';
+import { merge, reset, revert } from '../../main/git/history-ops.js';
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'twig-undo-'));
 try {
@@ -273,6 +273,51 @@ try {
   const last = await upgraded.inspect(cwd);
   assert.equal(last.undo, false); assert.match(last.undoReason, /was updated/);
   assert.match((await upgraded.inspect('/elsewhere')).undoReason, /No application actions to undo/);
+
+  // A soft or mixed reset is undone by the same reset back; a hard one, or a
+  // mixed one that unstaged something, ends the chain in words.
+  {
+    const dir = path.join(root, 'reset'); await mkdir(dir);
+    const resets = new UndoService({ directory: await mkdtemp(path.join(root, 'reset-state-')), log }); await resets.load();
+    const at = { cwd: dir, log };
+    const g = async argv => { const result = await runGit({ ...at, argv }); assert.equal(result.code, 0, result.stderr); return result.stdout.trim(); };
+    await g(['init', '--initial-branch=main']);
+    for (const [key, value] of [['user.name', 'Twig Test'], ['user.email', 'test@example.invalid'], ['commit.gpgsign', 'false'], ['core.hooksPath', '']]) await g(['config', key, value]);
+    at.gitDir = await g(['rev-parse', '--absolute-git-dir']);
+    for (const text of ['1', '2', '3']) { await writeFile(path.join(dir, 'r.txt'), `${text}\n`); await g(['add', '--', 'r.txt']); await g(['commit', '--message', `r${text}`]); }
+    const tip = await g(['rev-parse', 'HEAD']); const back = await g(['rev-parse', 'HEAD~2']);
+    const shot = () => captureState(at);
+    const go = direction => resets.move(dir, direction, async () => true);
+    const top = await shot();
+    await resets.perform(dir, 'ops:reset', ['soft', back], () => reset({ ...at, mode: 'soft', oid: back }));
+    const soft = await shot();
+    assert.equal(soft.head, back); assert.equal(soft.staged, true, 'a soft reset leaves the changes staged');
+    assert.match((await resets.inspect(dir)).undoReason, /Undo the reset: back to /);
+    await go('undo'); assert.equal((await shot()).shape, top.shape, 'Undo of a soft reset puts the branch back');
+    await go('redo'); assert.equal((await shot()).shape, soft.shape);
+    await go('undo');
+    await resets.perform(dir, 'ops:reset', ['mixed', back], () => reset({ ...at, mode: 'mixed', oid: back }));
+    const mixed = await shot();
+    assert.equal(mixed.staged, false); assert.equal(mixed.head, back);
+    await go('undo');
+    const unmixed = await shot();
+    assert.equal(unmixed.shape, top.shape, 'Undo of a mixed reset puts the branch and the index back');
+    assert.equal(await g(['rev-parse', 'HEAD']), tip);
+    await go('redo'); assert.equal((await shot()).shape, mixed.shape);
+    await go('undo');
+    // Something staged before a mixed reset cannot be put back in the index.
+    await writeFile(path.join(dir, 'r.txt'), 'staged\n'); await g(['add', '--', 'r.txt']);
+    await resets.perform(dir, 'ops:reset', ['mixed', back], () => reset({ ...at, mode: 'mixed', oid: back }));
+    const lost = await resets.inspect(dir);
+    assert.equal(lost.undo, false); assert.match(lost.undoReason, /unstaged changes/);
+    await g(['reset', '--hard', tip]);
+    await resets.perform(dir, 'ops:reset', ['soft', back], () => reset({ ...at, mode: 'soft', oid: back }));
+    assert.equal((await resets.inspect(dir)).undo, true);
+    await resets.perform(dir, 'ops:reset', ['hard', tip], () => reset({ ...at, mode: 'hard', oid: tip }));
+    const hard = await resets.inspect(dir);
+    assert.equal(hard.undo, false); assert.match(hard.undoReason, /hard reset/);
+    assert.throws(() => buildUndoPlan({ kind: 'ops:reset', args: ['hard'], before: top, after: top }, 'undo'), TypeError, 'a hard reset has no saved inverse');
+  }
 
   // Words on the two buttons, and no channel name in any of them.
   const empty = new UndoService({ directory: await mkdtemp(path.join(root, 'empty-')), log }); await empty.load();

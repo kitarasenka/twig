@@ -229,13 +229,17 @@ try {
   await page.locator('.operation-note', { hasText: 'f.txt marked resolved.' }).waitFor();
   assert.equal(await readFile(path.join(clash, 'f.txt'), 'utf8'), 'my careful resolution of f\n');
   await list.getByRole('button', { name: /g\.txt/ }).click();
-  await button('Take all ours').click();
-  await page.locator('.operation-note', { hasText: 'g.txt marked resolved.' }).waitFor();
+  // Ours is named by what it is in this merge; taking it whole asks first.
+  await page.locator('.conflict-editor button', { hasText: /^Take all of / }).first().click();
+  const whole = page.getByRole('dialog', { name: /^Take all of / });
+  assert.match((await whole.locator('.confirm-command').allInnerTexts()).join('\n'), /checkout --ours -- :\(literal\)g\.txt/);
+  await button('Take this side', whole).click();
+  await page.locator('.operation-note', { hasText: /^g\.txt now holds the whole version of / }).waitFor();
 
   // Modify/delete: nothing to merge, two honest answers.
   await list.getByRole('button', { name: /gone\.txt/ }).click();
   await page.getByText('Theirs deleted this file and ours changed it.', { exact: false }).waitFor();
-  assert.equal(await button('Take all theirs').count(), 0, 'the button that cannot work is gone');
+  assert.equal(await page.locator('.conflict-editor button', { hasText: /^Take all of / }).count(), 0, 'the button that cannot work is gone');
   await snapshot(page, 'conflict-deleted');
   await button('Delete the file').click();
   await page.locator('.operation-note', { hasText: 'gone.txt marked resolved.' }).waitFor();

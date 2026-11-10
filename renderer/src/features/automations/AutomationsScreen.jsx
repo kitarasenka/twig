@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import Dialog from '../../ui/Dialog.jsx';
+import { dropPipelineDraft, readPipelineDraft, writePipelineDraft } from './pipeline-draft.js';
 import { ArrowLeft, Play, Copy, Trash2, Pencil, Plus, ShieldAlert, FileWarning } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import ScreenTitle from '../../ui/ScreenTitle.jsx';
 import OperationNote from '../../ui/OperationNote.jsx';
 import { HOOK_EVENTS, eventLabel } from './event-labels.js';
-import { makeId, normalizeConfig } from './schema.js';
+import { makeId, normalizeConfig, normalizePipeline } from './schema.js';
 import { TEMPLATES, buildTemplate } from './templates.js';
 import PipelineEditor from './PipelineEditor.jsx';
 import ExecutionLog from './ExecutionLog.jsx';
@@ -43,7 +45,23 @@ export default function AutomationsScreen({ repository, refreshKey, busy, onBack
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('pipelines');
-  const [editing, setEditing] = useState(null);
+  // A draft left by a click elsewhere comes back with the screen.
+  const [editing, setEditingState] = useState(() => readPipelineDraft(repository.id));
+  const setEditing = useCallback(next => {
+    // Normalized once here, so the editor's own normalizing changes nothing and an untouched draft is not "edited".
+    const pipeline = next && normalizePipeline(next.pipeline, next.pipeline.source);
+    const editing = next && { ...next, pipeline, original: JSON.stringify(normalizePipeline(pipeline)) };
+    if (editing) writePipelineDraft(repository.id, editing); else dropPipelineDraft(repository.id);
+    setEditingState(editing);
+  }, [repository.id]);
+  const keepDraft = useCallback(pipeline => setEditingState(current => {
+    if (!current) return current;
+    const next = { ...current, pipeline, edited: JSON.stringify(pipeline) !== current.original };
+    writePipelineDraft(repository.id, next);
+    return next;
+  }), [repository.id]);
+  // The pipeline whose deletion waits for a yes.
+  const [deleting, setDeleting] = useState(null);
   const [trustOpen, setTrustOpen] = useState(false);
   const [notice, setNotice] = useState('');
 
@@ -74,8 +92,9 @@ export default function AutomationsScreen({ repository, refreshKey, busy, onBack
     && data.repo.digest !== data.trust?.digest;
 
   if (editing) return <section className="automations-screen">
-    <header className="panel-heading"><strong>{editing.isNew ? t('New pipeline') : t`Edit ${editing.pipeline.name}`}</strong></header>
-    <PipelineEditor pipeline={editing.pipeline}
+    <header className="panel-heading"><strong>{editing.isNew ? t('New pipeline') : t`Edit ${editing.pipeline.name}`}</strong>
+      {editing.edited && <span className="muted">{t('Not saved yet. Leaving this screen keeps the draft until you save or cancel it.')}</span>}</header>
+    <PipelineEditor pipeline={editing.pipeline} onDraft={keepDraft}
       onCancel={() => setEditing(null)}
       onSave={next => {
         const exists = pipelines.some(p => p.id === next.id);
@@ -152,10 +171,24 @@ export default function AutomationsScreen({ repository, refreshKey, busy, onBack
           onEdit={() => setEditing({ isNew: false, pipeline })}
           onRun={() => onRunEvent(pipeline.event, { operation: 'manual' })}
           onDuplicate={() => save({ ...config, pipelines: [...pipelines, { ...pipeline, id: makeId('pipeline'), name: t`${pipeline.name} copy`, source: 'local' }] })}
-          onDelete={() => save({ ...config, pipelines: pipelines.filter(p => p.id !== pipeline.id) })} />)}
+          onDelete={() => setDeleting(pipeline)} />)}
       </div>)}
     </>}
 
+    {deleting && <Dialog title={t`Delete ${deleting.name}`} onClose={() => setDeleting(null)}>
+      <div className="confirm-dialog">
+        <p className="confirm-consequence"><Trash2 aria-hidden="true" />{deleting.source === 'repo'
+          ? t('The pipeline is removed from 🌱 Twig. .twig/hooks.json in the repository is not changed. There is no Undo for this.')
+          : tn(deleting.actions.length, 'The pipeline and its {n} step are removed. There is no Undo for this.', 'The pipeline and its {n} steps are removed. There is no Undo for this.')}</p>
+        <div className="dialog-actions">
+          <Button onClick={() => setDeleting(null)}>{t('Cancel')}</Button>
+          <Button className="danger" onClick={() => {
+            const id = deleting.id; setDeleting(null);
+            void save({ ...config, pipelines: pipelines.filter(p => p.id !== id) });
+          }}>{t('Delete pipeline')}</Button>
+        </div>
+      </div>
+    </Dialog>}
     {trustOpen && <TrustPrompt repo={data.repo} onClose={() => setTrustOpen(false)}
       onTrust={async trust => {
         try { const saved = await window.twig.trustAutomations(repository.id, trust); setData(current => ({ ...current, trust: saved })); await load(); }

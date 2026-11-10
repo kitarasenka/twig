@@ -80,6 +80,11 @@ export function buildMarkResolvedArgv(file) {
   return ['add', '--', `:(literal)${validateFile(file)}`];
 }
 
+/** Puts a file resolved during this operation back in conflict, from the stages the index kept (resolve-undo). */
+export function buildRestoreConflictArgv(file) {
+  return ['checkout', '--merge', '--', `:(literal)${validateFile(file)}`];
+}
+
 export function buildDeleteConflictArgv(file) {
   return ['rm', '--force', '--quiet', '--', `:(literal)${validateFile(file)}`];
 }
@@ -165,4 +170,21 @@ export async function takeSide({ cwd, log, path: file, side }) {
   const result = await runGit({ argv: buildTakeSideArgv(side, file), cwd, log, operation: `Take ${side} version` });
   if (result.code !== 0) throw new Error(side === 'ours' ? ui`Git could not take the ours version. See the command console.` : ui`Git could not take the theirs version. See the command console.`);
   return markResolved({ cwd, log, path: file });
+}
+
+/**
+ * Undoes a resolution: the file gets its conflict markers back and is listed
+ * as unmerged again. Git can only do that while the index still holds the
+ * stages `git add` replaced, so a file it has no record of is refused before
+ * anything runs; what is in the file now is replaced by the markers.
+ * @param {{ cwd: string, log: object, path: string }} options
+ */
+export async function restoreConflict({ cwd, log, path: file }) {
+  resolveInside(cwd, file);
+  const recorded = await runGit({ argv: ['ls-files', '--resolve-undo', '-z', '--', `:(literal)${validateFile(file)}`], cwd, log,
+    operation: 'Read resolved conflict state' });
+  if (recorded.code !== 0 || !recorded.stdout) throw new Error(ui`Git no longer remembers this conflict, so it cannot be put back.`);
+  const result = await runGit({ argv: buildRestoreConflictArgv(file), cwd, log, operation: 'Put the conflict back' });
+  if (result.code !== 0) throw new Error(ui`Git could not put the conflict back. See the command console.`);
+  return true;
 }

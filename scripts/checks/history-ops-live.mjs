@@ -4,13 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { CommandLog } from '../../main/command-log.js';
 import { runGit } from '../../main/git/exec.js';
-import { loadOperationState, resolveGitDir } from '../../main/git/operation-state.js';
+import { loadOperationState, mergedName, parseResolveUndo, resolveGitDir } from '../../main/git/operation-state.js';
 import { buildCherryPickManyArgv, buildRevertManyArgv, cherryPick, cherryPickMany, findMergeCommits, merge, reset, revert, revertMany, sequencer } from '../../main/git/history-ops.js';
 import { checkout, createBranch, createTag } from '../../main/git/refs-ops.js';
 import { clearPlan, planDirectory, startRebase } from '../../main/git/rebase.js';
 import { loadRebaseCandidates } from '../../main/git/history.js';
 import { buildUndoPlan, inverseReason } from '../../main/git/undo-plan.js';
-import { loadConflict, saveResolution, takeSide } from '../../main/git/conflicts.js';
+import { loadConflict, restoreConflict, saveResolution, takeSide } from '../../main/git/conflicts.js';
 import { rewordHead } from '../../main/git/commit-ops.js';
 import { buildRewordPlan } from '../../renderer/src/features/ops/reword-plan.js';
 import { buildSquashPlan } from '../../renderer/src/features/ops/squash-plan.js';
@@ -53,7 +53,11 @@ try {
 
   // Nothing in progress at rest.
   assert.deepEqual(await loadOperationState(options),
-    { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false });
+    { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false, onto: null, incoming: null, incomingName: null, resolvedFiles: [] });
+  assert.equal(mergedName("Merge branch 'feature/x' into main\n"), 'feature/x');
+  assert.equal(mergedName("Merge remote-tracking branch 'origin/main'"), 'origin/main');
+  assert.equal(mergedName("Merge commit 'abc'"), null, 'a bare commit names no branch');
+  assert.deepEqual(parseResolveUndo(['100644 aa 1\tf.txt', '100644 bb 2\tf.txt', '100644 cc 3\tsub dir/g', ''].join('\0')), ['f.txt', 'sub dir/g']);
 
   // --- branches and tags ---------------------------------------------------
   await createBranch({ ...options, name: 'side', startPoint: base });
@@ -79,6 +83,9 @@ try {
   assert.equal(conflicted.kind, 'merge');
   assert.deepEqual(conflicted.conflicts, ['f.txt']);
   assert.equal(conflicted.resolved, false);
+  assert.equal(conflicted.incomingName, 'side', 'the merge names the branch it brings in');
+  assert.equal(conflicted.incoming, await git(['rev-parse', 'side']));
+  assert.deepEqual(conflicted.resolvedFiles, []);
 
   // The editor sees all three sides and the markers Git left behind.
   const sides = await loadConflict({ ...options, path: 'f.txt' });
@@ -124,8 +131,20 @@ try {
   // --- taking one side whole ------------------------------------------------
   assert.equal((await merge({ ...options, revision: 'side' })).ok, false);
   await takeSide({ ...options, path: 'f.txt', side: 'theirs' });
-  assert.deepEqual((await loadOperationState(options)).conflicts, []);
+  const taken = await loadOperationState(options);
+  assert.deepEqual(taken.conflicts, []);
+  assert.deepEqual(taken.resolvedFiles, ['f.txt'], 'the index remembers what the resolution replaced');
   assert.equal(await readFile(path.join(cwd, 'f.txt'), 'utf8'), 'a\nSIDE-AGAIN\nc\n');
+  // Taking a side is not final: the conflict comes back, markers and all.
+  await restoreConflict({ ...options, path: 'f.txt' });
+  const restored = await loadOperationState(options);
+  assert.deepEqual(restored.conflicts, ['f.txt']);
+  assert.deepEqual(restored.resolvedFiles, []);
+  assert.equal(parseConflictFile(await readFile(path.join(cwd, 'f.txt'), 'utf8')).conflicts, 1);
+  await assert.rejects(restoreConflict({ ...options, path: 'g.txt' }), /no longer remembers/, 'a file never resolved is refused');
+  await assert.rejects(restoreConflict({ ...options, path: '../x' }), TypeError);
+  await takeSide({ ...options, path: 'f.txt', side: 'ours' });
+  assert.equal(await readFile(path.join(cwd, 'f.txt'), 'utf8'), 'a\nMAIN\nSIDE\nc\n');
   await sequencer({ ...options, kind: 'merge', step: 'abort' });
 
   // --- cherry-pick and revert ----------------------------------------------
@@ -237,6 +256,11 @@ try {
   const [s1, s2, s3] = runOids;
   const squashRange = await loadRebaseCandidates({ cwd, log, oid: beforeAbort });
   assert.deepEqual(squashRange.map(entry => entry.subject), ['add s1', 'add s2', 'add s3', 'add keep']);
+  assert.ok(squashRange.every(entry => entry.published === false), 'no remote has any of them');
+  // A remote-tracking branch at s2: s1 and s2 are published, the rest are not.
+  await git(['update-ref', 'refs/remotes/origin/runs', s2]);
+  assert.deepEqual((await loadRebaseCandidates({ cwd, log, oid: beforeAbort })).map(entry => entry.published), [true, true, false, false]);
+  await git(['update-ref', '-d', 'refs/remotes/origin/runs']);
   const squashed = await startRebase({
     ...options, stateDir, oid: beforeAbort,
     entries: buildSquashPlan(squashRange, [s1, s2, s3], 'the three s commits, squashed')
@@ -267,6 +291,9 @@ try {
   assert.equal(during.step, 1);
   assert.equal(during.total, 1);
   assert.deepEqual(during.conflicts, ['f.txt']);
+  // In a rebase "ours" is what the branch moves onto, "theirs" the person's own commit.
+  assert.equal(during.onto, await git(['rev-parse', 'main']));
+  assert.equal(during.incoming, await git(['rev-parse', 'topic']), 'the commit being replayed');
 
   const inRebase = await loadConflict({ ...options, path: 'f.txt' });
   await saveResolution({ ...options, path: 'f.txt', content: 'a\nTRUNK+TOPIC\nc\n', mtimeMs: inRebase.mtimeMs, size: inRebase.size });

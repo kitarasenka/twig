@@ -220,6 +220,7 @@ contextBridge.exposeInMainWorld('twig', Object.freeze({
   takeConflictSide: (id, path, side) => ipcRenderer.invoke('conflict:take', id, path, side),
   settleConflictDeletion: (id, file, keep) => ipcRenderer.invoke('conflict:settle-deleted', id, file, keep),
   markConflictResolved: (id, path) => ipcRenderer.invoke('conflict:resolve', id, path),
+  restoreConflict: (id, path) => ipcRenderer.invoke('conflict:restore', id, path),
   getAutomationConfig: (id) => ipcRenderer.invoke('automation:config', id),
   saveAutomationConfig: (id, config) => ipcRenderer.invoke('automation:save', id, config),
   trustAutomations: (id, trust) => ipcRenderer.invoke('automation:trust', id, trust),

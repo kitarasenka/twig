@@ -137,5 +137,7 @@ export async function captureState({ cwd, log }) {
   return { digest: createHash('sha256').update(shape).update(files).digest('hex'), shape,
     refs: refsDigest({ own, branch, head: status.branch.oid, operation: operation.kind }),
     head: status.branch.oid, branch, paths, count: paths.length, clean: paths.length === 0,
+    // Anything in the index that HEAD does not have: a mixed reset would lose it.
+    staged: status.entries.some(entry => entry.kind === 'unmerged' || ((entry.kind === 'ordinary' || entry.kind === 'renamed') && entry.indexStatus !== '.')),
     stashOid, stashMessage, operation: operation.kind };
 }

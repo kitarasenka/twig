@@ -146,10 +146,24 @@ try {
   const advance = page.getByRole('button', { name: /^Continue/ });
   assert.equal(await advance.isDisabled(), true, 'Continue must wait for the conflicts');
 
+  // Abort throws the merge away, so it asks first, with the command; Cancel leaves the merge as it was.
+  await page.getByRole('status', { name: 'Merge in progress' }).getByRole('button', { name: 'Abort', exact: true }).click();
+  const aborting = page.getByRole('dialog', { name: 'Abort the merge' });
+  await aborting.waitFor();
+  assert.equal(await aborting.locator('.confirm-command').innerText(), '$ git merge --abort');
+  assert.match(await aborting.locator('.confirm-consequence').innerText(), /Undo cannot reverse this/);
+  await aborting.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await aborting.waitFor({ state: 'detached' });
+  await page.getByRole('status', { name: 'Merge in progress' }).waitFor();
+  await git(['rev-parse', '--verify', 'MERGE_HEAD']);
+
   await page.getByRole('button', { name: 'poem.txt Resolve' }).click();
   const editor = page.getByRole('region', { name: 'Resolve conflict in poem.txt' });
   await editor.waitFor();
   await expect('1 conflict left', 'the editor counts the region');
+  // In a merge ours is the branch you are on and theirs the branch coming in, by name.
+  assert.deepEqual(await editor.locator('.conflict-region').first().locator('.conflict-side-name').allInnerTexts(), ['main', 'feature']);
+  await editor.getByRole('button', { name: 'Take all of feature', exact: true }).waitFor();
 
   // A stopped merge is not a failure: the banner explains it, so no error
   // note is raised and the console is not forced open behind the user's back.
@@ -184,6 +198,31 @@ try {
   await expect('poem.txt marked resolved.', 'saving the resolution');
   await expect('Nothing is conflicted any more. Continue to finish it.', 'the banner after resolving');
   assert.equal(await readFile(path.join(cwd, 'poem.txt'), 'utf8'), 'roses\nFEATURE\nTRUNK\nsugar\n');
+
+  // A resolution is not final until the merge continues: the conflict comes back from the banner.
+  await page.getByRole('button', { name: /poem\.txt Resolved · Put the conflict back/ }).click();
+  const putBack = page.getByRole('dialog', { name: 'Put the conflict back in poem.txt' });
+  assert.equal(await putBack.locator('.confirm-command').innerText(), '$ git checkout --merge -- :(literal)poem.txt');
+  await putBack.getByRole('button', { name: 'Put the conflict back', exact: true }).click();
+  await expect('poem.txt is in conflict again.', 'the markers are back');
+  assert.match(await git(['ls-files', '--unmerged']), /poem\.txt/);
+  assert.match(await readFile(path.join(cwd, 'poem.txt'), 'utf8'), /<<<<<<</);
+  // Taking a whole side asks, names the side and shows both commands.
+  await page.getByRole('button', { name: 'poem.txt Resolve' }).click();
+  await editor.waitFor();
+  await editor.getByRole('button', { name: 'Take all of main', exact: true }).click();
+  const whole = page.getByRole('dialog', { name: 'Take all of main' });
+  assert.deepEqual(await whole.locator('.confirm-command').allInnerTexts(),
+    ['$ git checkout --ours -- :(literal)poem.txt', '$ git add -- :(literal)poem.txt']);
+  await whole.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.match(await readFile(path.join(cwd, 'poem.txt'), 'utf8'), /<<<<<<</, 'Cancel took nothing');
+  await editor.getByRole('button', { name: 'Take all of feature', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Take all of feature' }).getByRole('button', { name: 'Take this side', exact: true }).click();
+  const taken = page.locator('.operation-note', { hasText: 'poem.txt now holds the whole version of feature' });
+  await taken.waitFor();
+  await taken.getByRole('button', { name: 'Put the conflict back', exact: true }).waitFor();
+  assert.equal(await readFile(path.join(cwd, 'poem.txt'), 'utf8'), 'roses\nFEATURE\nsugar\n');
+  await taken.locator('.note-dismiss').click();
 
   await page.getByRole('button', { name: /^Continue/ }).click();
   await page.getByRole('status', { name: 'Merge in progress' }).waitFor({ state: 'detached' });
@@ -240,6 +279,9 @@ try {
   const rebase = page.getByRole('dialog');
   await rebase.waitFor();
   await expect('Interactive rebase', 'the rebase dialog opens');
+  // What it cannot take back is said before it starts, with the exact command.
+  assert.match(await rebase.locator('.rebase-warnings').innerText(), /Undo cannot reverse a rebase/);
+  assert.match(await rebase.locator('.rebase-warnings .confirm-command').innerText(), /^\$ git rebase --interactive [0-9a-f]{40}$/);
 
   // Reorder without a mouse, then drop one commit.
   await rebase.getByRole('button', { name: 'Move add beta earlier' }).click();
@@ -254,6 +296,21 @@ try {
   assert.deepEqual((await git(['log', '--format=%s', '-2'])).split('\n'),
     ['add alpha, renamed by the plan', 'add beta'],
     'Git replayed the plan Twig supplied, in the order shown, with the new message');
+
+  // --- a soft reset asks, and Undo takes it back ---------------------------------
+  const planTip = await git(['rev-parse', 'HEAD']);
+  await page.getByRole('option', { name: /add beta/ }).first().click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: /Reset plan to .* — soft/ }).click();
+  const soft = page.getByRole('dialog', { name: /^Reset plan to / });
+  assert.match(await soft.locator('.confirm-command').innerText(), /^\$ git reset --soft [0-9a-f]{40}$/);
+  assert.match(await soft.locator('.confirm-consequence').innerText(), /Undo moves the branch back/);
+  await soft.getByRole('button', { name: 'Reset (soft)', exact: true }).click();
+  await page.locator('.operation-note', { hasText: /^Reset plan to [0-9a-f]{7}\.$/ }).waitFor();
+  assert.notEqual(await git(['rev-parse', 'HEAD']), planTip);
+  // Undo of a soft reset is a soft reset back: no file changes, so nothing to confirm.
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect('Undo completed.', 'Undo of the soft reset');
+  assert.equal(await git(['rev-parse', 'HEAD']), planTip, 'Undo put the branch back where the reset took it from');
 
   // --- rewording ---------------------------------------------------------------
   // Something is staged on purpose: `--amend` alone would swallow it into the

@@ -189,7 +189,8 @@ export class UndoService {
           // rule keeps its two backups and whether the file was new; a tag its
           // name and what it points to.
           const savedArgs = ['worktree:discard', 'worktree:restore-discard', 'reflog:move-branch', 'worktree:ignore', 'refs:create-tag'].includes(kind) ? result.undo
-            : ['refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind) ? args : [];
+            : ['refs:create-branch', 'stash:push', 'stash:pop', 'stash:apply'].includes(kind) ? args
+              : kind === 'ops:reset' ? [args[0]] : [];
           const entry = { kind, args: savedArgs, before: stored(kind, before), after: stored(kind, after) };
           if (undoScope(kind) === 'files') entry.after.files = await captureFiles({ cwd, paths: entryFiles(entry) });
           active.undo.push(entry); active.undo = active.undo.slice(-100);

@@ -6,7 +6,7 @@ import { checkout, createBranch, createTag, deleteBranch, deleteTag, readTagRef,
 import { loadBisectState, runBisect } from './git/bisect.js';
 import { rewordHead } from './git/commit-ops.js';
 import { clearPlan, planFiles, startRebase } from './git/rebase.js';
-import { loadConflict, markResolved, saveResolution, settleDeletion, takeSide } from './git/conflicts.js';
+import { loadConflict, markResolved, restoreConflict, saveResolution, settleDeletion, takeSide } from './git/conflicts.js';
 import { moveBranch } from './git/reflog.js';
 import { applyPatch } from './git/patches.js';
 import { ui } from '../renderer/src/i18n/i18n.js';
@@ -260,6 +260,10 @@ export function registerHistoryOpsIpc(getWindow, entryUrl, { repositories, journ
     return withState(options, () => settleDeletion({ ...options, path: asString(file, 32768), keep })
       .then(() => ({ ok: true, message: null })));
   });
+
+  handler('conflict:restore', 2, (options, file) =>
+    withState(options, () => restoreConflict({ ...options, path: asString(file, 32768) })
+      .then(() => ({ ok: true, message: null }))));
 
   handler('conflict:resolve', 2, (options, file) =>
     withState(options, () => markResolved({ ...options, path: asString(file, 32768) })

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import Button from '../../ui/Button.jsx';
 import Dialog from '../../ui/Dialog.jsx';
 import { matchesShortcut } from '../../app/shortcuts.js';
@@ -33,7 +33,7 @@ function move(entries, from, to) {
  * Move up / Move down buttons and on Alt+Arrow, because a drag is unusable
  * with a keyboard and awkward with a trackpad.
  */
-export default function RebaseDialog({ commits, onRun, onClose }) {
+export default function RebaseDialog({ commits, base, onRun, onClose }) {
   const [entries, setEntries] = useState(() => commits.map(commit => ({
     oid: commit.oid, subject: commit.subject, author: commit.author.name,
     action: 'pick', message: commit.subject
@@ -57,6 +57,8 @@ export default function RebaseDialog({ commits, onRun, onClose }) {
   const melted = entries.filter(entry => MELDING.has(entry.action)).length;
   const dropped = entries.filter(entry => entry.action === 'drop').length;
   const summary = t`${keptCount} kept · ${melted} melted · ${dropped} dropped`;
+  const published = commits.filter(commit => commit.published).length;
+  const droppedPublished = entries.filter(entry => entry.action === 'drop' && commits.find(commit => commit.oid === entry.oid)?.published).length;
 
   return <Dialog title={t('Interactive rebase')} wide onClose={onClose}>
     <div className="rebase-dialog">
@@ -90,6 +92,17 @@ export default function RebaseDialog({ commits, onRun, onClose }) {
           </label>}
         </li>)}
       </ol>
+      {/* What this cannot take back, said before it starts rather than on the Undo button after. */}
+      <div className="rebase-warnings">
+        <p className="confirm-consequence"><AlertTriangle aria-hidden="true" />{[
+          t('Undo cannot reverse a rebase. The old commits stay in Reflog for a while.'),
+          dropped ? tn(dropped, 'The {n} dropped commit leaves the branch.', 'The {n} dropped commits leave the branch.') : null,
+          droppedPublished ? tn(droppedPublished, '{n} of them is already on a remote and stays there until you force push.', '{n} of them are already on a remote and stay there until you force push.') : null,
+          published ? tn(published, '{n} of these commits is already on a remote: after the rebase, the remote accepts the branch only with a force push.',
+            '{n} of these commits are already on a remote: after the rebase, the remote accepts the branch only with a force push.') : null
+        ].filter(Boolean).join(' ')}</p>
+        {base && <code className="confirm-command">$ git rebase --interactive {base}</code>}
+      </div>
       <div className="dialog-actions">
         <span className="muted" role="status">{problem || summary}</span>
         <Button onClick={onClose}>{t('Cancel')}</Button>

@@ -19,7 +19,7 @@ import { conflictCount, summarizeStatus } from '../worktree/worktree-summary.js'
 import { pruneConflictDrafts, unsavedConflicts } from '../conflicts/conflict-drafts.js';
 import { discardDialog } from '../worktree/discard-dialog.js';
 import { SEARCH_MODE_OPTIONS, searchEmpty, searchSummary } from './search-modes.js';
-import OperationBanner from '../ops/OperationBanner.jsx';
+const OperationBanner = lazyScreen(() => import('../ops/OperationBanner.jsx'));
 import BisectBanner from '../ops/BisectBanner.jsx';
 import RefsScreen, { UpstreamDialog } from '../refs/RefsScreen.jsx';
 import { pushRefCommand, splitRemoteRef } from '../refs/remote-ref.js';
@@ -78,7 +78,7 @@ const PAGE_SIZE = 250;
 /** A jump to a commit far down, and a reload restoring the rows that were shown,
  * read bigger pages: main streams the history, so a page costs what it holds. */
 const JUMP_PAGE_SIZE = 2000;
-const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false };
+const IDLE = { kind: 'none', step: null, total: null, branch: null, conflicts: [], resolved: false, onto: null, incoming: null, incomingName: null, resolvedFiles: [] };
 const NO_BISECT = { active: false, terms: { bad: 'bad', good: 'good' }, start: null, bad: null, goods: [],
   skipped: [], marked: [], expected: null, remaining: null, steps: null, done: false, firstBad: null };
 /** The four centre-pane screens that replace the graph instead of selecting a commit. */
@@ -758,12 +758,17 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       merge: (name, noFf) => performGated('pre-merge-commit', 'post-merge', () => window.twig.mergeRevision(repository.id, name, noFf), t`Merged ${name} into ${target}.`),
       cherryPick: () => perform(() => window.twig.cherryPick(repository.id, commit.oid), t`Cherry-picked ${short}.`),
       revert: () => perform(() => window.twig.revertCommit(repository.id, commit.oid, commit.parents.length > 1 ? 1 : null), t`Reverted ${short}.`),
-      rebase: () => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, commit.oid, null), t`Rebased ${target} onto ${short}.`),
+      rebase: () => confirmRebase(target, short, commit.oid),
       interactiveRebase: () => void openRebase(commit.oid),
       reword: () => void openReword(commit),
       reset: mode => {
         const run = () => perform(() => window.twig.resetTo(repository.id, mode, commit.oid), t`Reset ${target} to ${short}.`);
-        if (mode !== 'hard') { run(); return; }
+        // Soft and mixed keep every file, and Undo moves the branch back — but
+        // only a dialog says which of the three this was before it runs.
+        if (mode !== 'hard') {
+          confirmWith(plans => plans.resetConfirm(target, short, mode, commit.oid, summary.staged.length > 0), run);
+          return;
+        }
         setDialog({
           type: 'confirm', title: t`Reset ${target} to ${short}`, command: ['reset', '--hard', commit.oid],
           consequence: t`Every uncommitted change in the working tree and the index is destroyed, and ${target} moves to ${short}. Commits left behind stay in the reflog for a while; uncommitted work does not.`,
@@ -880,7 +885,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         confirmLabel: t('Check out'),
         run: () => performGated(null, 'post-checkout', () => window.twig.checkoutRef(repository.id, item.target, true), t`Checked out ${item.name} with a detached HEAD.`, { select: item.target })
       }),
-      rebaseOnto: item => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, item.target, null), t`Rebased ${target} onto ${item.name}.`),
+      rebaseOnto: item => confirmRebase(target, item.name, item.target),
       // The same compare a drag-and-drop offers: the ref against HEAD, read-only.
       compare: item => {
         leaveCentre();
@@ -1092,6 +1097,32 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       confirmLabel: title,
       onConfirm: () => void perform(() => (kind === 'cherry-pick' ? window.twig.cherryPickMany : window.twig.revertMany)(repository.id, ordered),
         kind === 'cherry-pick' ? tn(count, 'Cherry-picked {n} commit.', 'Cherry-picked {n} commits.') : tn(count, 'Reverted {n} commit.', 'Reverted {n} commits.'))
+    });
+  }
+
+  /**
+   * Abort, Skip, a plain rebase, a soft or mixed reset and putting a conflict
+   * back ask first. Their words are a chunk of their own, loaded on the first
+   * ask: the main bundle is at Vite's limit.
+   */
+  function confirmWith(build, onConfirm) {
+    import('../ops/confirm-plans.js').then(plans => setDialog({ ...build(plans), onConfirm }))
+      .catch(failure => setNote({ text: failureText(failure, t('The operation failed.')), failed: true }));
+  }
+  function confirmRebase(target, onto, oid) {
+    confirmWith(plans => plans.rebaseConfirm(target, onto, oid),
+      () => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, oid, null), t`Rebased ${target} onto ${onto}.`));
+  }
+  function confirmStep(step) {
+    const kind = operation.kind;
+    const run = () => perform(() => window.twig.runSequencer(repository.id, kind, step), tr(stepNote(kind, step)));
+    if (step === 'continue') { void run(); return; }
+    confirmWith(plans => plans.stepConfirm(operation, step, unsaved), run);
+  }
+  function confirmRestoreConflict(file) {
+    confirmWith(plans => plans.restoreConflictConfirm(file), async () => {
+      const result = await perform(() => window.twig.restoreConflict(repository.id, file), t`${file} is in conflict again.`);
+      if (result && !result.ok) setNote({ text: tr(result.message) || t('The operation did not finish.'), failed: true });
     });
   }
 
@@ -1589,8 +1620,8 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
       </div>}
       {dropRunning && <div className="git-drag-status" role="status">{t('Running Git action…')} <Button onClick={() => void window.twig.cancelSync(repository.id)}>{t('Cancel operation')}</Button></div>}
       <OperationNote note={note} onConsole={onConsole} onDismiss={() => setNote('')} />
-      <OperationBanner state={bannerState} busy={working} unsaved={unsaved} onOpenConflict={setConflict}
-        onStep={step => perform(() => window.twig.runSequencer(repository.id, operation.kind, step), tr(stepNote(operation.kind, step)))} />
+      {bannerState.kind !== 'none' && <OperationBanner state={bannerState} busy={working} unsaved={unsaved} onOpenConflict={setConflict}
+        onStep={confirmStep} onRestoreConflict={confirmRestoreConflict} />}
       <BisectBanner state={bisect} busy={working}
         blockedReason={operation.kind !== 'none' ? tr(finishFirst(operation.kind)) : dirty ? t('Commit or stash your changes before the next test') : undefined}
         selectedCommit={!screen && !range ? data.commits[indexMap.get(selected)] : null}
@@ -1629,11 +1660,15 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
             worktrees={worktreeBoard.worktrees} worktreeBase={worktreeBoard.base} worktreeBranches={worktreeBranches} onWorktree={rowHandlers.worktree} onWorktreeBoard={rowHandlers.board} />}
       </div>
       {conflict && <ConflictEditor key={conflict} repositoryId={repository.id} file={conflict} onConsole={onConsole} onBack={() => setConflict(null)} onDraft={readUnsaved}
-        onResolved={state => {
+        operation={bannerState} headBranch={operation.kind === 'rebase' ? operation.branch : headBranch} refs={data.refs}
+        onResolved={(state, taken = null) => {
           setConflict(null); setOperation(state); readUnsaved();
           // Nothing Git would continue: the note says what is left of the stash.
           const last = state.kind === 'none' && !conflicted.some(file => file !== conflict);
-          setNote(last ? t('Every conflict is resolved and the files are staged. If a stash left this, it is still in the list: drop it on the Stashes screen.') : t`${conflict} marked resolved.`);
+          const file = conflict;
+          setNote(taken ? { text: t`${file} now holds the whole version of ${taken.name} and is marked resolved.`,
+            actions: [{ label: t('Put the conflict back'), run: () => confirmRestoreConflict(file) }] }
+            : last ? t('Every conflict is resolved and the files are staged. If a stash left this, it is still in the list: drop it on the Stashes screen.') : t`${conflict} marked resolved.`);
           void reload(); onRepositoryChanged?.();
         }} />}
       {!conflict && screen === 'branches' && <RefsScreen repository={repository} refs={data.refs} headBranch={headBranch} busy={working}
@@ -1755,7 +1790,7 @@ function HistoryWorkspace({ repository, active, platform, editor, filterRef, onC
         ? perform(() => window.twig.applyPatchCommits(repository.id, dialog.patch.token), dialog.patch.commits.length === 1 ? t('Patch applied as commits.')
           : tn(dialog.patch.commits.length, '{n} patch applied as commits.', '{n} patches applied as commits.'))
         : perform(() => window.twig.applyPatchFiles(repository.id, dialog.patch.token, index), index ? t('Patch applied to the files and staged.') : t('Patch applied to the files.')))} />}
-    {dialog?.type === 'rebase' && <RebaseDialog commits={dialog.commits} onClose={() => setDialog(null)}
+    {dialog?.type === 'rebase' && <RebaseDialog commits={dialog.commits} base={dialog.oid} onClose={() => setDialog(null)}
       onRun={entries => performGated('pre-rebase', 'post-rewrite', () => window.twig.rebaseOnto(repository.id, dialog.oid, entries), t('Rebase finished.'))} />}
     {execution && <ExecutionPanel event={execution.event} label={execution.label} phase={execution.phase}
       steps={execution.steps} result={execution.result} blocked={execution.blocked} bypassed={execution.bypassed}
